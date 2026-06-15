@@ -1,0 +1,12 @@
+{
+  "Id": "MissileFireControl",
+  "DisplayName": "Missile Fire Control",
+  "Title": "MissileFireControl",
+  "Author": "FennexFox",
+  "Version": "0.1.0",
+  "Requirements": [],
+  "ManagerVersion": "0.24.0.0",
+  "AssemblyName": "MissileFireControl.Mod.dll",
+  "EntryMethod": "MissileFireControl.Mod.Main.Load",
+  "Description": "Experimental missile salvo allocation and launch-discipline helper for Terra Invicta. Initial scaffold only."
+}

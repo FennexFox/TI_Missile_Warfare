@@ -1,0 +1,27 @@
+# Build output
+bin/
+obj/
+dist/
+artifacts/
+*.dll
+*.pdb
+*.mdb
+*.zip
+
+# Local game/tool paths
+Directory.Build.props
+*.user
+*.suo
+.vs/
+.idea/
+.vscode/
+
+# Logs and diagnostics
+logs/
+*.log
+*.csv
+*.jsonl
+
+# OS files
+.DS_Store
+Thumbs.db

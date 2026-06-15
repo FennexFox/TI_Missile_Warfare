@@ -1,0 +1,17 @@
+using UnityModManagerNet;
+
+namespace MissileFireControl.Mod
+{
+    public sealed class ModSettings : UnityModManager.ModSettings
+    {
+        public bool EnableDiagnostics = true;
+        public bool EnableRecommendationOnlyMode = true;
+        public bool EnableLaunchDiscipline = false;
+        public double MinimumLaunchScore = 0.35;
+
+        public override void Save(UnityModManager.ModEntry modEntry)
+        {
+            Save(this, modEntry);
+        }
+    }
+}

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Copy this file to Directory.Build.props and edit local paths. Do not commit Directory.Build.props. -->
+    <TerraInvictaManagedDir>C:\Path\To\Terra Invicta\TerraInvicta_Data\Managed</TerraInvictaManagedDir>
+    <UnityModManagerDir>C:\Path\To\UnityModManager</UnityModManagerDir>
+  </PropertyGroup>
+</Project>

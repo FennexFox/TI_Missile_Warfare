@@ -1,0 +1,79 @@
+using HarmonyLib;
+using UnityEngine;
+using UnityModManagerNet;
+
+namespace MissileFireControl.Mod
+{
+    public static class Main
+    {
+        internal static UnityModManager.ModEntry ModEntry { get; private set; }
+        internal static ModSettings Settings { get; private set; }
+
+        private static Harmony _harmony;
+        private static bool _enabled;
+
+        public static bool Load(UnityModManager.ModEntry modEntry)
+        {
+            ModEntry = modEntry;
+            Settings = ModSettings.Load<ModSettings>(modEntry);
+
+            modEntry.OnToggle = OnToggle;
+            modEntry.OnGUI = OnGUI;
+            modEntry.OnSaveGUI = OnSaveGUI;
+
+            _harmony = new Harmony(modEntry.Info.Id);
+            _harmony.PatchAll(typeof(Main).Assembly);
+
+            Log.Info("Missile Fire Control loaded. Current build is scaffold/logging-first only.");
+            return true;
+        }
+
+        private static bool OnToggle(UnityModManager.ModEntry modEntry, bool value)
+        {
+            _enabled = value;
+            Log.Info(value ? "Missile Fire Control enabled." : "Missile Fire Control disabled.");
+            return true;
+        }
+
+        private static void OnGUI(UnityModManager.ModEntry modEntry)
+        {
+            GUILayout.Label("Missile Fire Control - scaffold build");
+            GUILayout.Label("No live launch behavior is changed yet.");
+
+            Settings.EnableDiagnostics = GUILayout.Toggle(Settings.EnableDiagnostics, "Enable diagnostic logging");
+            Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
+            Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Launch score threshold", GUILayout.Width(180));
+            string thresholdText = GUILayout.TextField(Settings.MinimumLaunchScore.ToString("0.00"), GUILayout.Width(80));
+            if (double.TryParse(thresholdText, out double threshold))
+            {
+                Settings.MinimumLaunchScore = Clamp(threshold, 0.0, 1.0);
+            }
+            GUILayout.EndHorizontal();
+
+            if (GUILayout.Button("Write diagnostic ping"))
+            {
+                Log.Info("Diagnostic ping from UMM panel.");
+            }
+        }
+
+        private static void OnSaveGUI(UnityModManager.ModEntry modEntry)
+        {
+            Settings.Save(modEntry);
+        }
+
+        internal static bool IsEnabled()
+        {
+            return _enabled;
+        }
+
+        private static double Clamp(double value, double min, double max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+    }
+}

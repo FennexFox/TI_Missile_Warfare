@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MissileFireControl.Core", "src\MissileFireControl.Core\MissileFireControl.Core.csproj", "{6D597F22-4D8D-4F0B-89E4-6A3E8047F5E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MissileFireControl.Mod", "src\MissileFireControl.Mod\MissileFireControl.Mod.csproj", "{C7C4A12B-D9F1-48E6-B131-50E56C0204EF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6D597F22-4D8D-4F0B-89E4-6A3E8047F5E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6D597F22-4D8D-4F0B-89E4-6A3E8047F5E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6D597F22-4D8D-4F0B-89E4-6A3E8047F5E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6D597F22-4D8D-4F0B-89E4-6A3E8047F5E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7C4A12B-D9F1-48E6-B131-50E56C0204EF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7C4A12B-D9F1-48E6-B131-50E56C0204EF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7C4A12B-D9F1-48E6-B131-50E56C0204EF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7C4A12B-D9F1-48E6-B131-50E56C0204EF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
