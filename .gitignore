@@ -22,6 +22,9 @@ logs/
 *.csv
 *.jsonl
 
+# Local analysis/tool state
+graphify-out/
+
 # OS files
 .DS_Store
 Thumbs.db

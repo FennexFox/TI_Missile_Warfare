@@ -2,6 +2,17 @@
 
 <!-- Briefly describe what this PR changes. -->
 
+## Change type
+
+<!-- Check one or more. -->
+
+- [ ] Scaffold-only
+- [ ] Docs-only
+- [ ] Diagnostics-only
+- [ ] Core logic only
+- [ ] Mod integration
+- [ ] Behavior-changing combat patch
+
 ## Scope
 
 <!-- What is intentionally included in this PR? -->
@@ -13,6 +24,15 @@
 <!-- What is intentionally not handled here? -->
 
 - 
+
+## Live combat behavior
+
+<!-- State clearly whether this PR changes actual in-game combat behavior. -->
+
+- [ ] No live combat behavior changes
+- [ ] Adds diagnostics/logging only
+- [ ] Changes recommendation output only
+- [ ] Changes launch/targeting behavior
 
 ## Implementation notes
 
@@ -28,6 +48,7 @@
 - [ ] Solution/project files load locally
 - [ ] Core project builds locally
 - [ ] Mod project builds locally with local Terra Invicta / UMM references
+- [ ] Mod loads locally
 - [ ] Manual smoke test in game
 - [ ] Not applicable: this PR is documentation/scaffold-only
 
@@ -54,4 +75,3 @@
 ## Screenshots / logs
 
 <!-- Optional. Add debug logs, screenshots, or allocation output if relevant. -->
-

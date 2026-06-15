@@ -1,0 +1,31 @@
+# VCS and local IDE state
+.git/
+.vs/
+.idea/
+.vscode/
+
+# Build and package outputs
+bin/
+obj/
+dist/
+artifacts/
+*.dll
+*.pdb
+*.mdb
+*.zip
+
+# Local tool state and generated metadata
+.serena/cache/
+.serena/memories/
+.serena/project.local.yml
+
+# Logs and diagnostic exports
+logs/
+*.log
+*.csv
+*.jsonl
+
+# Local machine-specific config
+Directory.Build.props
+*.user
+*.suo
