@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic scaffold validation for TI Missile Fire Control."""
+"""Deterministic scaffold validation for TI MissileWarfare."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,7 +12,7 @@ REQUIRED_PATHS = [
     "README.md",
     ".gitignore",
     ".gitattributes",
-    "ModFile.json",
+    "ModInfo.json",
     "Directory.Build.props.example",
     "TI_Missile_Fire_Control.sln",
     "docs/architecture.md",
@@ -51,15 +51,17 @@ def main() -> None:
     if forbidden_found:
         fail("forbidden local/binary files found:\n" + "\n".join(f"  - {x.relative_to(ROOT)}" for x in forbidden_found))
 
-    mod_file = json.loads((ROOT / "ModFile.json").read_text(encoding="utf-8"))
+    mod_file = json.loads((ROOT / "ModInfo.json").read_text(encoding="utf-8"))
     expected = {
-        "Id": "MissileFireControl",
+        "Id": "MissileWarfare",
+        "DisplayName": "MissileWarfare",
+        "Title": "MissileWarfare",
         "AssemblyName": "MissileFireControl.Mod.dll",
         "EntryMethod": "MissileFireControl.Mod.Main.Load",
     }
     for key, value in expected.items():
         if mod_file.get(key) != value:
-            fail(f"ModFile.json {key!r} expected {value!r}, got {mod_file.get(key)!r}")
+            fail(f"ModInfo.json {key!r} expected {value!r}, got {mod_file.get(key)!r}")
 
     cs_files = sorted(ROOT.rglob("*.cs"))
     if len(cs_files) < 15:
