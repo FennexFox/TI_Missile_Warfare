@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,8 +28,11 @@ REQUIRED_PATHS = [
     "src/MissileFireControl.Mod/Patches/PatchBootstrap.cs",
 ]
 
-FORBIDDEN_PATHS = [
+LOCAL_ONLY_PATHS = [
     "Directory.Build.props",
+]
+
+FORBIDDEN_BINARY_NAMES = [
     "Assembly-CSharp.dll",
     "UnityModManager.dll",
     "0Harmony.dll",
@@ -40,13 +44,31 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def tracked_paths(paths: list[str]) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "--", *paths],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    return [line for line in result.stdout.splitlines() if line]
+
+
 def main() -> None:
     missing = [path for path in REQUIRED_PATHS if not (ROOT / path).exists()]
     if missing:
         fail("missing required paths:\n" + "\n".join(f"  - {x}" for x in missing))
 
+    tracked_local_only = tracked_paths(LOCAL_ONLY_PATHS)
+    if tracked_local_only:
+        fail("local-only files are tracked:\n" + "\n".join(f"  - {x}" for x in tracked_local_only))
+
     forbidden_found = []
-    for forbidden in FORBIDDEN_PATHS:
+    for forbidden in FORBIDDEN_BINARY_NAMES:
         forbidden_found.extend(ROOT.rglob(forbidden))
     if forbidden_found:
         fail("forbidden local/binary files found:\n" + "\n".join(f"  - {x.relative_to(ROOT)}" for x in forbidden_found))
