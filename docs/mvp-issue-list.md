@@ -34,6 +34,8 @@ Acceptance criteria:
 - Ready missile shots can be counted.
 - Snapshot dump can be enabled/disabled from settings.
 
+Implementation notes: `docs/battle-snapshot-extractor.md`.
+
 ## Issue 4: Recommendation-only salvo allocation
 
 Goal: produce target/shots recommendations without applying commands.

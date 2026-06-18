@@ -8,6 +8,7 @@ namespace MissileFireControl.Mod
     public sealed class ModSettings : UnityModManager.ModSettings
     {
         public bool EnableDiagnostics = true;
+        public bool EnableSnapshotDiagnostics = false;
         public bool EnableRecommendationOnlyMode = true;
         public bool EnableLaunchDiscipline = false;
         public double MinimumLaunchScore = 0.35;
