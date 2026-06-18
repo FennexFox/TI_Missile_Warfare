@@ -47,7 +47,7 @@ Snapshot diagnostics use a separate marker so existing launch diagnostics remain
 unchanged:
 
 ```text
-[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." targetId="..." target="..." expectedTargetPosition="..." missileId="..." missile="..." weaponRole="Missile" readyShots="unknown" remainingShots="unknown" missing="targetIdentity,readyShots,remainingShots"
+[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." targetId="..." target="..." expectedTargetPosition="..." missileId="..." missile="..." weaponRole="Missile" readyShots="unknown" remainingShots="..." missing="targetIdentity,readyShots"
 ```
 
 The `missing` field is expected to be useful early on. It records which fields
