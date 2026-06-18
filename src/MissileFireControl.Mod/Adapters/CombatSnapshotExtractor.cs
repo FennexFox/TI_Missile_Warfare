@@ -171,12 +171,12 @@ namespace MissileFireControl.Mod.Adapters
 
         private static void AddMissingFields(ExtractedCombatSnapshot snapshot)
         {
-            if (snapshot.Launcher == null || snapshot.Launcher.Id.StartsWith("unknown-"))
+            if (!HasConcreteIdentity(snapshot.Launcher, "launcher"))
             {
                 snapshot.MissingFields.Add("launcher");
             }
 
-            if (snapshot.Target == null)
+            if (!HasConcreteIdentity(snapshot.Target, "target"))
             {
                 snapshot.MissingFields.Add("targetIdentity");
             }
@@ -195,6 +195,21 @@ namespace MissileFireControl.Mod.Adapters
             {
                 snapshot.MissingFields.Add("remainingShots");
             }
+        }
+
+        private static bool HasConcreteIdentity(ShipSnapshot ship, string fallbackPrefix)
+        {
+            if (ship == null || string.IsNullOrWhiteSpace(ship.Id))
+            {
+                return false;
+            }
+
+            if (ship.Id.StartsWith("unknown-"))
+            {
+                return false;
+            }
+
+            return !ship.Id.StartsWith(fallbackPrefix + ":");
         }
     }
 }
