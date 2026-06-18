@@ -2,6 +2,6 @@ namespace MissileFireControl.Mod.Patches
 {
     internal static class CombatLaunchPatchPlaceholder
     {
-        public const string Purpose = "Locate Terra Invicta combat launch methods, then replace this placeholder with real Harmony patches.";
+        public const string Purpose = "Combat launch diagnostics are installed by PatchBootstrap with runtime signature checks.";
     }
 }

@@ -1,4 +1,5 @@
 using HarmonyLib;
+using MissileFireControl.Mod.Patches;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -15,6 +16,7 @@ namespace MissileFireControl.Mod
         public static bool Load(UnityModManager.ModEntry modEntry)
         {
             ModEntry = modEntry;
+            Log.Initialize(modEntry);
             Settings = ModSettings.Load<ModSettings>(modEntry);
 
             modEntry.OnToggle = OnToggle;
@@ -23,21 +25,23 @@ namespace MissileFireControl.Mod
 
             _harmony = new Harmony(modEntry.Info.Id);
             _harmony.PatchAll(typeof(Main).Assembly);
+            PatchBootstrap.Apply(_harmony);
 
-            Log.Info("Missile Fire Control loaded. Current build is scaffold/logging-first only.");
+            Log.Info("File log: " + Log.FileLogPath);
+            Log.Info("MissileWarfare loaded. Current build is scaffold/logging-first only.");
             return true;
         }
 
         private static bool OnToggle(UnityModManager.ModEntry modEntry, bool value)
         {
             _enabled = value;
-            Log.Info(value ? "Missile Fire Control enabled." : "Missile Fire Control disabled.");
+            Log.Info(value ? "MissileWarfare enabled." : "MissileWarfare disabled.");
             return true;
         }
 
         private static void OnGUI(UnityModManager.ModEntry modEntry)
         {
-            GUILayout.Label("Missile Fire Control - scaffold build");
+            GUILayout.Label("MissileWarfare - scaffold build");
             GUILayout.Label("No live launch behavior is changed yet.");
 
             Settings.EnableDiagnostics = GUILayout.Toggle(Settings.EnableDiagnostics, "Enable diagnostic logging");

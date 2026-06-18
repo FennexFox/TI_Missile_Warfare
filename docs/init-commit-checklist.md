@@ -2,7 +2,7 @@
 
 Before the first commit:
 
-- [ ] Rename author in `ModFile.json` if needed.
+- [ ] Rename author in `ModInfo.json` if needed.
 - [ ] Decide whether to add a license.
 - [ ] Run `python tools/check_layout.py`.
 - [ ] Confirm `Directory.Build.props` is not committed.

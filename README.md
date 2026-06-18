@@ -1,6 +1,6 @@
-# TI Missile Fire Control
+# TI MissileWarfare
 
-Experimental Terra Invicta combat helper mod scaffold for missile salvo allocation and launch-discipline research.
+Experimental Terra Invicta MissileWarfare mod scaffold for missile salvo allocation and launch-discipline research.
 
 This repository is intentionally an **initial scaffold**, not a working gameplay mod yet. The first milestone is to build a safe logging/prototyping layer before touching live launch decisions.
 
@@ -25,7 +25,7 @@ src/MissileFireControl.Core/   Pure C# heuristic model and allocation logic.
 src/MissileFireControl.Mod/    Unity Mod Manager / Harmony entry points and future patches.
 docs/                          Architecture, reverse-engineering plan, and MVP issue list.
 tools/                         Deterministic repo checks and local helper scripts.
-ModFile.json                   UMM metadata copied beside the built DLL.
+ModInfo.json                   UMM metadata copied beside the built DLL.
 ```
 
 `Core` is deliberately game-independent. `Mod` should stay as a thin adapter over Terra Invicta / Unity / Harmony APIs.
@@ -68,7 +68,21 @@ The scaffold includes a deterministic layout check that does not require Terra I
 python tools/check_layout.py
 ```
 
-Once local references are configured, build the mod project with your C# tooling. If that is too brittle at first, build only `MissileFireControl.Core` and keep `MissileFireControl.Mod` as a patching shell until the real game methods are identified.
+Once local references are configured, build and deploy the UMM mod folder for in-game testing:
+
+```powershell
+.\build.ps1
+```
+
+If you do not want to create `Directory.Build.props`, pass local paths directly:
+
+```powershell
+.\build.ps1 -GameDir "C:\Program Files (x86)\Steam\steamapps\common\Terra Invicta" -UnityModManagerDir "C:\Tools\UnityModManager"
+```
+
+The script stages the mod in `dist/MissileWarfare` and deploys it to `Terra Invicta/Mods/Enabled/MissileWarfare`. Use `-NoDeploy` to only build and stage the folder, or `-Configuration Release` for a release build.
+
+If the mod project is too brittle at first, build only `MissileFireControl.Core` and keep `MissileFireControl.Mod` as a patching shell until the real game methods are identified.
 
 ## Development strategy
 

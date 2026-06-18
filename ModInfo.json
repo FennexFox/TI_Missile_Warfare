@@ -1,7 +1,7 @@
 {
-  "Id": "MissileFireControl",
-  "DisplayName": "Missile Fire Control",
-  "Title": "MissileFireControl",
+  "Id": "MissileWarfare",
+  "DisplayName": "MissileWarfare",
+  "Title": "MissileWarfare",
   "Author": "FennexFox",
   "Version": "0.1.0",
   "Requirements": [],

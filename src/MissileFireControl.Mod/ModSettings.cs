@@ -1,7 +1,10 @@
+using System.Xml.Serialization;
 using UnityModManagerNet;
 
 namespace MissileFireControl.Mod
 {
+    [XmlRoot("MissileWarfareSettings")]
+    [XmlType("MissileWarfareSettings")]
     public sealed class ModSettings : UnityModManager.ModSettings
     {
         public bool EnableDiagnostics = true;

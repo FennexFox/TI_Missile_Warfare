@@ -21,9 +21,25 @@ logs/
 *.log
 *.csv
 *.jsonl
+.chatgpt/
 
-# Local analysis/tool state
-graphify-out/
+# Graphify local cache/temp state
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_detect.json
+graphify-out/.graphify_extract.json
+graphify-out/.graphify_ast.json
+graphify-out/.graphify_semantic.json
+graphify-out/.graphify_semantic_new.json
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_uncached.txt
+graphify-out/.graphify_chunk_*.json
+graphify-out/.needs_update
+
+# ChatGPT local cache/temp state
+.chatgpt/
 
 # OS files
 .DS_Store
