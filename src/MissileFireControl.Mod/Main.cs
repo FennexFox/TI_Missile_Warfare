@@ -16,6 +16,7 @@ namespace MissileFireControl.Mod
         public static bool Load(UnityModManager.ModEntry modEntry)
         {
             ModEntry = modEntry;
+            Log.Initialize(modEntry);
             Settings = ModSettings.Load<ModSettings>(modEntry);
 
             modEntry.OnToggle = OnToggle;
@@ -26,6 +27,7 @@ namespace MissileFireControl.Mod
             _harmony.PatchAll(typeof(Main).Assembly);
             PatchBootstrap.Apply(_harmony);
 
+            Log.Info("File log: " + Log.FileLogPath);
             Log.Info("Missile Fire Control loaded. Current build is scaffold/logging-first only.");
             return true;
         }
