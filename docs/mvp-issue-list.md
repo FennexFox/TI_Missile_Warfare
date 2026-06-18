@@ -21,6 +21,8 @@ Acceptance criteria:
 - At least one log-only patch fires during tactical combat.
 - Log includes battle context and method name.
 
+Current confirmed hook notes: `docs/confirmed-hooks.md`.
+
 ## Issue 3: Add battle snapshot extractor
 
 Goal: convert game combat objects into Core snapshots.

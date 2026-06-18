@@ -60,6 +60,9 @@ Add Harmony postfixes/prefixes that log:
 
 No gameplay behavior should change in this phase.
 
+Current confirmed runtime hook findings are recorded in
+`docs/confirmed-hooks.md`.
+
 ## Phase 2: snapshot extraction
 
 Build adapter methods that convert game objects into Core snapshots:
