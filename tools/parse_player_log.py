@@ -66,10 +66,12 @@ class LogSummary:
 
 
 def parse_pairs(text: str) -> dict[str, str]:
+    """Parse quoted key/value pairs from a LaunchLog payload."""
     return {match.group("key"): match.group("value") for match in PAIR_RE.finditer(text)}
 
 
 def is_issue_line(line: str) -> bool:
+    """Return whether a MissileWarfare log line represents a warning or error."""
     if not line.startswith(MOD_PREFIX):
         return False
 
@@ -79,6 +81,7 @@ def is_issue_line(line: str) -> bool:
 
 
 def parse_log(path: Path, max_issues: int) -> LogSummary:
+    """Scan a Player.log file and collect MissileWarfare diagnostics markers."""
     summary = LogSummary(path=str(path), exists=path.exists())
     if not path.exists():
         return summary
@@ -180,6 +183,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
 
 
 def logger_verdict(summary: LogSummary, require_launchlogs: bool) -> tuple[str, list[str]]:
+    """Evaluate whether parsed markers show a healthy logger installation."""
     reasons: list[str] = []
 
     if not summary.exists:
@@ -211,6 +215,7 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool) -> tuple[str, 
 
 
 def print_summary(summary: LogSummary, require_launchlogs: bool) -> None:
+    """Print a human-readable summary of parsed MissileWarfare log markers."""
     verdict, reasons = logger_verdict(summary, require_launchlogs)
     print(f"Log: {summary.path}")
     if not summary.exists:
@@ -269,6 +274,7 @@ def print_summary(summary: LogSummary, require_launchlogs: bool) -> None:
 
 
 def main() -> None:
+    """Parse command-line arguments and report the Player.log verdict."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", nargs="?", type=Path, default=DEFAULT_LOG, help=f"default: {DEFAULT_LOG}")
     parser.add_argument("--json", action="store_true", help="emit the parsed summary as JSON")

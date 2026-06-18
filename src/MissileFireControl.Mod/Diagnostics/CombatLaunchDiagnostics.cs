@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace MissileFireControl.Mod.Diagnostics
 {
@@ -81,7 +82,8 @@ namespace MissileFireControl.Mod.Diagnostics
             try
             {
                 StringBuilder builder = new StringBuilder(512);
-                AppendPair(builder, "seq", (++_sequence).ToString(CultureInfo.InvariantCulture));
+                int sequence = Interlocked.Increment(ref _sequence);
+                AppendPair(builder, "seq", sequence.ToString(CultureInfo.InvariantCulture));
                 AppendPair(builder, "hook", hook);
                 AppendPair(builder, "utc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
                 appendDetails(builder);

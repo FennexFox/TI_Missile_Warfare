@@ -19,8 +19,18 @@ namespace MissileFireControl.Mod
         {
             _modEntry = modEntry;
             _fileLoggingDisabled = false;
-            FileLogPath = ResolveFileLogPath();
-            WriteFile("Info", "[MFC] --- MissileWarfare session start ---");
+
+            try
+            {
+                FileLogPath = ResolveFileLogPath();
+                WriteFile("Info", "[MFC] --- MissileWarfare session start ---");
+            }
+            catch (Exception ex)
+            {
+                FileLogPath = null;
+                _fileLoggingDisabled = true;
+                modEntry?.Logger.Warning("[MFC] File logging disabled: " + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         public static void Info(string message)

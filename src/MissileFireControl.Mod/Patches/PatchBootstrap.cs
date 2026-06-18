@@ -17,13 +17,13 @@ namespace MissileFireControl.Mod.Patches
                 return;
             }
 
-            _applied = true;
             if (harmony == null)
             {
                 Log.Warning("Harmony patch bootstrap skipped: Harmony instance was null.");
                 return;
             }
 
+            _applied = true;
             int patched = 0;
             int skipped = 0;
 

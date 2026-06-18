@@ -140,6 +140,43 @@ function Assert-FileExists {
     }
 }
 
+function Reset-Directory {
+    param(
+        [string]$PathValue,
+        [string]$Description,
+        [string]$RequiredParent
+    )
+
+    $fullPath = ConvertTo-FullPath $PathValue
+    if ([string]::IsNullOrWhiteSpace($fullPath)) {
+        Stop-Build "$Description path was empty."
+    }
+
+    $rootPath = [System.IO.Path]::GetPathRoot($fullPath).TrimEnd('\', '/')
+    if ($fullPath.TrimEnd('\', '/') -eq $rootPath) {
+        Stop-Build "Refusing to reset root directory for ${Description}: $fullPath"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($RequiredParent)) {
+        $parentPath = (ConvertTo-FullPath $RequiredParent).TrimEnd('\', '/')
+        $parentPrefix = $parentPath + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $fullPath.StartsWith($parentPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Stop-Build "Refusing to reset $Description outside expected parent: $fullPath"
+        }
+    }
+
+    if (Test-Path -LiteralPath $fullPath) {
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+            Stop-Build "$Description exists but is not a directory: $fullPath"
+        }
+
+        Remove-Item -LiteralPath $fullPath -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Force -Path $fullPath | Out-Null
+    return $fullPath
+}
+
 function Invoke-DotNet {
     param([string[]]$Arguments)
 
@@ -250,7 +287,7 @@ $buildOutputDir = Join-Path $Root "src\MissileFireControl.Mod\bin\$Configuration
 $modDll = Join-Path $buildOutputDir "MissileFireControl.Mod.dll"
 Assert-FileExists $modDll "Built mod DLL"
 
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$OutputDir = Reset-Directory $OutputDir "Package output directory" $null
 
 $legacyModFile = Join-Path $OutputDir "ModFile.json"
 Remove-Item -LiteralPath $legacyModFile -Force -ErrorAction SilentlyContinue
@@ -276,7 +313,7 @@ if (-not $NoDeploy) {
     }
 
     $deployDir = Join-Path $ModsDir $modId
-    New-Item -ItemType Directory -Force -Path $deployDir | Out-Null
+    $deployDir = Reset-Directory $deployDir "Deploy directory" $ModsDir
 
     $legacyDeployedModFile = Join-Path $deployDir "ModFile.json"
     Remove-Item -LiteralPath $legacyDeployedModFile -Force -ErrorAction SilentlyContinue

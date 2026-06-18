@@ -12,10 +12,30 @@ import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD_METADATA_FILE = "ModInfo.json"
-MOD_ID = json.loads((ROOT / MOD_METADATA_FILE).read_text(encoding="utf-8")).get("Id", "MissileWarfare")
+
+
+def load_mod_id() -> str:
+    """Read and validate the UMM mod id from ModInfo.json."""
+    metadata_path = ROOT / MOD_METADATA_FILE
+    try:
+        mod_info = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SystemExit(f"{MOD_METADATA_FILE} not found: {metadata_path}") from exc
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{MOD_METADATA_FILE} is invalid JSON: {exc}") from exc
+
+    mod_id = mod_info.get("Id")
+    if not isinstance(mod_id, str) or not mod_id.strip():
+        raise SystemExit(f"{MOD_METADATA_FILE} must contain a non-empty string Id.")
+
+    return mod_id.strip()
+
+
+MOD_ID = load_mod_id()
 
 
 def main() -> None:
+    """Package already-built mod binaries into a local UMM mod folder."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--configuration", default="Release", choices=["Debug", "Release"])
     parser.add_argument("--target-framework", default="net48")
