@@ -218,6 +218,13 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
     if not summary.exists:
         return "FAIL", ["Player.log was not found."]
 
+    startup_markers_present = (
+        summary.version is not None
+        and summary.loaded_line is not None
+        and summary.enabled_line is not None
+        and summary.active_line is not None
+    )
+
     if summary.version is None:
         reasons.append("MissileWarfare load marker was not found.")
     if summary.loaded_line is None:
@@ -233,9 +240,9 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
         )
     if len(summary.patched_hooks) != 3:
         reasons.append(f"Expected 3 patched hook lines; found {len(summary.patched_hooks)}.")
-    if require_launchlogs and summary.launch_log_count == 0:
+    if require_launchlogs and startup_markers_present and summary.launch_log_count == 0:
         reasons.append("No LaunchLog entries were found.")
-    if require_snapshots and summary.snapshot_log_count == 0:
+    if require_snapshots and startup_markers_present and summary.snapshot_log_count == 0:
         reasons.append("No SnapshotLog entries were found.")
     if summary.sequence_gaps:
         reasons.append("LaunchLog sequence gaps found: " + ", ".join(summary.sequence_gaps[:8]))
