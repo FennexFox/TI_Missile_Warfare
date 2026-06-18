@@ -117,6 +117,18 @@ namespace MissileFireControl.Mod.Adapters
                 return boolValue;
             }
 
+            if (value is IConvertible)
+            {
+                try
+                {
+                    return Convert.ToDouble(value, CultureInfo.InvariantCulture) != 0.0;
+                }
+                catch
+                {
+                    // Fall through to string parse.
+                }
+            }
+
             string text = Convert.ToString(value, CultureInfo.InvariantCulture);
             bool parsed;
             return bool.TryParse(text, out parsed) ? parsed : fallback;
