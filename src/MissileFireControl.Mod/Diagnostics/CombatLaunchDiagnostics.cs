@@ -70,6 +70,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "originVelocityKps", DescribeVector(GetArg(__args, 5)));
                 AppendPair(builder, "battle", BattleContext());
             });
+            SnapshotDiagnostics.LogProjectileFireSnapshot(__instance, __args);
         }
 
         private static bool ShouldLog()

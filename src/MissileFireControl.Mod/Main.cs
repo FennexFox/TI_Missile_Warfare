@@ -45,6 +45,9 @@ namespace MissileFireControl.Mod
             GUILayout.Label("No live launch behavior is changed yet.");
 
             Settings.EnableDiagnostics = GUILayout.Toggle(Settings.EnableDiagnostics, "Enable diagnostic logging");
+            Settings.EnableSnapshotDiagnostics = GUILayout.Toggle(
+                Settings.EnableSnapshotDiagnostics,
+                "Enable battle snapshot diagnostics");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 

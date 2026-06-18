@@ -20,6 +20,7 @@ BOOTSTRAP_RE = re.compile(
     r"patched=(?P<patched>\d+), skipped=(?P<skipped>\d+)"
 )
 LAUNCH_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[LaunchLog\] (?P<pairs>.*)$")
+SNAPSHOT_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[SnapshotLog\] (?P<pairs>.*)$")
 PAIR_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=\"(?P<value>[^\"]*)\"")
 
 
@@ -61,6 +62,11 @@ class LogSummary:
     last_seq: int | None = None
     sequence_gaps: list[str] = field(default_factory=list)
     duplicate_sequences: list[int] = field(default_factory=list)
+    snapshot_log_count: int = 0
+    snapshot_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
+    first_snapshot_line: int | None = None
+    last_snapshot_line: int | None = None
     issues: list[LineHit] = field(default_factory=list)
 
 
@@ -90,6 +96,8 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     seen_sequences: set[int] = set()
     duplicate_sequences: set[int] = set()
     hook_counts: Counter[str] = Counter()
+    snapshot_source_counts: Counter[str] = Counter()
+    snapshot_missing_counts: Counter[str] = Counter()
 
     with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -159,10 +167,32 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         seen_sequences.add(seq)
                 continue
 
+            snapshot = SNAPSHOT_RE.match(line)
+            if snapshot:
+                pairs = parse_pairs(snapshot.group("pairs"))
+                summary.snapshot_log_count += 1
+
+                source = pairs.get("source", "unknown")
+                snapshot_source_counts[source] += 1
+
+                missing = pairs.get("missing", "unknown")
+                if missing and missing != "none":
+                    for field_name in missing.split(","):
+                        field_name = field_name.strip()
+                        if field_name:
+                            snapshot_missing_counts[field_name] += 1
+
+                if summary.first_snapshot_line is None:
+                    summary.first_snapshot_line = line_number
+                summary.last_snapshot_line = line_number
+                continue
+
             if is_issue_line(line) and len(summary.issues) < max_issues:
                 summary.issues.append(LineHit(line=line_number, text=line))
 
     summary.hook_counts = dict(sorted(hook_counts.items()))
+    summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
+    summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]
@@ -181,7 +211,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     return summary
 
 
-def logger_verdict(summary: LogSummary, require_launchlogs: bool) -> tuple[str, list[str]]:
+def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapshots: bool) -> tuple[str, list[str]]:
     """Evaluate whether parsed markers show a healthy logger installation."""
     reasons: list[str] = []
 
@@ -205,6 +235,8 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool) -> tuple[str, 
         reasons.append(f"Expected 3 patched hook lines; found {len(summary.patched_hooks)}.")
     if require_launchlogs and summary.launch_log_count == 0:
         reasons.append("No LaunchLog entries were found.")
+    if require_snapshots and summary.snapshot_log_count == 0:
+        reasons.append("No SnapshotLog entries were found.")
     if summary.sequence_gaps:
         reasons.append("LaunchLog sequence gaps found: " + ", ".join(summary.sequence_gaps[:8]))
     if summary.duplicate_sequences:
@@ -213,9 +245,9 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool) -> tuple[str, 
     return ("FAIL" if reasons else "OK"), reasons
 
 
-def print_summary(summary: LogSummary, require_launchlogs: bool) -> None:
+def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapshots: bool) -> None:
     """Print a human-readable summary of parsed MissileWarfare log markers."""
-    verdict, reasons = logger_verdict(summary, require_launchlogs)
+    verdict, reasons = logger_verdict(summary, require_launchlogs, require_snapshots)
     print(f"Log: {summary.path}")
     if not summary.exists:
         print("Status: missing")
@@ -258,6 +290,20 @@ def print_summary(summary: LogSummary, require_launchlogs: bool) -> None:
             + (", ".join(map(str, summary.duplicate_sequences)) if summary.duplicate_sequences else "none")
         )
 
+    print(f"SnapshotLog entries: {summary.snapshot_log_count}")
+    if summary.snapshot_log_count:
+        print(f"  first: line {summary.first_snapshot_line}")
+        print(f"  last:  line {summary.last_snapshot_line}")
+        print("  sources:")
+        for source, count in summary.snapshot_source_counts.items():
+            print(f"    {source}: {count}")
+        print("  missing fields:")
+        if summary.snapshot_missing_counts:
+            for field_name, count in summary.snapshot_missing_counts.items():
+                print(f"    {field_name}: {count}")
+        else:
+            print("    none")
+
     print("MissileWarfare issues:")
     if summary.issues:
         for issue in summary.issues:
@@ -283,15 +329,20 @@ def main() -> None:
         action="store_true",
         help="fail when startup markers are present but no combat LaunchLog entries were emitted",
     )
+    parser.add_argument(
+        "--require-snapshots",
+        action="store_true",
+        help="fail when startup markers are present but no SnapshotLog entries were emitted",
+    )
     args = parser.parse_args()
 
     summary = parse_log(args.log, args.max_issues)
-    verdict, _reasons = logger_verdict(summary, args.require_launchlogs)
+    verdict, _reasons = logger_verdict(summary, args.require_launchlogs, args.require_snapshots)
 
     if args.json:
         print(json.dumps(asdict(summary), indent=2, ensure_ascii=False))
     else:
-        print_summary(summary, args.require_launchlogs)
+        print_summary(summary, args.require_launchlogs, args.require_snapshots)
 
     raise SystemExit(0 if verdict == "OK" else 1)
 
