@@ -8,7 +8,6 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 import re
-import sys
 
 
 DEFAULT_LOG = Path.home() / "AppData" / "LocalLow" / "Pavonis Interactive" / "TerraInvicta" / "Player.log"
