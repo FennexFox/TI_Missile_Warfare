@@ -1,4 +1,5 @@
 using HarmonyLib;
+using MissileFireControl.Mod.Patches;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -23,6 +24,7 @@ namespace MissileFireControl.Mod
 
             _harmony = new Harmony(modEntry.Info.Id);
             _harmony.PatchAll(typeof(Main).Assembly);
+            PatchBootstrap.Apply(_harmony);
 
             Log.Info("Missile Fire Control loaded. Current build is scaffold/logging-first only.");
             return true;

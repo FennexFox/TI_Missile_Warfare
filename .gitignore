@@ -21,6 +21,7 @@ logs/
 *.log
 *.csv
 *.jsonl
+.chatgpt/
 
 # Graphify local cache/temp state
 graphify-out/cache/
