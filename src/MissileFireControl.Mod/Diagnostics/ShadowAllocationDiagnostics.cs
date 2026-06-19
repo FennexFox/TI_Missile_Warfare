@@ -47,9 +47,10 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             int cycleId = Interlocked.Increment(ref _cycleSequence);
             List<string> missingInputs = MissingInputs(snapshot);
-            bool canAllocate = HasConcreteIdentity(snapshot == null ? null : snapshot.Launcher, "launcher")
+            bool canAllocate = snapshot != null
+                && HasConcreteIdentity(snapshot.Launcher, "launcher")
                 && snapshot.Target != null
-                && HasConcreteMissile(snapshot == null ? null : snapshot.Missile);
+                && HasConcreteMissile(snapshot.Missile);
 
             AllocationResult result = null;
             if (canAllocate)

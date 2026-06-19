@@ -115,6 +115,12 @@ def try_parse_int(text: str | None) -> int | None:
         return None
 
 
+def sort_numeric_text_count(item: tuple[str, int]) -> tuple[int, int | str]:
+    """Sort numeric histogram keys by numeric value, then non-numeric keys alphabetically."""
+    key, _count = item
+    return (0, int(key)) if key.isdigit() else (1, key)
+
+
 def parse_log(path: Path, max_issues: int) -> LogSummary:
     """Scan a Player.log file and collect MissileWarfare diagnostics markers."""
     summary = LogSummary(path=str(path), exists=path.exists())
@@ -320,7 +326,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
     summary.allocation_rejection_reason_counts = dict(allocation_rejection_reason_counts.most_common(12))
-    summary.allocation_assigned_shots_counts = dict(sorted(allocation_assigned_shots_counts.items()))
+    summary.allocation_assigned_shots_counts = dict(
+        sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
+    )
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]

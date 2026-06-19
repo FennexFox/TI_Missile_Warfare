@@ -111,7 +111,9 @@ or the snapshot only has the default zero vector. `missileProfileData` is
 reported when the missile identity or profile cannot be safely formed.
 
 Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow
-allocation diagnostics confirmed:
+allocation diagnostics confirmed the shadow loop was observation-only and
+conservative when true ready shots were unavailable. That first smoke was run on
+2026-06-19 with the initial Issue #4 build:
 
 - parser verdict: `OK`
 - diagnostics bootstrap: `patched=3`, `skipped=0`
@@ -126,14 +128,30 @@ allocation diagnostics confirmed:
 - `rejectionReason=missing readyShots`: 665
 - MissileWarfare issues: none
 
-That smoke confirms the shadow loop is observation-only and conservative when
-true ready shots are unavailable. It also showed `battle="unavailable"` on both
-existing LaunchLog records and new AllocationLog records. Source tracing against
-the read-only decompiled reference found that `GameControl` is in the global
-namespace, while the diagnostic reflection lookup only tried
+That first smoke also showed `battle="unavailable"` on both existing LaunchLog
+records and new AllocationLog records. Source tracing against the read-only
+decompiled reference found that `GameControl` is in the global namespace, while
+the diagnostic reflection lookup only tried
 `PavonisInteractive.TerraInvicta.GameControl`. The lookup now tries the global
-`GameControl` type first and keeps the namespaced form as a fallback. A follow-up
-runtime smoke should confirm populated battle context fields.
+`GameControl` type first and keeps the namespaced form as a fallback.
+
+A follow-up runtime smoke on 2026-06-19 after rebuilding and redeploying that
+lookup fix confirmed the current PR validation state:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 3,742, with contiguous sequence range `1-3742`
+- `MissileWeapon.TryFire` rows: 675
+- `SnapshotLog` entries: 675
+- `AllocationLog` entries: 1,350
+- `recordType=cycle`: 675
+- `recordType=rejection`: 675
+- `status=evaluated`: 675
+- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 675
+- `rejectionReason=missing readyShots`: 675
+- `AllocationLog battle unavailable`: `0/1350`
+- `LaunchLog battle unavailable`: `0/3742`
+- MissileWarfare issues: none
 
 ## Validation
 
