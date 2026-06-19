@@ -213,7 +213,9 @@ missile count in the confirmed `MissileWeapon.TryFire` / `TryFireCommon` path.
 proves a true ready/loaded/chambered source rather than magazine or gate state.
 
 Fresh Phase 04 runtime smoke validation on the active `Player.log` confirmed the
-paired observation:
+paired observation. This active-log smoke run supersedes the earlier
+pre-smoke parser check that reported 4,798 `LaunchLog` rows and 675
+`MissileWeapon.TryFire` rows from a previous log:
 
 - parser verdict: `OK`
 - diagnostics bootstrap: `patched=3`, `skipped=0`
