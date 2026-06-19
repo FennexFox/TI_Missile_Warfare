@@ -748,6 +748,7 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         "- max target count observed: "
         f"{summary.max_target_count_observed if summary.max_target_count_observed is not None else 'unknown'}"
     )
+    print(f"- target observations: {summary.target_observations}")
     print(
         "- ready shots observed: "
         f"{summary.ready_shots_numeric_cycles} numeric cycles, "
