@@ -110,6 +110,38 @@ runtime ship state. `targetVelocity` is reported when the target is unavailable
 or the snapshot only has the default zero vector. `missileProfileData` is
 reported when the missile identity or profile cannot be safely formed.
 
+## Allocation parser report
+
+`tools/parse_player_log.py` summarizes `[AllocationLog]` rows into a compact
+battle-level allocation report for before/after tuning comparisons. Current
+Issue #4 logs are shadow-only, so the parser separates shadow cycles,
+allocations, and rejections from future controlled-apply records. Future record
+types such as applied decisions, skipped decisions, and failed command
+applications are bucketed when they appear, but current logs are expected to
+show zero for those controlled-apply counts.
+
+Battle-level shot totals are taken from `recordType="cycle"` rows only. The
+report shows numeric and unknown cycle counts for ready, assigned, and
+unassigned shot fields; when any cycle has an unknown value, the corresponding
+total remains `unknown` rather than implying a complete battle total. Target
+allocation and rejection rows are used for target-level counts, rejection
+reasons, average/median kill package size, saturation size, launch-window
+score, score per shot, and conservative suspicious-pattern hints. This avoids
+double-counting assigned shots when a cycle also has one or more target rows.
+
+Missing-field rates are computed from shadow cycle `missingInputs` values for
+allocator-critical fields: `readyShots`, `targetIdentity`, `targetVelocity`,
+`missileProfileData`, and `pdWeightsDefaulted`. Parser warnings such as
+`all shadow cycles missing readyShots`, `too many launch-window rejects`, or
+`allocation report limited by missing runtime inputs` are tuning hints from the
+observed diagnostic fields. They are not proof of combat outcome quality.
+
+Known limitation: current Issue #4 runtime logs may show every shadow cycle as
+a rejection because `readyShots`, target velocity, or point-defense weights are
+still unavailable from the projectile-fire snapshot path. In that case the
+allocation report should make those missing runtime inputs visible rather than
+pretending to evaluate whether combat allocation would have succeeded.
+
 Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow
 allocation diagnostics confirmed the shadow loop was observation-only and
 conservative when true ready shots were unavailable. That first smoke was run on
