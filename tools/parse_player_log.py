@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 import re
+import statistics
 
 
 DEFAULT_LOG = Path.home() / "AppData" / "LocalLow" / "Pavonis Interactive" / "TerraInvicta" / "Player.log"
@@ -24,6 +25,25 @@ SNAPSHOT_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[SnapshotLog\] (?P<pairs
 ALLOCATION_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[AllocationLog\] (?P<pairs>.*)$")
 PAIR_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=\"(?P<value>[^\"]*)\"")
 
+APPLIED_ALLOCATION_RECORD_TYPES = {"applied", "appliedDecision", "applied-decision", "commandApplied"}
+SKIPPED_ALLOCATION_RECORD_TYPES = {"skipped", "skippedDecision", "skipped-decision"}
+FAILED_ALLOCATION_RECORD_TYPES = {"failed", "failedCommand", "commandFailed", "command-failed"}
+SHADOW_ALLOCATION_RECORD_TYPES = {"cycle", "allocation", "rejection"}
+KNOWN_ALLOCATION_RECORD_TYPES = (
+    SHADOW_ALLOCATION_RECORD_TYPES
+    | APPLIED_ALLOCATION_RECORD_TYPES
+    | SKIPPED_ALLOCATION_RECORD_TYPES
+    | FAILED_ALLOCATION_RECORD_TYPES
+)
+CRITICAL_ALLOCATION_INPUTS = (
+    "readyShots",
+    "targetIdentity",
+    "targetVelocity",
+    "missileProfileData",
+    "pdWeightsDefaulted",
+)
+ALLOCATION_REJECTION_WINDOW_MARKERS = ("launch window", "range", "receding", "outside threshold", "outside")
+
 
 @dataclass
 class LineHit:
@@ -36,6 +56,44 @@ class PatchHit:
     line: int
     description: str
     target: str
+
+
+@dataclass
+class NumericFieldSummary:
+    count: int = 0
+    average: float | None = None
+    median: float | None = None
+
+
+@dataclass
+class AllocationBattleSummary:
+    shadow_cycles: int = 0
+    applied_decisions: int = 0
+    skipped_decisions: int = 0
+    failed_command_applications: int = 0
+    unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
+    max_target_count_observed: int | None = None
+    target_observations: int = 0
+    ready_shots_numeric_cycles: int = 0
+    ready_shots_unknown_cycles: int = 0
+    total_ready_shots: int | None = None
+    assigned_shots: int = 0
+    assigned_shots_numeric_cycles: int = 0
+    assigned_shots_unknown_cycles: int = 0
+    total_assigned_shots: int | None = None
+    unassigned_shots_numeric_cycles: int = 0
+    unassigned_shots_unknown_cycles: int = 0
+    total_unassigned_shots: int | None = None
+    allocations: int = 0
+    rejections: int = 0
+    top_rejection_reason: str | None = None
+    top_rejection_reason_count: int = 0
+    kill_size: NumericFieldSummary = field(default_factory=NumericFieldSummary)
+    saturation_size: NumericFieldSummary = field(default_factory=NumericFieldSummary)
+    launch_window_score: NumericFieldSummary = field(default_factory=NumericFieldSummary)
+    score_per_shot: NumericFieldSummary = field(default_factory=NumericFieldSummary)
+    missing_input_counts: dict[str, int] = field(default_factory=dict)
+    suspicious_patterns: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -84,6 +142,7 @@ class LogSummary:
     allocation_missing_input_counts: dict[str, int] = field(default_factory=dict)
     allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
+    allocation_summary: AllocationBattleSummary = field(default_factory=AllocationBattleSummary)
     first_allocation_line: int | None = None
     last_allocation_line: int | None = None
     issues: list[LineHit] = field(default_factory=list)
@@ -115,10 +174,195 @@ def try_parse_int(text: str | None) -> int | None:
         return None
 
 
+def try_parse_float(text: str | None) -> float | None:
+    """Parse a diagnostic floating-point value, returning None for unknown fields."""
+    if text is None or text.strip() in {"", "unknown", "n/a", "null"}:
+        return None
+
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def sort_numeric_text_count(item: tuple[str, int]) -> tuple[int, int | str]:
     """Sort numeric histogram keys by numeric value, then non-numeric keys alphabetically."""
     key, _count = item
     return (0, int(key)) if key.isdigit() else (1, key)
+
+
+def sorted_count_dict(counter: Counter[str], limit: int | None = None) -> dict[str, int]:
+    """Return a deterministic count dictionary sorted by count descending, then key."""
+    items = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    if limit is not None:
+        items = items[:limit]
+    return dict(items)
+
+
+def summarize_numeric(values: list[float]) -> NumericFieldSummary:
+    """Return compact average/median stats for present numeric values."""
+    if not values:
+        return NumericFieldSummary()
+
+    return NumericFieldSummary(
+        count=len(values),
+        average=statistics.fmean(values),
+        median=statistics.median(values),
+    )
+
+
+def split_csv_field(text: str | None) -> list[str]:
+    """Split a comma-separated diagnostic field into non-empty values."""
+    if not text or text == "none":
+        return []
+
+    return [value.strip() for value in text.split(",") if value.strip()]
+
+
+def top_count(counter: Counter[str]) -> tuple[str | None, int]:
+    """Return a deterministic top key and count."""
+    if not counter:
+        return None, 0
+
+    reason, count = sorted(counter.items(), key=lambda item: (-item[1], item[0]))[0]
+    return reason, count
+
+
+def build_allocation_battle_summary(
+    record_type_counts: Counter[str],
+    rejection_reason_counts: Counter[str],
+    cycle_missing_input_counts: Counter[str],
+    cycle_target_counts: list[int],
+    ready_shot_values: list[int | None],
+    assigned_shot_values: list[int | None],
+    unassigned_shot_values: list[int | None],
+    kill_size_values: list[float],
+    saturation_size_values: list[float],
+    launch_window_score_values: list[float],
+    score_per_shot_values: list[float],
+    allocation_partial_saturation_count: int,
+    allocation_overkill_count: int,
+    cycle_allocated_target_values: dict[str, list[float]],
+    cycle_rejected_target_values: dict[str, list[float]],
+) -> AllocationBattleSummary:
+    """Build a compact battle-level allocation summary from parsed records."""
+    summary = AllocationBattleSummary()
+    summary.shadow_cycles = record_type_counts.get("cycle", 0)
+    summary.applied_decisions = sum(record_type_counts[record_type] for record_type in APPLIED_ALLOCATION_RECORD_TYPES)
+    summary.skipped_decisions = sum(record_type_counts[record_type] for record_type in SKIPPED_ALLOCATION_RECORD_TYPES)
+    summary.failed_command_applications = sum(
+        record_type_counts[record_type] for record_type in FAILED_ALLOCATION_RECORD_TYPES
+    )
+    summary.unknown_record_type_counts = dict(
+        sorted(
+            (record_type, count)
+            for record_type, count in record_type_counts.items()
+            if record_type not in KNOWN_ALLOCATION_RECORD_TYPES
+        )
+    )
+    summary.max_target_count_observed = max(cycle_target_counts) if cycle_target_counts else None
+    summary.target_observations = sum(cycle_target_counts)
+
+    numeric_ready_shots = [value for value in ready_shot_values if value is not None]
+    summary.ready_shots_numeric_cycles = len(numeric_ready_shots)
+    summary.ready_shots_unknown_cycles = len(ready_shot_values) - len(numeric_ready_shots)
+    summary.total_ready_shots = sum(numeric_ready_shots) if summary.ready_shots_unknown_cycles == 0 else None
+
+    numeric_assigned_shots = [value for value in assigned_shot_values if value is not None]
+    summary.assigned_shots_numeric_cycles = len(numeric_assigned_shots)
+    summary.assigned_shots_unknown_cycles = len(assigned_shot_values) - len(numeric_assigned_shots)
+    summary.assigned_shots = sum(numeric_assigned_shots)
+    summary.total_assigned_shots = sum(numeric_assigned_shots) if summary.assigned_shots_unknown_cycles == 0 else None
+
+    numeric_unassigned_shots = [value for value in unassigned_shot_values if value is not None]
+    summary.unassigned_shots_numeric_cycles = len(numeric_unassigned_shots)
+    summary.unassigned_shots_unknown_cycles = len(unassigned_shot_values) - len(numeric_unassigned_shots)
+    summary.total_unassigned_shots = (
+        sum(numeric_unassigned_shots) if summary.unassigned_shots_unknown_cycles == 0 else None
+    )
+
+    summary.allocations = record_type_counts.get("allocation", 0)
+    summary.rejections = record_type_counts.get("rejection", 0)
+    summary.top_rejection_reason, summary.top_rejection_reason_count = top_count(rejection_reason_counts)
+    summary.kill_size = summarize_numeric(kill_size_values)
+    summary.saturation_size = summarize_numeric(saturation_size_values)
+    summary.launch_window_score = summarize_numeric(launch_window_score_values)
+    summary.score_per_shot = summarize_numeric(score_per_shot_values)
+    summary.missing_input_counts = {field_name: cycle_missing_input_counts.get(field_name, 0) for field_name in CRITICAL_ALLOCATION_INPUTS}
+    summary.suspicious_patterns = allocation_suspicious_patterns(
+        summary,
+        rejection_reason_counts,
+        allocation_partial_saturation_count,
+        allocation_overkill_count,
+        cycle_allocated_target_values,
+        cycle_rejected_target_values,
+    )
+    return summary
+
+
+def allocation_suspicious_patterns(
+    summary: AllocationBattleSummary,
+    rejection_reason_counts: Counter[str],
+    allocation_partial_saturation_count: int,
+    allocation_overkill_count: int,
+    cycle_allocated_target_values: dict[str, list[float]],
+    cycle_rejected_target_values: dict[str, list[float]],
+) -> list[str]:
+    """Return conservative allocation tuning hints from observable log fields."""
+    patterns: list[str] = []
+    shadow_cycles = summary.shadow_cycles
+
+    if shadow_cycles and summary.missing_input_counts.get("readyShots", 0) == shadow_cycles:
+        patterns.append("all shadow cycles missing readyShots")
+
+    if (
+        summary.ready_shots_numeric_cycles
+        and summary.total_ready_shots is not None
+        and summary.total_ready_shots > 0
+        and summary.total_assigned_shots == 0
+    ):
+        patterns.append("all numeric ready shots left unassigned")
+
+    launch_window_rejects = sum(
+        count
+        for reason, count in rejection_reason_counts.items()
+        if any(marker in reason.lower() for marker in ALLOCATION_REJECTION_WINDOW_MARKERS)
+    )
+    if summary.rejections and launch_window_rejects / summary.rejections >= 0.5:
+        patterns.append("too many launch-window rejects")
+
+    if allocation_partial_saturation_count >= 2:
+        patterns.append("repeated partial saturation")
+
+    if allocation_overkill_count >= 2:
+        patterns.append("possible overkill")
+
+    for cycle_id, rejected_values in cycle_rejected_target_values.items():
+        allocated_values = cycle_allocated_target_values.get(cycle_id, [])
+        if allocated_values and rejected_values and max(rejected_values) > max(allocated_values):
+            patterns.append("higher-value rejected target present")
+            break
+
+    high_missing_inputs = [
+        field_name
+        for field_name, count in summary.missing_input_counts.items()
+        if shadow_cycles and count / shadow_cycles >= 0.8
+    ]
+    if high_missing_inputs:
+        patterns.append("allocation report limited by missing runtime inputs")
+
+    if not any(
+        field_summary.count
+        for field_summary in (
+            summary.kill_size,
+            summary.saturation_size,
+            summary.launch_window_score,
+            summary.score_per_shot,
+        )
+    ):
+        patterns.append("insufficient numeric allocation data")
+
+    return patterns or ["none"]
 
 
 def parse_log(path: Path, max_issues: int) -> LogSummary:
@@ -146,6 +390,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_missing_input_counts: Counter[str] = Counter()
     allocation_rejection_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
+    cycle_missing_input_counts: Counter[str] = Counter()
+    cycle_target_counts: list[int] = []
+    ready_shot_values: list[int | None] = []
+    assigned_shot_values: list[int | None] = []
+    unassigned_shot_values: list[int | None] = []
+    kill_size_values: list[float] = []
+    saturation_size_values: list[float] = []
+    launch_window_score_values: list[float] = []
+    score_per_shot_values: list[float] = []
+    allocation_partial_saturation_count = 0
+    allocation_overkill_count = 0
+    cycle_allocated_target_values: dict[str, list[float]] = {}
+    cycle_rejected_target_values: dict[str, list[float]] = {}
     pre_fire_fields = (
         "preFireAmmoEvidenceSource",
         "preFireRemaining",
@@ -286,11 +543,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     allocation_status_counts[status] += 1
 
                 missing = pairs.get("missingInputs")
-                if missing and missing != "none":
-                    for field_name in missing.split(","):
-                        field_name = field_name.strip()
-                        if field_name:
-                            allocation_missing_input_counts[field_name] += 1
+                missing_inputs = split_csv_field(missing)
+                for field_name in missing_inputs:
+                    allocation_missing_input_counts[field_name] += 1
+                    if record_type == "cycle":
+                        cycle_missing_input_counts[field_name] += 1
 
                 rejection_reason = pairs.get("rejectionReason")
                 if rejection_reason:
@@ -299,6 +556,48 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 assigned_shots = pairs.get("assignedShots")
                 if assigned_shots:
                     allocation_assigned_shots_counts[assigned_shots] += 1
+
+                if record_type == "cycle":
+                    target_count = try_parse_int(pairs.get("targetCount"))
+                    if target_count is not None:
+                        cycle_target_counts.append(target_count)
+                    ready_shot_values.append(try_parse_int(pairs.get("totalReadyShots")))
+                    assigned_shot_values.append(try_parse_int(pairs.get("assignedShots")))
+                    unassigned_shot_values.append(try_parse_int(pairs.get("unassignedShots")))
+
+                if record_type in {"allocation", "rejection"}:
+                    kill_size = try_parse_float(pairs.get("killSize"))
+                    saturation_size = try_parse_float(pairs.get("saturationSize"))
+                    launch_window_score = try_parse_float(pairs.get("launchWindowScore"))
+                    score_per_shot = try_parse_float(pairs.get("scorePerShot"))
+                    has_package_metric = record_type == "allocation" or any(
+                        value is not None and value > 0 for value in (kill_size, saturation_size)
+                    )
+                    if has_package_metric and kill_size is not None:
+                        kill_size_values.append(kill_size)
+                    if has_package_metric and saturation_size is not None:
+                        saturation_size_values.append(saturation_size)
+                    if has_package_metric and launch_window_score is not None:
+                        launch_window_score_values.append(launch_window_score)
+                    if has_package_metric and score_per_shot is not None:
+                        score_per_shot_values.append(score_per_shot)
+
+                    target_value = try_parse_float(pairs.get("targetValue"))
+                    cycle_id = pairs.get("cycleId", "unknown")
+                    if target_value is not None:
+                        if record_type == "allocation":
+                            cycle_allocated_target_values.setdefault(cycle_id, []).append(target_value)
+                        else:
+                            cycle_rejected_target_values.setdefault(cycle_id, []).append(target_value)
+
+                if record_type == "allocation":
+                    assigned = try_parse_int(pairs.get("assignedShots"))
+                    saturation = try_parse_int(pairs.get("saturationSize"))
+                    kill = try_parse_int(pairs.get("killSize"))
+                    if assigned is not None and saturation is not None and 0 < assigned < saturation:
+                        allocation_partial_saturation_count += 1
+                    if assigned is not None and kill is not None and assigned > kill:
+                        allocation_overkill_count += 1
 
                 if summary.first_allocation_line is None:
                     summary.first_allocation_line = line_number
@@ -325,9 +624,26 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
-    summary.allocation_rejection_reason_counts = dict(allocation_rejection_reason_counts.most_common(12))
+    summary.allocation_rejection_reason_counts = sorted_count_dict(allocation_rejection_reason_counts, limit=12)
     summary.allocation_assigned_shots_counts = dict(
         sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
+    )
+    summary.allocation_summary = build_allocation_battle_summary(
+        allocation_record_type_counts,
+        allocation_rejection_reason_counts,
+        cycle_missing_input_counts,
+        cycle_target_counts,
+        ready_shot_values,
+        assigned_shot_values,
+        unassigned_shot_values,
+        kill_size_values,
+        saturation_size_values,
+        launch_window_score_values,
+        score_per_shot_values,
+        allocation_partial_saturation_count,
+        allocation_overkill_count,
+        cycle_allocated_target_values,
+        cycle_rejected_target_values,
     )
     if sequences:
         ordered = sorted(sequences)
@@ -386,6 +702,83 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
         reasons.append("Duplicate LaunchLog sequences found: " + ", ".join(map(str, summary.duplicate_sequences[:8])))
 
     return ("FAIL" if reasons else "OK"), reasons
+
+
+def format_optional_total(value: int | None) -> str:
+    """Format an optional integer total for compact human output."""
+    return str(value) if value is not None else "unknown"
+
+
+def format_metric(value: float | None) -> str:
+    """Format a float without noisy trailing zeroes."""
+    if value is None:
+        return "n/a"
+
+    return f"{value:.3f}".rstrip("0").rstrip(".")
+
+
+def format_average_median(summary: NumericFieldSummary) -> str:
+    """Format average and median fields for a numeric allocation metric."""
+    return f"{format_metric(summary.average)} / {format_metric(summary.median)}"
+
+
+def format_missing_rate(field_name: str, count: int, denominator: int) -> str:
+    """Format a missing-input count and percent."""
+    if denominator == 0:
+        return f"{field_name} {count}/0 (n/a)"
+
+    return f"{field_name} {count}/{denominator} ({(count / denominator) * 100.0:.1f}%)"
+
+
+def format_count_dict(values: dict[str, int]) -> str:
+    """Format a compact deterministic histogram."""
+    return ", ".join(f"{key}: {count}" for key, count in values.items()) if values else "none"
+
+
+def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
+    """Print compact battle-level allocation diagnostics."""
+    print("Allocation summary")
+    print(f"- shadow cycles: {summary.shadow_cycles}")
+    print(f"- applied decisions: {summary.applied_decisions}")
+    print(f"- skipped decisions: {summary.skipped_decisions}")
+    print(f"- failed command applications: {summary.failed_command_applications}")
+    if summary.unknown_record_type_counts:
+        print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")
+    print(
+        "- max target count observed: "
+        f"{summary.max_target_count_observed if summary.max_target_count_observed is not None else 'unknown'}"
+    )
+    print(
+        "- ready shots observed: "
+        f"{summary.ready_shots_numeric_cycles} numeric cycles, "
+        f"{summary.ready_shots_unknown_cycles} unknown cycles, "
+        f"total {format_optional_total(summary.total_ready_shots)}"
+    )
+    print(
+        "- assigned shots observed: "
+        f"{summary.assigned_shots_numeric_cycles} numeric cycles, "
+        f"{summary.assigned_shots_unknown_cycles} unknown cycles, "
+        f"total {format_optional_total(summary.total_assigned_shots)}"
+    )
+    print(f"- unassigned shots: {format_optional_total(summary.total_unassigned_shots)}")
+    print(f"- allocations: {summary.allocations}")
+    print(f"- rejections: {summary.rejections}")
+    if summary.top_rejection_reason is None:
+        print("- top rejection reason: none")
+    else:
+        print(f"- top rejection reason: {summary.top_rejection_reason} ({summary.top_rejection_reason_count})")
+    print(f"- average / median kill package size: {format_average_median(summary.kill_size)}")
+    print(f"- average / median saturation size: {format_average_median(summary.saturation_size)}")
+    print(f"- average / median launch-window score: {format_average_median(summary.launch_window_score)}")
+    print(f"- average / median score per shot: {format_average_median(summary.score_per_shot)}")
+    print(
+        "- missing fields: "
+        + ", ".join(
+            format_missing_rate(field_name, summary.missing_input_counts.get(field_name, 0), summary.shadow_cycles)
+            for field_name in CRITICAL_ALLOCATION_INPUTS
+        )
+    )
+    print("- suspicious patterns: " + "; ".join(summary.suspicious_patterns))
 
 
 def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapshots: bool) -> None:
@@ -509,6 +902,7 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  rejection reasons:")
             for reason, count in summary.allocation_rejection_reason_counts.items():
                 print(f"    {reason}: {count}")
+        print_allocation_battle_summary(summary.allocation_summary)
 
     print("MissileWarfare issues:")
     if summary.issues:
