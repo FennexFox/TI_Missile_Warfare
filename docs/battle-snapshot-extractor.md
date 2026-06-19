@@ -34,7 +34,7 @@ The mod adapter maps visible runtime objects into Core models:
 - missile template -> `MissileProfile`
 - missile launch inventory state -> `MissileInventorySnapshot`
 - launcher missile weapon -> `WeaponSnapshot`
-- optional targetable state -> target `ShipSnapshot`
+- optional launcher-selected targetable state -> target `ShipSnapshot`
 
 Weapon role mapping is conservative. The confirmed projectile-fire snapshot
 marks the launcher weapon as `WeaponRole.Missile` when the template reports
@@ -42,18 +42,18 @@ marks the launcher weapon as `WeaponRole.Missile` when the template reports
 signal. Unknown counts are emitted as `unknown` in logs and stored as `-1` in
 Core snapshot count fields.
 
-Target identity probing is also conservative. The projectile-state fire hook
-does not receive the live `MissileController.target` object; `MissileWeapon`
-passes that target to the Unity controller immediately after the state fire
-call. The snapshot extractor therefore checks the launcher/carrier for
-`combatPrimaryTarget` or related primary-target members. Candidate target
-wrappers are unwrapped through `combatTargetableState`, `GetCombatantState`,
-`GetTargetableState`, `ShipState`, and `WeaponCarrierState` when those members
-are present. This keeps the diagnostic path compact and avoids repeated broad
-reflection probes that did not recover identity in the first runtime test. If no
-concrete identity is visible, `targetId`, `target`, and `targetTeam` remain
-`unknown`, `targetIdentitySource` is `none`, and `missing=targetIdentity`
-remains valid.
+Launcher-selected target identity probing is also conservative. The
+projectile-state fire hook does not receive the live `MissileController.target`
+object; `MissileWeapon` passes that target to the Unity controller immediately
+after the state fire call. The snapshot extractor therefore checks the
+launcher/carrier for `combatPrimaryTarget` or related primary-target members.
+Candidate target wrappers are unwrapped through `combatTargetableState`,
+`GetCombatantState`, `GetTargetableState`, `ShipState`, and
+`WeaponCarrierState` when those members are present. This keeps the diagnostic
+path compact and avoids repeated broad reflection probes that did not recover
+identity in the first runtime test. If no concrete launcher-selected identity is
+visible, `targetId`, `target`, and `targetTeam` remain `unknown`,
+`targetIdentitySource` is `none`, and `missing=targetIdentity` remains valid.
 
 ## Log format
 
@@ -91,10 +91,12 @@ Expected runtime result:
 - SnapshotLog entries are present;
 - MissileWarfare issues remain empty.
 
-## Target identity runtime findings
+## Launcher-selected target identity runtime findings
 
-The first Issue #10 smoke test with target identity probing found partial
-coverage:
+Issue #10 smoke tests confirmed that the launcher primary-target path can
+recover launcher-selected target identity without changing combat behavior.
+
+The first launcher-selected target identity smoke test found partial coverage:
 
 - `SnapshotLog` entries: 1416
 - `targetIdentitySource=launcher`: 816
@@ -102,20 +104,44 @@ coverage:
 - `readyShots=unknown`: 1416
 - `remainingShots`: visible for every snapshot
 
+A later focused-target smoke run with the trimmed launcher-only path found full
+launcher-selected target identity coverage for that combat:
+
+- `SnapshotLog` entries: 671
+- `targetIdentitySource=launcher`: 671
+- launcher-selected target identity: 671/671 snapshots
+- `readyShots=unknown`: 671
+- `remainingShots`: visible for every snapshot
+- MissileWarfare issues: none
+
 `targetIdentitySource=launcher` means the extractor recovered identity from the
-launcher/carrier primary-target state. `targetIdentitySource=none` does not mean
-the missile had no target; `MissileWeapon.TryFire` logged target values for the
-same run. It means the projectile-state snapshot hook could not see a concrete
-target identity through the launcher primary-target path for that launch.
+launcher/carrier primary-target or focus-fire state. It is not evidence of the
+actual in-flight missile guidance target held by `MissileController.target`.
+`targetIdentitySource=none` does not mean the missile had no target;
+`MissileWeapon.TryFire` logged target values for the same run. It means the
+projectile-state snapshot hook could not see a concrete launcher-selected target
+identity through the launcher primary-target path for that launch.
 
 `readyShots` remains unknown because the projectile-state hook does not expose
 the live `MissileWeapon` runtime object. The hook can see remaining magazine-like
-counts from visible launcher/template state, but ready/loaded/chambered missile
-state appears to live on weapon/module runtime state and should not be inferred
-from `remainingShots` without a documented source.
+counts from visible launcher/template state, but Issue #11 source discovery
+found that the reliable runtime ammo value is `TISpaceShipState.ammo[weaponData]`.
+That value is keyed by `ModuleDataEntry`, and the projectile-state hook does not
+receive the firing module key. Any count found from the snapshot path should
+therefore be treated as magazine-like evidence until a live weapon/module
+observation confirms its semantics. Ready/loaded/chambered missile state appears
+to live on weapon/module runtime state and should not be inferred from
+`remainingShots` without a documented source.
+
+Issue #11 Phase 01 recommends a separate live weapon diagnostic path around
+`MissileWeapon.TryFire` or `TISpaceShipState.FireWeapon` to record post-fire
+remaining ammo and capacity evidence. Existing postfix observations occur after
+ammo decrement, so those values should be named as post-fire remaining ammo, not
+`readyShots`.
 
 The initial target probe tried broader reflection fallbacks, but runtime data
 showed only the launcher path recovered identity. The extractor now keeps that
 narrow path to reduce diagnostic overhead while preserving the confirmed signal.
-For fuller target coverage, add a separate observation point around
+For actual projectile/controller guidance target coverage, add a separate
+observation point around
 `MissileWeapon.target` or `MissileController.target`.

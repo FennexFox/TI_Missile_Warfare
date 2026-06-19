@@ -55,13 +55,25 @@ targeted position, fire mode, current time, and battle context.
 launcher, missile template, launch time, origin position, expected target
 position, origin velocity, and battle context.
 
-Battle snapshot target identity is not a direct argument of the projectile-state
-fire hook. The current candidate source is the visible launcher/carrier target
-state, especially `TISpaceShipState.combatPrimaryTarget` reached from the hook's
-`CombatWeaponCarrierState` argument or `ref_shipCarrier()` method. The live
-`MissileWeapon.target` / `MissileController.target` chain remains the stronger
-runtime source if primary-target probing does not recover identity in a smoke
-test, but using it would require a separate observation point.
+Battle snapshot launcher-selected target identity is not a direct argument of
+the projectile-state fire hook. The current candidate source is the visible
+launcher/carrier target state, especially `TISpaceShipState.combatPrimaryTarget`
+reached from the hook's `CombatWeaponCarrierState` argument or
+`ref_shipCarrier()` method. `targetIdentitySource=launcher` should be read as
+launcher/carrier primary-target or focus-fire identity, not as proof of the
+actual in-flight missile guidance target. The live `MissileWeapon.target` /
+`MissileController.target` chain remains the stronger runtime source for
+projectile/controller target identity, but using it would require a separate
+observation point.
+
+Ready-shot source discovery found that reliable ship ammo state is keyed as
+`TISpaceShipState.ammo[ModuleDataEntry]`. The projectile-state fire hook does
+not receive the firing `ModuleDataEntry`, so it cannot safely resolve per-weapon
+ammo by itself. `MissileWeapon.TryFire` owns the live weapon and `weaponData`;
+`TISpaceShipState.FireWeapon(module, targetedProjectile)` owns the module key and
+decrements ammo before triggering `ShipWeaponFired`. Existing postfix
+observations around those methods should be treated as post-fire remaining ammo,
+not ready/loaded/chambered shots.
 
 ## Caveats
 
