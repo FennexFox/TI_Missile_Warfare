@@ -213,7 +213,7 @@ namespace MissileFireControl.Mod.Adapters
                     return field.GetValue(instance);
                 }
 
-                MethodInfo method = type.GetMethod(memberName, flags);
+                MethodInfo method = type.GetMethod(memberName, flags, null, Type.EmptyTypes, null);
                 if (method != null && method.GetParameters().Length == 0)
                 {
                     return method.Invoke(instance, null);

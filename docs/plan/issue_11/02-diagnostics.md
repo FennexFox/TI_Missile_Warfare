@@ -58,7 +58,7 @@ Add the smallest log-only diagnostic evidence needed to confirm whether live wea
 - Enable diagnostic logging and battle snapshot diagnostics in UMM.
 - Run a short missile combat.
 - Parse the active log with `python tools\parse_player_log.py --require-launchlogs --require-snapshots`.
-- Confirm whether `readyShots` is populated and whether `remainingShots` remains stable.
+- Confirm `readyShots` remains `unknown`, and verify `ammoEvidenceSource` and `postFireRemaining` are populated in `MissileWeapon.TryFire` log rows.
 
 ## Rollback risks
 

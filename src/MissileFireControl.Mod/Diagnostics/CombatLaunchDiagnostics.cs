@@ -356,7 +356,7 @@ namespace MissileFireControl.Mod.Diagnostics
             catch
             {
                 value = null;
-                return true;
+                return false;
             }
 
             return false;

@@ -18,12 +18,14 @@ Keep the feature diagnostics-only. Do not change launch timing, launch permissio
 1. [Ready-shot source discovery](01-discovery.md)
 2. [Add log-only ready-shot evidence](02-diagnostics.md)
 3. [Runtime validation and documentation](03-verification.md)
+4. [Pre-fire ready-shot observation](04-prefire-ready-shot-observation.md)
 
 ## Phase Dependencies
 
 - Phase 1 has no phase dependency beyond resolved issue context.
 - Phase 2 depends on completion and validation of phase 1.
 - Phase 3 depends on completion and validation of phase 2.
+- Phase 4 depends on phase 3 confirming that postfix ammo evidence is post-decrement ammo and not true `readyShots`.
 
 ## Source Of Truth Decisions
 
@@ -48,3 +50,4 @@ Keep the feature diagnostics-only. Do not change launch timing, launch permissio
 - Ready-shot state may be transient and weapon-specific; a ship-level projectile snapshot may never have enough context.
 - Extra reflection inside high-volume combat logs can hurt runtime performance, so diagnostics should be compact and only enabled behind `EnableSnapshotDiagnostics`.
 - If a new observation point is needed, it should be postfix/log-only and should not alter combat state.
+- True pre-fire ready/loaded/chambered recovery requires a prefix or paired pre/post observation before `SnapshotLog readyShots` can be populated.

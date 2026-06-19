@@ -40,7 +40,7 @@ namespace MissileFireControl.Mod.Adapters
             {
                 Source = "TISpaceCombatProjectileState.Fire(missile)",
                 Launcher = ExtractShip(launcher, "launcher"),
-                Target = ExtractTarget(projectile, launcher, out targetIdentitySource),
+                Target = ExtractTarget(launcher, out targetIdentitySource),
                 TargetIdentitySource = targetIdentitySource,
                 Missile = ExtractMissileProfile(missileTemplate),
                 HasExpectedTargetPosition = GameObjectReader.HasVector(expectedTargetPosition),
@@ -75,7 +75,7 @@ namespace MissileFireControl.Mod.Adapters
             return snapshot;
         }
 
-        private static ShipSnapshot ExtractTarget(object projectile, object launcher, out string source)
+        private static ShipSnapshot ExtractTarget(object launcher, out string source)
         {
             ShipSnapshot target = TryExtractTarget(
                 launcher,
