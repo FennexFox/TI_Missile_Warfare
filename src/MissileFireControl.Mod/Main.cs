@@ -48,6 +48,9 @@ namespace MissileFireControl.Mod
             Settings.EnableSnapshotDiagnostics = GUILayout.Toggle(
                 Settings.EnableSnapshotDiagnostics,
                 "Enable battle snapshot diagnostics");
+            Settings.EnableShadowAllocationDiagnostics = GUILayout.Toggle(
+                Settings.EnableShadowAllocationDiagnostics,
+                "Enable shadow allocation diagnostics (log-only)");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 

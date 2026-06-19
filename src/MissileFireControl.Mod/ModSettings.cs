@@ -9,6 +9,7 @@ namespace MissileFireControl.Mod
     {
         public bool EnableDiagnostics = true;
         public bool EnableSnapshotDiagnostics = false;
+        public bool EnableShadowAllocationDiagnostics = false;
         public bool EnableRecommendationOnlyMode = true;
         public bool EnableLaunchDiscipline = false;
         public double MinimumLaunchScore = 0.35;
