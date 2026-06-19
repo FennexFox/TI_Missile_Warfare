@@ -24,6 +24,7 @@ Add a narrow observation-only pre-fire or paired pre/post diagnostic around the 
 
 - `src/MissileFireControl.Mod/Diagnostics/CombatLaunchDiagnostics.cs`
 - `src/MissileFireControl.Mod/Patches/PatchBootstrap.cs`, if a prefix is added
+- `src/MissileFireControl.Mod/Diagnostics/SnapshotDiagnostics.cs`, only if a proven pre-fire ready/loaded/chambered source is later mapped into `SnapshotLog readyShots`
 - `tools/parse_player_log.py`, only if first-class summaries are needed for new optional fields
 - `docs/plan/issue_11/04-prefire-ready-shot-observation.md`
 - `docs/battle-snapshot-extractor.md`
