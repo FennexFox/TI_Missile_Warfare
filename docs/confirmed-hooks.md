@@ -55,6 +55,14 @@ targeted position, fire mode, current time, and battle context.
 launcher, missile template, launch time, origin position, expected target
 position, origin velocity, and battle context.
 
+Battle snapshot target identity is not a direct argument of the projectile-state
+fire hook. The current candidate source is the visible launcher/carrier target
+state, especially `TISpaceShipState.combatPrimaryTarget` reached from the hook's
+`CombatWeaponCarrierState` argument or `ref_shipCarrier()` method. The live
+`MissileWeapon.target` / `MissileController.target` chain remains the stronger
+runtime source if primary-target probing does not recover identity in a smoke
+test, but using it would require a separate observation point.
+
 ## Caveats
 
 - The hooks are postfix diagnostics only. They are intended to observe combat

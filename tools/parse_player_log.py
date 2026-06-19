@@ -65,6 +65,10 @@ class LogSummary:
     snapshot_log_count: int = 0
     snapshot_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_known_target_count: int = 0
+    snapshot_target_identity_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
     first_snapshot_line: int | None = None
     last_snapshot_line: int | None = None
     issues: list[LineHit] = field(default_factory=list)
@@ -98,6 +102,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     hook_counts: Counter[str] = Counter()
     snapshot_source_counts: Counter[str] = Counter()
     snapshot_missing_counts: Counter[str] = Counter()
+    snapshot_target_identity_source_counts: Counter[str] = Counter()
+    snapshot_target_counts: Counter[str] = Counter()
+    snapshot_target_team_counts: Counter[str] = Counter()
 
     with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -175,6 +182,20 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 source = pairs.get("source", "unknown")
                 snapshot_source_counts[source] += 1
 
+                target_id = pairs.get("targetId", "unknown")
+                target_name = pairs.get("target", "unknown")
+                if target_id and target_id != "unknown":
+                    summary.snapshot_known_target_count += 1
+                    snapshot_target_counts[f"{target_name}#{target_id}"] += 1
+
+                target_identity_source = pairs.get("targetIdentitySource")
+                if target_identity_source:
+                    snapshot_target_identity_source_counts[target_identity_source] += 1
+
+                target_team = pairs.get("targetTeam")
+                if target_team:
+                    snapshot_target_team_counts[target_team] += 1
+
                 missing = pairs.get("missing", "unknown")
                 if missing and missing != "none":
                     for field_name in missing.split(","):
@@ -193,6 +214,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.hook_counts = dict(sorted(hook_counts.items()))
     summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
     summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
+    summary.snapshot_target_identity_source_counts = dict(sorted(snapshot_target_identity_source_counts.items()))
+    summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
+    summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]
@@ -310,6 +334,22 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
                 print(f"    {field_name}: {count}")
         else:
             print("    none")
+        print(
+            "  target identity: "
+            f"{summary.snapshot_known_target_count}/{summary.snapshot_log_count} snapshots"
+        )
+        if summary.snapshot_target_identity_source_counts:
+            print("  target identity sources:")
+            for source, count in summary.snapshot_target_identity_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_target_counts:
+            print("  targets:")
+            for target, count in summary.snapshot_target_counts.items():
+                print(f"    {target}: {count}")
+        if summary.snapshot_target_team_counts:
+            print("  target teams:")
+            for team, count in summary.snapshot_target_team_counts.items():
+                print(f"    {team}: {count}")
 
     print("MissileWarfare issues:")
     if summary.issues:
