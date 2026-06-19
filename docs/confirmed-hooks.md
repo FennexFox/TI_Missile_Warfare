@@ -49,7 +49,8 @@ primary target where visible, targeted projectile, default fire mode, and battle
 context.
 
 `MissileWeapon.TryFire` currently logs weapon/module/template, launcher, target,
-targeted position, fire mode, current time, and battle context.
+targeted position, fire mode, current time, live weapon ammo evidence, cooldown
+and salvo evidence, capacity evidence, and battle context.
 
 `TISpaceCombatProjectileState.Fire(missile)` currently logs projectile,
 launcher, missile template, launch time, origin position, expected target
@@ -74,6 +75,24 @@ ammo by itself. `MissileWeapon.TryFire` owns the live weapon and `weaponData`;
 decrements ammo before triggering `ShipWeaponFired`. Existing postfix
 observations around those methods should be treated as post-fire remaining ammo,
 not ready/loaded/chambered shots.
+
+Issue #11 Phase 02 records that live weapon evidence on successful
+`MissileWeapon.TryFire` postfix rows with optional fields including
+`ammoEvidenceSource`, `postFireRemaining`, `postFireWeaponHasAmmo`,
+`postFireWeaponCanFire`, `postFireOnCooldown`, cooldown/salvo fields, and
+magazine capacity fields. `ammoEvidenceSource=shipAmmoByWeaponData` means the
+diagnostic indexed `TISpaceShipState.ammo` by the live weapon's `weaponData`.
+Because this is postfix evidence after `FireWeapon`, it is not a source for
+`SnapshotLog readyShots`.
+
+Fresh Phase 02 runtime validation found 649 successful `MissileWeapon.TryFire`
+rows with `ammoEvidenceSource=shipAmmoByWeaponData` and populated
+`postFireRemaining` on every row. `postFireRemaining=0` appeared 42 times and
+matched the 42 rows where both `postFireWeaponHasAmmo` and
+`postFireWeaponCanFire` were `False`; all nonzero rows reported both fields as
+`True`. The same run had parser verdict `OK`, 13,644 `LaunchLog` rows, 649
+`SnapshotLog` rows, no sequence gaps, no duplicate sequences, and no
+MissileWarfare issues.
 
 ## Caveats
 

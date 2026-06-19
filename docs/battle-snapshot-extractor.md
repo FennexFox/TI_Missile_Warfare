@@ -139,6 +139,39 @@ remaining ammo and capacity evidence. Existing postfix observations occur after
 ammo decrement, so those values should be named as post-fire remaining ammo, not
 `readyShots`.
 
+Issue #11 Phase 02 adds that evidence to successful `MissileWeapon.TryFire`
+`LaunchLog` rows. The new fields are optional diagnostics:
+
+- `ammoEvidenceSource`: `shipAmmoByWeaponData` when `TISpaceShipState.ammo` can
+  be indexed by the live weapon's `weaponData`; otherwise `none`.
+- `postFireRemaining`: the post-decrement value from
+  `TISpaceShipState.ammo[weaponData]`, or `unknown`.
+- `postFireWeaponHasAmmo`, `postFireWeaponCanFire`, and `postFireOnCooldown`:
+  post-fire gate/cooldown evidence, not ready-shot counts.
+- `cooldownDuration`, `lastFiredAt`, `salvoShotsFired`, `salvoShots`, and
+  `intraSalvoCooldownS`: compact cooldown and salvo timing evidence.
+- `templateMagazine`, `magazineCapacityCurrent`, and `magazineCapacityMax`:
+  capacity evidence from the projectile weapon template and launcher state, not
+  a ready/loaded/chambered count.
+
+These fields do not populate `SnapshotLog readyShots`. `readyShots` remains
+unknown until a pre-fire ready, loaded, or chambered source is documented.
+
+Fresh Phase 02 runtime validation confirmed the live weapon evidence path:
+
+- `MissileWeapon.TryFire` rows: 649
+- `ammoEvidenceSource=shipAmmoByWeaponData`: 649/649
+- `postFireRemaining`: populated 649/649, ranging from `0` through `14`
+- `postFireWeaponHasAmmo=False` and `postFireWeaponCanFire=False`: 42 rows,
+  matching the 42 `postFireRemaining=0` rows
+- `postFireOnCooldown=True`: 649/649
+- capacity evidence: `templateMagazine=6`, `magazineCapacityCurrent=15`, and
+  `magazineCapacityMax=15` on every row
+
+This confirms that `TISpaceShipState.ammo[weaponData]` is visible from the
+live weapon postfix path and behaves as post-decrement ammo. It is still not
+ready/loaded/chambered shot evidence.
+
 The initial target probe tried broader reflection fallbacks, but runtime data
 showed only the launcher path recovered identity. The extractor now keeps that
 narrow path to reduce diagnostic overhead while preserving the confirmed signal.
