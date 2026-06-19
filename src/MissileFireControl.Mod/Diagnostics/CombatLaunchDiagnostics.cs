@@ -220,7 +220,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "postFireWeaponHasAmmo", Describe(InvokeMember(launcher, "WeaponHasAmmo", weaponData)));
             AppendPair(builder, "postFireWeaponCanFire", Describe(InvokeMember(launcher, "WeaponCanFire", weaponData)));
             AppendPair(builder, "postFireOnCooldown", Describe(InvokeMember(weapon, "OnCooldown", currentTime)));
-            AppendPair(builder, "cooldownDuration", Describe(ReadMember(weapon, "currentCooldownDuration_s")));
+            AppendPair(builder, "cooldownDuration", Describe(ReadInheritedInstanceMember(weapon, "currentCooldownDuration_s")));
             AppendPair(builder, "lastFiredAt", Describe(ReadMember(weapon, "lastFiredAt")));
             AppendPair(builder, "salvoShotsFired", Describe(ReadMember(weapon, "shotsFiredThisSalvo")));
             AppendPair(builder, "salvoShots", Describe(ReadMember(weaponTemplate, "salvo_shots")));
@@ -308,6 +308,58 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return null;
+        }
+
+        private static object ReadInheritedInstanceMember(object instance, string memberName)
+        {
+            if (instance == null || string.IsNullOrEmpty(memberName))
+            {
+                return null;
+            }
+
+            Type current = instance.GetType();
+            while (current != null)
+            {
+                object value;
+                if (TryReadDeclaredMember(current, instance, memberName, out value))
+                {
+                    return value;
+                }
+
+                current = current.BaseType;
+            }
+
+            return null;
+        }
+
+        private static bool TryReadDeclaredMember(Type type, object instance, string memberName, out object value)
+        {
+            value = null;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+
+            try
+            {
+                PropertyInfo property = type.GetProperty(memberName, flags);
+                if (property != null && property.GetIndexParameters().Length == 0)
+                {
+                    value = property.GetValue(instance, null);
+                    return true;
+                }
+
+                FieldInfo field = type.GetField(memberName, flags);
+                if (field != null)
+                {
+                    value = field.GetValue(instance);
+                    return true;
+                }
+            }
+            catch
+            {
+                value = null;
+                return true;
+            }
+
+            return false;
         }
 
         private static object InvokeMember(object instance, string methodName, params object[] args)

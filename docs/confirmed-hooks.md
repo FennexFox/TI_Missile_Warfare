@@ -94,6 +94,13 @@ matched the 42 rows where both `postFireWeaponHasAmmo` and
 `SnapshotLog` rows, no sequence gaps, no duplicate sequences, and no
 MissileWarfare issues.
 
+That run still logged `cooldownDuration=null`. Phase 03 traced the cause to
+`currentCooldownDuration_s` being a private field declared on the base `Weapon`
+class while the hook observes a `MissileWeapon` runtime object. The diagnostics
+now use a narrow inherited-member read for that exact field. This remains
+observation-only and needs a fresh in-game smoke run to confirm non-null
+`cooldownDuration` values.
+
 ## Caveats
 
 - The hooks are postfix diagnostics only. They are intended to observe combat

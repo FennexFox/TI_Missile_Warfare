@@ -172,6 +172,13 @@ This confirms that `TISpaceShipState.ammo[weaponData]` is visible from the
 live weapon postfix path and behaves as post-decrement ammo. It is still not
 ready/loaded/chambered shot evidence.
 
+The same runtime log showed `cooldownDuration=null`. Phase 03 traced this to
+`currentCooldownDuration_s` being a private field declared on the base `Weapon`
+class while the observed runtime object is `MissileWeapon`. The diagnostics now
+use a narrow inherited-member read for that exact cooldown field. A fresh
+in-game missile combat is still required to confirm future `cooldownDuration`
+values are non-null.
+
 The initial target probe tried broader reflection fallbacks, but runtime data
 showed only the launcher path recovered identity. The extractor now keeps that
 narrow path to reduce diagnostic overhead while preserving the confirmed signal.
