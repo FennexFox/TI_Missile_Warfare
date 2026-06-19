@@ -13,6 +13,7 @@ namespace MissileFireControl.Mod.Adapters
         public string Source { get; set; }
         public ShipSnapshot Launcher { get; set; }
         public ShipSnapshot Target { get; set; }
+        public string TargetIdentitySource { get; set; }
         public MissileProfile Missile { get; set; }
         public MissileInventorySnapshot Inventory { get; set; }
         public Vector3d ExpectedTargetPositionKm { get; set; }
@@ -33,12 +34,14 @@ namespace MissileFireControl.Mod.Adapters
             object originPosition = GetArg(args, 3);
             object expectedTargetPosition = GetArg(args, 4);
             object originVelocity = GetArg(args, 5);
+            string targetIdentitySource;
 
             ExtractedCombatSnapshot snapshot = new ExtractedCombatSnapshot
             {
                 Source = "TISpaceCombatProjectileState.Fire(missile)",
                 Launcher = ExtractShip(launcher, "launcher"),
-                Target = ExtractTarget(projectile),
+                Target = ExtractTarget(launcher, out targetIdentitySource),
+                TargetIdentitySource = targetIdentitySource,
                 Missile = ExtractMissileProfile(missileTemplate),
                 HasExpectedTargetPosition = GameObjectReader.HasVector(expectedTargetPosition),
                 ExpectedTargetPositionKm = GameObjectReader.ReadVector(expectedTargetPosition),
@@ -72,19 +75,61 @@ namespace MissileFireControl.Mod.Adapters
             return snapshot;
         }
 
-        private static ShipSnapshot ExtractTarget(object projectile)
+        private static ShipSnapshot ExtractTarget(object launcher, out string source)
         {
-            object target = GameObjectReader.ReadFirstMember(
-                projectile,
+            ShipSnapshot target = TryExtractTarget(
+                launcher,
+                "launcher",
+                out source,
+                "combatPrimaryTarget",
+                "primaryTargetState",
+                "primaryTarget",
                 "target",
-                "Target",
-                "targetCombatant",
-                "TargetCombatant",
-                "targetedCombatant",
-                "targetedShip",
-                "combatTarget");
+                "Target");
+            if (target != null)
+            {
+                return target;
+            }
 
-            return target == null ? null : ExtractShip(target, "target");
+            source = "none";
+            return null;
+        }
+
+        private static ShipSnapshot TryExtractTarget(object owner, string ownerName, out string source, params string[] memberNames)
+        {
+            source = "none";
+            object target = GameObjectReader.ReadFirstMember(owner, memberNames);
+            target = NormalizeTarget(target);
+            if (target == null)
+            {
+                return null;
+            }
+
+            source = ownerName;
+            return ExtractShip(target, "target");
+        }
+
+        private static object NormalizeTarget(object target)
+        {
+            object current = target;
+            for (int depth = 0; depth < 6 && current != null; depth++)
+            {
+                object next = GameObjectReader.ReadFirstMember(
+                    current,
+                    "combatTargetableState",
+                    "GetCombatantState",
+                    "GetTargetableState",
+                    "ShipState",
+                    "WeaponCarrierState");
+                if (next == null || ReferenceEquals(next, current))
+                {
+                    return current;
+                }
+
+                current = next;
+            }
+
+            return current;
         }
 
         private static MissileProfile ExtractMissileProfile(object missileTemplate)

@@ -62,9 +62,19 @@ class LogSummary:
     last_seq: int | None = None
     sequence_gaps: list[str] = field(default_factory=list)
     duplicate_sequences: list[int] = field(default_factory=list)
+    missile_try_fire_count: int = 0
+    missile_try_fire_pre_fire_field_counts: dict[str, int] = field(default_factory=dict)
+    missile_try_fire_pre_fire_ammo_source_counts: dict[str, int] = field(default_factory=dict)
+    missile_try_fire_pre_post_ammo_delta_counts: dict[str, int] = field(default_factory=dict)
+    missile_try_fire_pre_post_ammo_numeric_count: int = 0
     snapshot_log_count: int = 0
     snapshot_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ready_shots_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_known_target_count: int = 0
+    snapshot_target_identity_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
     first_snapshot_line: int | None = None
     last_snapshot_line: int | None = None
     issues: list[LineHit] = field(default_factory=list)
@@ -85,6 +95,17 @@ def is_issue_line(line: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def try_parse_int(text: str | None) -> int | None:
+    """Parse a diagnostic integer value, returning None for unknown fields."""
+    if text is None:
+        return None
+
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
 def parse_log(path: Path, max_issues: int) -> LogSummary:
     """Scan a Player.log file and collect MissileWarfare diagnostics markers."""
     summary = LogSummary(path=str(path), exists=path.exists())
@@ -96,8 +117,24 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     seen_sequences: set[int] = set()
     duplicate_sequences: set[int] = set()
     hook_counts: Counter[str] = Counter()
+    missile_try_fire_pre_fire_field_counts: Counter[str] = Counter()
+    missile_try_fire_pre_fire_ammo_source_counts: Counter[str] = Counter()
+    missile_try_fire_pre_post_ammo_delta_counts: Counter[str] = Counter()
     snapshot_source_counts: Counter[str] = Counter()
     snapshot_missing_counts: Counter[str] = Counter()
+    snapshot_ready_shots_counts: Counter[str] = Counter()
+    snapshot_target_identity_source_counts: Counter[str] = Counter()
+    snapshot_target_counts: Counter[str] = Counter()
+    snapshot_target_team_counts: Counter[str] = Counter()
+    pre_fire_fields = (
+        "preFireAmmoEvidenceSource",
+        "preFireRemaining",
+        "preFireWeaponHasAmmo",
+        "preFireWeaponCanFire",
+        "preFireOnCooldown",
+        "preFireSalvoShotsFired",
+        "preFireSalvoShots",
+    )
 
     with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -147,6 +184,20 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
 
                 hook = pairs.get("hook", "unknown")
                 hook_counts[hook] += 1
+                if hook == "MissileWeapon.TryFire":
+                    summary.missile_try_fire_count += 1
+                    for field_name in pre_fire_fields:
+                        if field_name in pairs:
+                            missile_try_fire_pre_fire_field_counts[field_name] += 1
+                    if "preFireAmmoEvidenceSource" in pairs:
+                        missile_try_fire_pre_fire_ammo_source_counts[pairs["preFireAmmoEvidenceSource"]] += 1
+
+                    pre_fire_remaining = try_parse_int(pairs.get("preFireRemaining"))
+                    post_fire_remaining = try_parse_int(pairs.get("postFireRemaining"))
+                    if pre_fire_remaining is not None and post_fire_remaining is not None:
+                        summary.missile_try_fire_pre_post_ammo_numeric_count += 1
+                        delta = pre_fire_remaining - post_fire_remaining
+                        missile_try_fire_pre_post_ammo_delta_counts[str(delta)] += 1
 
                 if summary.first_launch_line is None:
                     summary.first_launch_line = line_number
@@ -174,6 +225,21 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
 
                 source = pairs.get("source", "unknown")
                 snapshot_source_counts[source] += 1
+                snapshot_ready_shots_counts[pairs.get("readyShots", "unknown")] += 1
+
+                target_id = pairs.get("targetId", "unknown")
+                target_name = pairs.get("target", "unknown")
+                if target_id and target_id != "unknown":
+                    summary.snapshot_known_target_count += 1
+                    snapshot_target_counts[f"{target_name}#{target_id}"] += 1
+
+                target_identity_source = pairs.get("targetIdentitySource")
+                if target_identity_source:
+                    snapshot_target_identity_source_counts[target_identity_source] += 1
+
+                target_team = pairs.get("targetTeam")
+                if target_team:
+                    snapshot_target_team_counts[target_team] += 1
 
                 missing = pairs.get("missing", "unknown")
                 if missing and missing != "none":
@@ -191,8 +257,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 summary.issues.append(LineHit(line=line_number, text=line))
 
     summary.hook_counts = dict(sorted(hook_counts.items()))
+    summary.missile_try_fire_pre_fire_field_counts = dict(sorted(missile_try_fire_pre_fire_field_counts.items()))
+    summary.missile_try_fire_pre_fire_ammo_source_counts = dict(
+        sorted(missile_try_fire_pre_fire_ammo_source_counts.items())
+    )
+    summary.missile_try_fire_pre_post_ammo_delta_counts = dict(
+        sorted(missile_try_fire_pre_post_ammo_delta_counts.items(), key=lambda item: int(item[0]))
+    )
     summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
     summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
+    summary.snapshot_ready_shots_counts = dict(sorted(snapshot_ready_shots_counts.items()))
+    summary.snapshot_target_identity_source_counts = dict(sorted(snapshot_target_identity_source_counts.items()))
+    summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
+    summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]
@@ -296,6 +373,25 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             "  duplicate sequences: "
             + (", ".join(map(str, summary.duplicate_sequences)) if summary.duplicate_sequences else "none")
         )
+        if summary.missile_try_fire_count:
+            print("  missile try-fire readiness evidence:")
+            print(f"    rows: {summary.missile_try_fire_count}")
+            if summary.missile_try_fire_pre_fire_field_counts:
+                print("    pre-fire fields:")
+                for field_name, count in summary.missile_try_fire_pre_fire_field_counts.items():
+                    print(f"      {field_name}: {count}/{summary.missile_try_fire_count}")
+            if summary.missile_try_fire_pre_fire_ammo_source_counts:
+                print("    pre-fire ammo sources:")
+                for source, count in summary.missile_try_fire_pre_fire_ammo_source_counts.items():
+                    print(f"      {source}: {count}")
+            if summary.missile_try_fire_pre_post_ammo_delta_counts:
+                print(
+                    "    pre/post remaining ammo numeric pairs: "
+                    f"{summary.missile_try_fire_pre_post_ammo_numeric_count}/{summary.missile_try_fire_count}"
+                )
+                print("    preFireRemaining - postFireRemaining:")
+                for delta, count in summary.missile_try_fire_pre_post_ammo_delta_counts.items():
+                    print(f"      {delta}: {count}")
 
     print(f"SnapshotLog entries: {summary.snapshot_log_count}")
     if summary.snapshot_log_count:
@@ -310,6 +406,26 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
                 print(f"    {field_name}: {count}")
         else:
             print("    none")
+        if summary.snapshot_ready_shots_counts:
+            print("  readyShots:")
+            for value, count in summary.snapshot_ready_shots_counts.items():
+                print(f"    {value}: {count}")
+        print(
+            "  target identity: "
+            f"{summary.snapshot_known_target_count}/{summary.snapshot_log_count} snapshots"
+        )
+        if summary.snapshot_target_identity_source_counts:
+            print("  target identity sources:")
+            for source, count in summary.snapshot_target_identity_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_target_counts:
+            print("  targets:")
+            for target, count in summary.snapshot_target_counts.items():
+                print(f"    {target}: {count}")
+        if summary.snapshot_target_team_counts:
+            print("  target teams:")
+            for team, count in summary.snapshot_target_team_counts.items():
+                print(f"    {team}: {count}")
 
     print("MissileWarfare issues:")
     if summary.issues:

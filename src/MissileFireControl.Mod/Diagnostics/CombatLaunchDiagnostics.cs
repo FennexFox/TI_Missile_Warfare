@@ -33,7 +33,25 @@ namespace MissileFireControl.Mod.Diagnostics
             });
         }
 
-        public static void OnMissileTryFirePostfix(object __instance, object[] __args, bool __result)
+        public static void OnMissileTryFirePrefix(object __instance, object[] __args, out object __state)
+        {
+            __state = null;
+            if (!ShouldLog())
+            {
+                return;
+            }
+
+            try
+            {
+                __state = CaptureTryFireObservation(__instance, GetArg(__args, 0));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"Pre-fire missile diagnostics failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        public static void OnMissileTryFirePostfix(object __instance, object[] __args, bool __result, object __state)
         {
             if (!__result || !ShouldLog())
             {
@@ -42,12 +60,19 @@ namespace MissileFireControl.Mod.Diagnostics
 
             WriteLaunchLine("MissileWeapon.TryFire", builder =>
             {
+                object weaponData = ReadMember(__instance, "weaponData");
+                object weaponTemplate = ReadMember(__instance, "weaponTemplate");
+                object combatant = ReadMember(__instance, "combatant");
+                object launcher = ReadMember(combatant, "WeaponCarrierState");
+
                 AppendPair(builder, "weapon", DescribeWeapon(__instance));
-                AppendPair(builder, "launcher", Describe(ReadMember(ReadMember(__instance, "combatant"), "WeaponCarrierState")));
+                AppendPair(builder, "launcher", Describe(launcher));
                 AppendPair(builder, "target", Describe(ReadMember(__instance, "target")));
                 AppendPair(builder, "targetedPosition", DescribeVector(ReadMember(__instance, "targetedPosition")));
                 AppendPair(builder, "fireMode", Describe(ReadMember(__instance, "currentFireMode")));
                 AppendPair(builder, "currentTime", Describe(GetArg(__args, 0)));
+                AppendPreFireWeaponAmmoEvidence(builder, __state as TryFireObservation);
+                AppendLiveWeaponAmmoEvidence(builder, __instance, launcher, weaponData, weaponTemplate, GetArg(__args, 0));
                 AppendPair(builder, "battle", BattleContext());
             });
         }
@@ -191,6 +216,97 @@ namespace MissileFireControl.Mod.Diagnostics
             return Describe(defaultFireMode);
         }
 
+        private static void AppendLiveWeaponAmmoEvidence(
+            StringBuilder builder,
+            object weapon,
+            object launcher,
+            object weaponData,
+            object weaponTemplate,
+            object currentTime)
+        {
+            object postFireRemaining;
+            if (TryReadAmmoByModule(launcher, weaponData, out postFireRemaining))
+            {
+                AppendPair(builder, "ammoEvidenceSource", "shipAmmoByWeaponData");
+                AppendPair(builder, "postFireRemaining", Describe(postFireRemaining));
+            }
+            else
+            {
+                AppendPair(builder, "ammoEvidenceSource", "none");
+                AppendPair(builder, "postFireRemaining", "unknown");
+            }
+
+            AppendPair(builder, "postFireWeaponHasAmmo", Describe(InvokeMember(launcher, "WeaponHasAmmo", weaponData)));
+            AppendPair(builder, "postFireWeaponCanFire", Describe(InvokeMember(launcher, "WeaponCanFire", weaponData)));
+            AppendPair(builder, "postFireOnCooldown", Describe(InvokeMember(weapon, "OnCooldown", currentTime)));
+            AppendPair(builder, "cooldownDuration", Describe(ReadInheritedInstanceMember(weapon, "currentCooldownDuration_s")));
+            AppendPair(builder, "lastFiredAt", Describe(ReadMember(weapon, "lastFiredAt")));
+            AppendPair(builder, "salvoShotsFired", Describe(ReadMember(weapon, "shotsFiredThisSalvo")));
+            AppendPair(builder, "salvoShots", Describe(ReadMember(weaponTemplate, "salvo_shots")));
+            AppendPair(builder, "intraSalvoCooldownS", Describe(ReadMember(weaponTemplate, "intraSalvoCooldown_s")));
+            AppendCapacityEvidence(builder, launcher, weaponTemplate);
+        }
+
+        private static TryFireObservation CaptureTryFireObservation(object weapon, object currentTime)
+        {
+            object weaponData = ReadMember(weapon, "weaponData");
+            object weaponTemplate = ReadMember(weapon, "weaponTemplate");
+            object combatant = ReadMember(weapon, "combatant");
+            object launcher = ReadMember(combatant, "WeaponCarrierState");
+            TryFireObservation observation = new TryFireObservation();
+
+            object remaining;
+            if (TryReadAmmoByModule(launcher, weaponData, out remaining))
+            {
+                observation.AmmoEvidenceSource = "shipAmmoByWeaponData";
+                observation.Remaining = Describe(remaining);
+            }
+            else
+            {
+                observation.AmmoEvidenceSource = "none";
+                observation.Remaining = "unknown";
+            }
+
+            observation.WeaponHasAmmo = Describe(InvokeMember(launcher, "WeaponHasAmmo", weaponData));
+            observation.WeaponCanFire = Describe(InvokeMember(launcher, "WeaponCanFire", weaponData));
+            observation.OnCooldown = Describe(InvokeMember(weapon, "OnCooldown", currentTime));
+            observation.SalvoShotsFired = Describe(ReadMember(weapon, "shotsFiredThisSalvo"));
+            observation.SalvoShots = Describe(ReadMember(weaponTemplate, "salvo_shots"));
+            return observation;
+        }
+
+        private static void AppendPreFireWeaponAmmoEvidence(StringBuilder builder, TryFireObservation observation)
+        {
+            if (observation == null)
+            {
+                AppendPair(builder, "preFireAmmoEvidenceSource", "unavailable");
+                AppendPair(builder, "preFireRemaining", "unknown");
+                AppendPair(builder, "preFireWeaponHasAmmo", "unknown");
+                AppendPair(builder, "preFireWeaponCanFire", "unknown");
+                AppendPair(builder, "preFireOnCooldown", "unknown");
+                AppendPair(builder, "preFireSalvoShotsFired", "unknown");
+                AppendPair(builder, "preFireSalvoShots", "unknown");
+                return;
+            }
+
+            AppendPair(builder, "preFireAmmoEvidenceSource", observation.AmmoEvidenceSource);
+            AppendPair(builder, "preFireRemaining", observation.Remaining);
+            AppendPair(builder, "preFireWeaponHasAmmo", observation.WeaponHasAmmo);
+            AppendPair(builder, "preFireWeaponCanFire", observation.WeaponCanFire);
+            AppendPair(builder, "preFireOnCooldown", observation.OnCooldown);
+            AppendPair(builder, "preFireSalvoShotsFired", observation.SalvoShotsFired);
+            AppendPair(builder, "preFireSalvoShots", observation.SalvoShots);
+        }
+
+        private static void AppendCapacityEvidence(StringBuilder builder, object launcher, object weaponTemplate)
+        {
+            object projectileWeapon = ReadMember(weaponTemplate, "ref_projectileWeapon");
+            object shipTemplate = ReadMember(launcher, "template");
+            AppendPair(builder, "templateMagazine", Describe(ReadMember(projectileWeapon, "magazine")));
+            AppendPair(builder, "magazineCapacityCurrent", Describe(InvokeMember(projectileWeapon, "FullAmmoCount_Current", launcher)));
+            AppendPair(builder, "magazineCapacityMax", Describe(InvokeMember(projectileWeapon, "FullAmmoCount_Max", shipTemplate)));
+        }
+
         private static string DescribeVector(object value)
         {
             if (value == null)
@@ -264,6 +380,144 @@ namespace MissileFireControl.Mod.Diagnostics
             return null;
         }
 
+        private static object ReadInheritedInstanceMember(object instance, string memberName)
+        {
+            if (instance == null || string.IsNullOrEmpty(memberName))
+            {
+                return null;
+            }
+
+            Type current = instance.GetType();
+            while (current != null)
+            {
+                object value;
+                if (TryReadDeclaredMember(current, instance, memberName, out value))
+                {
+                    return value;
+                }
+
+                current = current.BaseType;
+            }
+
+            return null;
+        }
+
+        private static bool TryReadDeclaredMember(Type type, object instance, string memberName, out object value)
+        {
+            value = null;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+
+            try
+            {
+                PropertyInfo property = type.GetProperty(memberName, flags);
+                if (property != null && property.GetIndexParameters().Length == 0)
+                {
+                    value = property.GetValue(instance, null);
+                    return true;
+                }
+
+                FieldInfo field = type.GetField(memberName, flags);
+                if (field != null)
+                {
+                    value = field.GetValue(instance);
+                    return true;
+                }
+            }
+            catch
+            {
+                value = null;
+                return false;
+            }
+
+            return false;
+        }
+
+        private static object InvokeMember(object instance, string methodName, params object[] args)
+        {
+            if (instance == null || string.IsNullOrEmpty(methodName))
+            {
+                return null;
+            }
+
+            try
+            {
+                MethodInfo method = FindMethod(instance.GetType(), methodName, args);
+                return method == null ? null : method.Invoke(instance, args);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static MethodInfo FindMethod(Type type, string methodName, object[] args)
+        {
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            foreach (MethodInfo method in type.GetMethods(flags).Where(candidate => candidate.Name == methodName))
+            {
+                ParameterInfo[] parameters = method.GetParameters();
+                if (parameters.Length != (args == null ? 0 : args.Length))
+                {
+                    continue;
+                }
+
+                bool match = true;
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    object arg = args[i];
+                    Type parameterType = parameters[i].ParameterType;
+                    if (arg == null)
+                    {
+                        if (parameterType.IsValueType)
+                        {
+                            match = false;
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    if (!parameterType.IsInstanceOfType(arg))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+
+                if (match)
+                {
+                    return method;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryReadAmmoByModule(object launcher, object weaponData, out object value)
+        {
+            value = null;
+            object ammo = ReadMember(launcher, "ammo");
+            if (ammo == null || weaponData == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (ammo is IDictionary dictionary && dictionary.Contains(weaponData))
+                {
+                    value = dictionary[weaponData];
+                    return true;
+                }
+            }
+            catch
+            {
+                value = null;
+            }
+
+            return false;
+        }
+
         private static string Describe(object value)
         {
             if (value == null)
@@ -277,7 +531,7 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             Type type = value.GetType();
-            if (type.IsPrimitive || value is decimal || value is DateTime || type.IsEnum)
+            if (type.IsPrimitive || value is decimal || value is DateTime || value is TimeSpan || type.IsEnum)
             {
                 return Clean(Convert.ToString(value, CultureInfo.InvariantCulture));
             }
@@ -381,6 +635,23 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return value.Replace("\r", " ").Replace("\n", " ").Replace("\"", "'");
+        }
+
+        private sealed class TryFireObservation
+        {
+            public string AmmoEvidenceSource { get; set; }
+
+            public string Remaining { get; set; }
+
+            public string WeaponHasAmmo { get; set; }
+
+            public string WeaponCanFire { get; set; }
+
+            public string OnCooldown { get; set; }
+
+            public string SalvoShotsFired { get; set; }
+
+            public string SalvoShots { get; set; }
         }
     }
 }

@@ -69,7 +69,16 @@ namespace MissileFireControl.Mod.Adapters
 
         public static string TeamId(object instance)
         {
-            object team = ReadFirstMember(instance, "team", "Team", "teamID", "teamId", "shootingTeam", "faction", "shootingFaction");
+            object team = ReadFirstMember(
+                instance,
+                "team",
+                "Team",
+                "teamID",
+                "teamId",
+                "shootingTeam",
+                "faction",
+                "shootingFaction",
+                "ref_faction");
             if (team == null)
             {
                 return "unknown";
@@ -202,6 +211,12 @@ namespace MissileFireControl.Mod.Adapters
                 if (field != null)
                 {
                     return field.GetValue(instance);
+                }
+
+                MethodInfo method = type.GetMethod(memberName, flags, null, Type.EmptyTypes, null);
+                if (method != null && method.GetParameters().Length == 0)
+                {
+                    return method.Invoke(instance, null);
                 }
             }
             catch

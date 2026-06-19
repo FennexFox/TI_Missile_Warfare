@@ -25,6 +25,8 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "launcherTeam", snapshot.Launcher == null ? "unknown" : snapshot.Launcher.TeamId);
                 AppendPair(builder, "targetId", snapshot.Target == null ? "unknown" : snapshot.Target.Id);
                 AppendPair(builder, "target", snapshot.Target == null ? "unknown" : snapshot.Target.DisplayName);
+                AppendPair(builder, "targetTeam", snapshot.Target == null ? "unknown" : snapshot.Target.TeamId);
+                AppendPair(builder, "targetIdentitySource", snapshot.TargetIdentitySource ?? "none");
                 AppendPair(builder, "expectedTargetPosition", snapshot.HasExpectedTargetPosition ? Format(snapshot.ExpectedTargetPositionKm) : "unknown");
                 AppendPair(builder, "missileId", snapshot.Missile == null ? "unknown" : snapshot.Missile.Id);
                 AppendPair(builder, "missile", snapshot.Missile == null ? "unknown" : snapshot.Missile.DisplayName);
