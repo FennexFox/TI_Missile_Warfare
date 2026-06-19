@@ -21,6 +21,7 @@ BOOTSTRAP_RE = re.compile(
 )
 LAUNCH_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[LaunchLog\] (?P<pairs>.*)$")
 SNAPSHOT_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[SnapshotLog\] (?P<pairs>.*)$")
+ALLOCATION_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[AllocationLog\] (?P<pairs>.*)$")
 PAIR_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=\"(?P<value>[^\"]*)\"")
 
 
@@ -77,6 +78,14 @@ class LogSummary:
     snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
     first_snapshot_line: int | None = None
     last_snapshot_line: int | None = None
+    allocation_log_count: int = 0
+    allocation_record_type_counts: dict[str, int] = field(default_factory=dict)
+    allocation_status_counts: dict[str, int] = field(default_factory=dict)
+    allocation_missing_input_counts: dict[str, int] = field(default_factory=dict)
+    allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
+    first_allocation_line: int | None = None
+    last_allocation_line: int | None = None
     issues: list[LineHit] = field(default_factory=list)
 
 
@@ -126,6 +135,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     snapshot_target_identity_source_counts: Counter[str] = Counter()
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
+    allocation_record_type_counts: Counter[str] = Counter()
+    allocation_status_counts: Counter[str] = Counter()
+    allocation_missing_input_counts: Counter[str] = Counter()
+    allocation_rejection_reason_counts: Counter[str] = Counter()
+    allocation_assigned_shots_counts: Counter[str] = Counter()
     pre_fire_fields = (
         "preFireAmmoEvidenceSource",
         "preFireRemaining",
@@ -253,6 +267,38 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 summary.last_snapshot_line = line_number
                 continue
 
+            allocation = ALLOCATION_RE.match(line)
+            if allocation:
+                pairs = parse_pairs(allocation.group("pairs"))
+                summary.allocation_log_count += 1
+
+                record_type = pairs.get("recordType", "unknown")
+                allocation_record_type_counts[record_type] += 1
+
+                status = pairs.get("status")
+                if status:
+                    allocation_status_counts[status] += 1
+
+                missing = pairs.get("missingInputs")
+                if missing and missing != "none":
+                    for field_name in missing.split(","):
+                        field_name = field_name.strip()
+                        if field_name:
+                            allocation_missing_input_counts[field_name] += 1
+
+                rejection_reason = pairs.get("rejectionReason")
+                if rejection_reason:
+                    allocation_rejection_reason_counts[rejection_reason] += 1
+
+                assigned_shots = pairs.get("assignedShots")
+                if assigned_shots:
+                    allocation_assigned_shots_counts[assigned_shots] += 1
+
+                if summary.first_allocation_line is None:
+                    summary.first_allocation_line = line_number
+                summary.last_allocation_line = line_number
+                continue
+
             if is_issue_line(line) and len(summary.issues) < max_issues:
                 summary.issues.append(LineHit(line=line_number, text=line))
 
@@ -270,6 +316,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.snapshot_target_identity_source_counts = dict(sorted(snapshot_target_identity_source_counts.items()))
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
+    summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
+    summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
+    summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
+    summary.allocation_rejection_reason_counts = dict(allocation_rejection_reason_counts.most_common(12))
+    summary.allocation_assigned_shots_counts = dict(sorted(allocation_assigned_shots_counts.items()))
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]
@@ -426,6 +477,30 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  target teams:")
             for team, count in summary.snapshot_target_team_counts.items():
                 print(f"    {team}: {count}")
+
+    print(f"AllocationLog entries: {summary.allocation_log_count}")
+    if summary.allocation_log_count:
+        print(f"  first: line {summary.first_allocation_line}")
+        print(f"  last:  line {summary.last_allocation_line}")
+        print("  record types:")
+        for record_type, count in summary.allocation_record_type_counts.items():
+            print(f"    {record_type}: {count}")
+        if summary.allocation_status_counts:
+            print("  cycle status:")
+            for status, count in summary.allocation_status_counts.items():
+                print(f"    {status}: {count}")
+        if summary.allocation_missing_input_counts:
+            print("  missing inputs:")
+            for field_name, count in summary.allocation_missing_input_counts.items():
+                print(f"    {field_name}: {count}")
+        if summary.allocation_assigned_shots_counts:
+            print("  assigned shots:")
+            for assigned_shots, count in summary.allocation_assigned_shots_counts.items():
+                print(f"    {assigned_shots}: {count}")
+        if summary.allocation_rejection_reason_counts:
+            print("  rejection reasons:")
+            for reason, count in summary.allocation_rejection_reason_counts.items():
+                print(f"    {reason}: {count}")
 
     print("MissileWarfare issues:")
     if summary.issues:

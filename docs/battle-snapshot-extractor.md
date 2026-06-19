@@ -26,6 +26,17 @@ Both must be enabled before `[SnapshotLog]` entries are emitted.
 `EnableSnapshotDiagnostics` defaults to `false` so normal diagnostic runs keep
 their previous log volume.
 
+Shadow allocation diagnostics are controlled separately:
+
+- `EnableDiagnostics`
+- `EnableShadowAllocationDiagnostics`
+
+`EnableShadowAllocationDiagnostics` also defaults to `false`. It is
+diagnostics-only and independent from `EnableSnapshotDiagnostics`; when enabled
+it runs from the same confirmed projectile-fire diagnostics path after the
+normal launch diagnostic has emitted and after SnapshotLog has had its chance to
+emit when snapshot logging is enabled.
+
 ## Snapshot mapping
 
 The mod adapter maps visible runtime objects into Core models:
@@ -66,6 +77,63 @@ unchanged:
 
 The `missing` field is expected to be useful early on. It records which fields
 were not visible from the hook rather than treating partial snapshots as fatal.
+
+## Shadow allocation log format
+
+Issue #4 adds an observation-only shadow allocation loop. The loop builds an
+`AllocationRequest` from the available projectile-fire snapshot fields and runs
+the existing Core `SalvoAllocator` only when there is enough safe data to form a
+launcher, target list, and missile profile. It never applies assignments, never
+issues launch commands, never changes fire mode, and never suppresses or delays
+the original game methods.
+
+Shadow allocation emits compact structured records:
+
+```text
+[AllocationLog] recordType="cycle" cycleId="1" status="evaluated" sourceHook="TISpaceCombatProjectileState.Fire(missile)" battle="..." friendlyLaunchers="1" targetCount="1" totalReadyShots="unknown" assignedShots="0" unassignedShots="unknown" missingInputs="readyShots,targetVelocity,pdWeightsDefaulted"
+[AllocationLog] recordType="allocation" cycleId="1" targetId="..." target="..." assignedShots="4" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.72" scorePerShot="3.42" reason="kill package"
+[AllocationLog] recordType="rejection" cycleId="1" targetId="..." target="..." assignedShots="0" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.12" scorePerShot="0" rejectionReason="outside estimated launch window"
+```
+
+Cycle records include battle context, source hook, cycle id, friendly launcher
+count, target count, total ready shots, assigned shots, unassigned shots, and
+missing inputs. Allocation and rejection records include target identity,
+assigned shots, PD score, target value, saturation and kill package sizes,
+launch-window score, score per shot, and the reason.
+
+Known limitations are explicit in `missingInputs`. `readyShots` remains unknown
+when the projectile-fire snapshot cannot see a true ready, loaded, or chambered
+source. The shadow path does not infer readiness from `remainingShots` or
+pre/post ammo evidence. `pdWeightsDefaulted` is reported because the current
+snapshot does not recover detailed target point-defense weapon weights from the
+runtime ship state. `targetVelocity` is reported when the target is unavailable
+or the snapshot only has the default zero vector. `missileProfileData` is
+reported when the missile identity or profile cannot be safely formed.
+
+Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow
+allocation diagnostics confirmed:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 12,304, with contiguous sequence range `1-12304`
+- `MissileWeapon.TryFire` rows: 665
+- `SnapshotLog` entries: 665
+- `AllocationLog` entries: 1,330
+- `recordType=cycle`: 665
+- `recordType=rejection`: 665
+- `status=evaluated`: 665
+- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 665
+- `rejectionReason=missing readyShots`: 665
+- MissileWarfare issues: none
+
+That smoke confirms the shadow loop is observation-only and conservative when
+true ready shots are unavailable. It also showed `battle="unavailable"` on both
+existing LaunchLog records and new AllocationLog records. Source tracing against
+the read-only decompiled reference found that `GameControl` is in the global
+namespace, while the diagnostic reflection lookup only tried
+`PavonisInteractive.TerraInvicta.GameControl`. The lookup now tries the global
+`GameControl` type first and keeps the namespaced form as a fallback. A follow-up
+runtime smoke should confirm populated battle context fields.
 
 ## Validation
 

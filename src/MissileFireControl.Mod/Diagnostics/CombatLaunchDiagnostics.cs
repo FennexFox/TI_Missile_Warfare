@@ -96,6 +96,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "battle", BattleContext());
             });
             SnapshotDiagnostics.LogProjectileFireSnapshot(__instance, __args);
+            ShadowAllocationDiagnostics.LogProjectileFireShadowAllocation(__instance, __args);
         }
 
         private static bool ShouldLog()
@@ -123,7 +124,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static string BattleContext()
         {
-            object spaceCombat = ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "spaceCombat");
+            object spaceCombat = ReadStaticMember("GameControl", "spaceCombat")
+                ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "spaceCombat");
             if (spaceCombat == null)
             {
                 return "unavailable";
