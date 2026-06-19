@@ -175,9 +175,9 @@ ready/loaded/chambered shot evidence.
 The same runtime log showed `cooldownDuration=null`. Phase 03 traced this to
 `currentCooldownDuration_s` being a private field declared on the base `Weapon`
 class while the observed runtime object is `MissileWeapon`. The diagnostics now
-use a narrow inherited-member read for that exact cooldown field. A fresh
-in-game missile combat is still required to confirm future `cooldownDuration`
-values are non-null.
+use a narrow inherited-member read for that exact cooldown field. Fresh runtime
+validation after that change confirmed `cooldownDuration=00:00:07` on all 675
+successful `MissileWeapon.TryFire` rows in the follow-up smoke log.
 
 The initial target probe tried broader reflection fallbacks, but runtime data
 showed only the launcher path recovered identity. The extractor now keeps that

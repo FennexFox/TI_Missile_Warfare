@@ -106,11 +106,30 @@ Validate the ready-shot diagnostics in a live combat log and document the confir
 - Cooldown follow-up status:
   - Implemented a bounded inherited-member read for `currentCooldownDuration_s`.
   - The code is built and deployed.
-  - A fresh in-game missile combat is still required to prove future `cooldownDuration` log values are non-null.
+  - Fresh in-game runtime validation after deployment confirmed `cooldownDuration=00:00:07` on all 675 `MissileWeapon.TryFire` rows.
+- Fresh cooldown-helper runtime validation passed with `python tools\parse_player_log.py --require-launchlogs --require-snapshots` against a log written on 2026-06-19 at about 13:52 KST:
+  - verdict: `OK`
+  - diagnostics bootstrap: `patched=3`, `skipped=0`
+  - `LaunchLog` rows: 4,798
+  - `MissileWeapon.TryFire` rows: 675
+  - `TISpaceCombatProjectileState.Fire(missile)` rows: 675
+  - `TISpaceShipState.FireWeapon` rows: 3,448
+  - `SnapshotLog` rows: 675
+  - sequence gaps: none
+  - duplicate sequences: none
+  - MissileWarfare issues: none
+  - `ammoEvidenceSource=shipAmmoByWeaponData`: 675/675
+  - `postFireRemaining`: populated 675/675 with each value from `0` through `14` appearing 45 times
+  - `postFireWeaponHasAmmo=False`: 45 rows, matching `postFireRemaining=0`
+  - `postFireWeaponCanFire=False`: 45 rows, matching `postFireRemaining=0`
+  - `postFireOnCooldown=True`: 675/675
+  - `cooldownDuration=00:00:07`: 675/675
+  - `SnapshotLog readyShots`: still `unknown` / missing for 675 snapshots
+  - launcher-selected target identity: 635/675 snapshots with `targetIdentitySource=launcher`; 40 snapshots had `targetIdentitySource=none`
 - Issue #11 completion assessment:
   - Phase 01 source discovery: complete.
   - Phase 02 live post-fire ammo diagnostics: complete and runtime validated.
-  - Phase 03 verification and documentation: complete for current evidence.
+  - Phase 03 verification and documentation: complete for current evidence, including the cooldown follow-up.
   - Overall issue goal, recovering true `readyShots`: partial. `readyShots` should remain unknown until a documented pre-fire ready/loaded/chambered source is observed.
 
 ## GitHub issue #11 comment draft
@@ -156,11 +175,27 @@ Cooldown follow-up:
 
 - `cooldownDuration` logged as `null` in the Phase 02 runtime log because `currentCooldownDuration_s` is a private field on base `Weapon`, while the observed runtime object is `MissileWeapon`.
 - A narrow diagnostic-only helper now reads the exact inherited instance member for `cooldownDuration`.
-- The helper is built and deployed, but a fresh in-game missile combat is still needed to confirm non-null `cooldownDuration` values.
+- Fresh in-game runtime validation confirmed `cooldownDuration=00:00:07` on all 675 `MissileWeapon.TryFire` rows.
+
+Fresh cooldown-helper runtime evidence:
+
+- `LaunchLog` rows: 4,798
+- `SnapshotLog` rows: 675
+- `MissileWeapon.TryFire` rows: 675
+- sequence gaps: none
+- duplicate sequences: none
+- MissileWarfare issues: none
+- `ammoEvidenceSource=shipAmmoByWeaponData`: 675/675
+- `postFireRemaining`: populated 675/675, values `0` through `14` each appeared 45 times
+- `postFireWeaponHasAmmo=False`: 45 rows, matching `postFireRemaining=0`
+- `postFireWeaponCanFire=False`: 45 rows, matching `postFireRemaining=0`
+- `postFireOnCooldown=True`: 675/675
+- `cooldownDuration=00:00:07`: 675/675
 
 Issue status:
 
 - Live post-fire ammo evidence is recovered and validated.
+- Cooldown duration evidence is recovered and validated.
 - True pre-fire ready/loaded/chambered `readyShots` is not recovered yet.
 - Issue #11 should remain partial unless the acceptance scope is post-fire ammo evidence only; recovering real `readyShots` requires a follow-up prefix or paired pre/post live weapon observation.
 ```

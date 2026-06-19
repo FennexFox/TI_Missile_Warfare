@@ -97,9 +97,10 @@ MissileWarfare issues.
 That run still logged `cooldownDuration=null`. Phase 03 traced the cause to
 `currentCooldownDuration_s` being a private field declared on the base `Weapon`
 class while the hook observes a `MissileWeapon` runtime object. The diagnostics
-now use a narrow inherited-member read for that exact field. This remains
-observation-only and needs a fresh in-game smoke run to confirm non-null
-`cooldownDuration` values.
+now use a narrow inherited-member read for that exact field. Fresh runtime
+validation confirmed `cooldownDuration=00:00:07` on all 675 successful
+`MissileWeapon.TryFire` rows in the follow-up smoke log. This remains
+observation-only.
 
 ## Caveats
 
