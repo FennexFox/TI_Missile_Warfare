@@ -185,3 +185,50 @@ narrow path to reduce diagnostic overhead while preserving the confirmed signal.
 For actual projectile/controller guidance target coverage, add a separate
 observation point around
 `MissileWeapon.target` or `MissileController.target`.
+
+Issue #11 Phase 04 adds paired pre/post observation on the live
+`MissileWeapon.TryFire(DateTime)` hook. The prefix captures gate and ammo
+evidence before `MissileWeapon.TryFire` calls `TryFireCommon`, launches the
+projectile, enters cooldown, and calls `TISpaceShipState.FireWeapon`. The
+decompiled path shows `FireWeapon(module, targetedProjectile)` performs the
+magazine decrement through `ChangeAmmoValue(module, -1)`, so the pre-fire and
+post-fire values must remain separately named. The Harmony prefix returns
+normally and does not suppress the original `TryFire` method; it only captures
+diagnostic `__state` for the successful postfix row.
+
+New optional successful-launch fields are:
+
+- `preFireAmmoEvidenceSource`: `shipAmmoByWeaponData` when
+  `TISpaceShipState.ammo` can be indexed by the live weapon's `weaponData`;
+  otherwise `none` or `unavailable`.
+- `preFireRemaining`: the pre-decrement value from
+  `TISpaceShipState.ammo[weaponData]`, or `unknown`.
+- `preFireWeaponHasAmmo`, `preFireWeaponCanFire`, and `preFireOnCooldown`:
+  pre-fire gate/cooldown evidence captured before `TryFireCommon`.
+- `preFireSalvoShotsFired` and `preFireSalvoShots`: pre-fire salvo evidence.
+
+The static source review still found no dedicated ready, loaded, or chambered
+missile count in the confirmed `MissileWeapon.TryFire` / `TryFireCommon` path.
+`SnapshotLog readyShots` therefore remains `unknown` until runtime evidence
+proves a true ready/loaded/chambered source rather than magazine or gate state.
+
+Fresh Phase 04 runtime smoke validation on the active `Player.log` confirmed the
+paired observation:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 21,474, with contiguous sequence range `1-21474`
+- `MissileWeapon.TryFire` rows: 670
+- `preFireAmmoEvidenceSource=shipAmmoByWeaponData`: 670/670
+- all seven `preFire*` fields present on 670/670 successful try-fire rows
+- numeric `preFireRemaining` and `postFireRemaining` pairs: 670/670
+- `preFireRemaining - postFireRemaining = 1`: 670/670
+- `SnapshotLog` entries: 670
+- `readyShots=unknown`: 670/670
+- MissileWarfare issues: none
+
+This relationship is consistent with observing the ship ammo dictionary before
+and after the `FireWeapon` magazine decrement. It proves useful pre-fire ammo
+state is visible from the live weapon hook, but `preFireRemaining` is still
+ammo-state evidence. It is not automatically a true ready, loaded, or chambered
+`readyShots` source.

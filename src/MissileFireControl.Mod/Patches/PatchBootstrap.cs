@@ -27,27 +27,29 @@ namespace MissileFireControl.Mod.Patches
             int patched = 0;
             int skipped = 0;
 
-            TryPatchPostfix(
+            TryPatch(
                 harmony,
                 "primary ship fire hook",
                 "PavonisInteractive.TerraInvicta.TISpaceShipState",
                 "FireWeapon",
                 new[] { "ModuleDataEntry", "PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState" },
+                null,
                 nameof(CombatLaunchDiagnostics.OnShipFireWeaponPostfix),
                 ref patched,
                 ref skipped);
 
-            TryPatchPostfix(
+            TryPatch(
                 harmony,
                 "secondary missile try-fire hook",
                 "PavonisInteractive.TerraInvicta.Ship.MissileWeapon",
                 "TryFire",
                 new[] { "System.DateTime" },
+                nameof(CombatLaunchDiagnostics.OnMissileTryFirePrefix),
                 nameof(CombatLaunchDiagnostics.OnMissileTryFirePostfix),
                 ref patched,
                 ref skipped);
 
-            TryPatchPostfix(
+            TryPatch(
                 harmony,
                 "secondary missile projectile fire hook",
                 "PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState",
@@ -61,6 +63,7 @@ namespace MissileFireControl.Mod.Patches
                     "UnityEngine.Vector3",
                     "UnityEngine.Vector3"
                 },
+                null,
                 nameof(CombatLaunchDiagnostics.OnProjectileMissileFirePostfix),
                 ref patched,
                 ref skipped);
@@ -68,12 +71,13 @@ namespace MissileFireControl.Mod.Patches
             Log.Info($"Combat launch diagnostics patch bootstrap complete. patched={patched}, skipped={skipped}");
         }
 
-        private static void TryPatchPostfix(
+        private static void TryPatch(
             Harmony harmony,
             string description,
             string targetTypeName,
             string targetMethodName,
             string[] parameterTypeNames,
+            string prefixName,
             string postfixName,
             ref int patched,
             ref int skipped)
@@ -101,6 +105,15 @@ namespace MissileFireControl.Mod.Patches
                     return;
                 }
 
+                MethodInfo prefix = string.IsNullOrEmpty(prefixName)
+                    ? null
+                    : AccessTools.Method(typeof(CombatLaunchDiagnostics), prefixName);
+                if (!string.IsNullOrEmpty(prefixName) && prefix == null)
+                {
+                    Skip(description, $"prefix method not found: {prefixName}", ref skipped);
+                    return;
+                }
+
                 MethodInfo postfix = AccessTools.Method(typeof(CombatLaunchDiagnostics), postfixName);
                 if (postfix == null)
                 {
@@ -108,7 +121,10 @@ namespace MissileFireControl.Mod.Patches
                     return;
                 }
 
-                harmony.Patch(target, postfix: new HarmonyMethod(postfix));
+                harmony.Patch(
+                    target,
+                    prefix: prefix == null ? null : new HarmonyMethod(prefix),
+                    postfix: new HarmonyMethod(postfix));
                 patched++;
                 Log.Info($"Patched {description}: {target.DeclaringType.FullName}.{target.Name}");
             }

@@ -18,10 +18,10 @@ and `Player.log` parser output, not from committed decompiled source.
 
 ## Hook table
 
-| Role | Target method | Parameter signature used by bootstrap | Postfix | LaunchLog hook label | Confirmed count |
+| Role | Target method | Parameter signature used by bootstrap | Patch method(s) | LaunchLog hook label | Confirmed count |
 | --- | --- | --- | --- | --- | --- |
 | Primary ship fire hook | `PavonisInteractive.TerraInvicta.TISpaceShipState.FireWeapon` | `ModuleDataEntry`, `PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState` | `CombatLaunchDiagnostics.OnShipFireWeaponPostfix` | `TISpaceShipState.FireWeapon` | `4273` |
-| Secondary missile try-fire hook | `PavonisInteractive.TerraInvicta.Ship.MissileWeapon.TryFire` | `System.DateTime` | `CombatLaunchDiagnostics.OnMissileTryFirePostfix` | `MissileWeapon.TryFire` | `60` |
+| Secondary missile try-fire hook | `PavonisInteractive.TerraInvicta.Ship.MissileWeapon.TryFire` | `System.DateTime` | `CombatLaunchDiagnostics.OnMissileTryFirePrefix` + `CombatLaunchDiagnostics.OnMissileTryFirePostfix` | `MissileWeapon.TryFire` | `60` |
 | Secondary missile projectile fire hook | `PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState.Fire` | `PavonisInteractive.TerraInvicta.CombatWeaponCarrierState`, `TIMissileTemplate`, `TIDateTime`, `UnityEngine.Vector3`, `UnityEngine.Vector3`, `UnityEngine.Vector3` | `CombatLaunchDiagnostics.OnProjectileMissileFirePostfix` | `TISpaceCombatProjectileState.Fire(missile)` | `60` |
 
 ## Evidence markers
@@ -102,10 +102,39 @@ validation confirmed `cooldownDuration=00:00:07` on all 675 successful
 `MissileWeapon.TryFire` rows in the follow-up smoke log. This remains
 observation-only.
 
+Issue #11 Phase 04 changes the missile try-fire hook to a paired prefix/postfix
+on the same `MissileWeapon.TryFire(System.DateTime)` target. The prefix captures
+optional pre-fire values (`preFireAmmoEvidenceSource`, `preFireRemaining`,
+`preFireWeaponHasAmmo`, `preFireWeaponCanFire`, `preFireOnCooldown`,
+`preFireSalvoShotsFired`, and `preFireSalvoShots`) into Harmony `__state`; the
+existing successful postfix writes them on the same `MissileWeapon.TryFire`
+`LaunchLog` row before the post-fire fields. The bootstrap still counts this as
+one patched target method, so the healthy patch summary remains `patched=3`,
+`skipped=0`. The prefix is observation-only and returns normally; it does not
+skip, suppress, or alter the original `TryFire` method.
+
+Static review of the confirmed decompiled path found that `TryFireCommon`
+checks cooldown, target presence, `WeaponCanFire(weaponData)`, salvo reset, and
+`OnTarget`, while `TISpaceShipState.FireWeapon(module, targetedProjectile)`
+decrements magazine ammo through `ChangeAmmoValue(module, -1)`. That source path
+does not expose a separate ready, loaded, or chambered missile count, so
+`SnapshotLog readyShots` remains unknown unless runtime evidence proves another
+source.
+
+Fresh Phase 04 runtime validation on the active `Player.log` found 670
+successful `MissileWeapon.TryFire` rows. Every row had all seven `preFire*`
+fields, `preFireAmmoEvidenceSource=shipAmmoByWeaponData`, numeric
+`preFireRemaining`, and numeric `postFireRemaining`. Every numeric pair had
+`preFireRemaining - postFireRemaining = 1`, consistent with pre/post observation
+of the `FireWeapon` ammo decrement. The same log had 670 `SnapshotLog` rows, and
+all 670 still reported `readyShots=unknown`; no true ready, loaded, or chambered
+source was recovered.
+
 ## Caveats
 
-- The hooks are postfix diagnostics only. They are intended to observe combat
-  launch flow and should not alter launch, targeting, projectile, or AI behavior.
+- The hooks are diagnostics only. The missile try-fire hook now has an
+  observation-only prefix paired with the existing successful postfix; these
+  patches should not alter launch, targeting, projectile, or AI behavior.
 - `TISpaceShipState.FireWeapon` also observes non-missile weapon fire. Missile
   analysis should filter by hook label and missile/template fields rather than
   treating every `FireWeapon` row as a missile launch.

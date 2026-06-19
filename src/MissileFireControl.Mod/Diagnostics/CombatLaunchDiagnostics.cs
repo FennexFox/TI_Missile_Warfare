@@ -33,7 +33,25 @@ namespace MissileFireControl.Mod.Diagnostics
             });
         }
 
-        public static void OnMissileTryFirePostfix(object __instance, object[] __args, bool __result)
+        public static void OnMissileTryFirePrefix(object __instance, object[] __args, out object __state)
+        {
+            __state = null;
+            if (!ShouldLog())
+            {
+                return;
+            }
+
+            try
+            {
+                __state = CaptureTryFireObservation(__instance, GetArg(__args, 0));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"Pre-fire missile diagnostics failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        public static void OnMissileTryFirePostfix(object __instance, object[] __args, bool __result, object __state)
         {
             if (!__result || !ShouldLog())
             {
@@ -53,6 +71,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "targetedPosition", DescribeVector(ReadMember(__instance, "targetedPosition")));
                 AppendPair(builder, "fireMode", Describe(ReadMember(__instance, "currentFireMode")));
                 AppendPair(builder, "currentTime", Describe(GetArg(__args, 0)));
+                AppendPreFireWeaponAmmoEvidence(builder, __state as TryFireObservation);
                 AppendLiveWeaponAmmoEvidence(builder, __instance, launcher, weaponData, weaponTemplate, GetArg(__args, 0));
                 AppendPair(builder, "battle", BattleContext());
             });
@@ -226,6 +245,57 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "salvoShots", Describe(ReadMember(weaponTemplate, "salvo_shots")));
             AppendPair(builder, "intraSalvoCooldownS", Describe(ReadMember(weaponTemplate, "intraSalvoCooldown_s")));
             AppendCapacityEvidence(builder, launcher, weaponTemplate);
+        }
+
+        private static TryFireObservation CaptureTryFireObservation(object weapon, object currentTime)
+        {
+            object weaponData = ReadMember(weapon, "weaponData");
+            object weaponTemplate = ReadMember(weapon, "weaponTemplate");
+            object combatant = ReadMember(weapon, "combatant");
+            object launcher = ReadMember(combatant, "WeaponCarrierState");
+            TryFireObservation observation = new TryFireObservation();
+
+            object remaining;
+            if (TryReadAmmoByModule(launcher, weaponData, out remaining))
+            {
+                observation.AmmoEvidenceSource = "shipAmmoByWeaponData";
+                observation.Remaining = Describe(remaining);
+            }
+            else
+            {
+                observation.AmmoEvidenceSource = "none";
+                observation.Remaining = "unknown";
+            }
+
+            observation.WeaponHasAmmo = Describe(InvokeMember(launcher, "WeaponHasAmmo", weaponData));
+            observation.WeaponCanFire = Describe(InvokeMember(launcher, "WeaponCanFire", weaponData));
+            observation.OnCooldown = Describe(InvokeMember(weapon, "OnCooldown", currentTime));
+            observation.SalvoShotsFired = Describe(ReadMember(weapon, "shotsFiredThisSalvo"));
+            observation.SalvoShots = Describe(ReadMember(weaponTemplate, "salvo_shots"));
+            return observation;
+        }
+
+        private static void AppendPreFireWeaponAmmoEvidence(StringBuilder builder, TryFireObservation observation)
+        {
+            if (observation == null)
+            {
+                AppendPair(builder, "preFireAmmoEvidenceSource", "unavailable");
+                AppendPair(builder, "preFireRemaining", "unknown");
+                AppendPair(builder, "preFireWeaponHasAmmo", "unknown");
+                AppendPair(builder, "preFireWeaponCanFire", "unknown");
+                AppendPair(builder, "preFireOnCooldown", "unknown");
+                AppendPair(builder, "preFireSalvoShotsFired", "unknown");
+                AppendPair(builder, "preFireSalvoShots", "unknown");
+                return;
+            }
+
+            AppendPair(builder, "preFireAmmoEvidenceSource", observation.AmmoEvidenceSource);
+            AppendPair(builder, "preFireRemaining", observation.Remaining);
+            AppendPair(builder, "preFireWeaponHasAmmo", observation.WeaponHasAmmo);
+            AppendPair(builder, "preFireWeaponCanFire", observation.WeaponCanFire);
+            AppendPair(builder, "preFireOnCooldown", observation.OnCooldown);
+            AppendPair(builder, "preFireSalvoShotsFired", observation.SalvoShotsFired);
+            AppendPair(builder, "preFireSalvoShots", observation.SalvoShots);
         }
 
         private static void AppendCapacityEvidence(StringBuilder builder, object launcher, object weaponTemplate)
@@ -565,6 +635,23 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return value.Replace("\r", " ").Replace("\n", " ").Replace("\"", "'");
+        }
+
+        private sealed class TryFireObservation
+        {
+            public string AmmoEvidenceSource { get; set; }
+
+            public string Remaining { get; set; }
+
+            public string WeaponHasAmmo { get; set; }
+
+            public string WeaponCanFire { get; set; }
+
+            public string OnCooldown { get; set; }
+
+            public string SalvoShotsFired { get; set; }
+
+            public string SalvoShots { get; set; }
         }
     }
 }
