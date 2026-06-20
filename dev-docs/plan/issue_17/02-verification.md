@@ -44,8 +44,10 @@
 
 - `dotnet build TI_Missile_Fire_Control.sln`
 - `python -m py_compile tools\parse_player_log.py`
+- `python -m compileall tools`
 - `python tools\check_layout.py`
 - `python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py`
+- `python tools\parse_player_log.py --require-launchlogs --require-snapshots`
 - `rg -n "ReadyShots|readyShots|TotalReadyShots|readyShot|ready-shot|ready shots" src tools docs dev-docs`
 
 ## Manual smoke tests
@@ -62,12 +64,15 @@
 
 - Completed static validation:
   - `dotnet build TI_Missile_Fire_Control.sln` passed with 0 warnings and 0 errors.
-  - `python -m py_compile tools\parse_player_log.py tools\check_layout.py` passed.
+  - `python -m py_compile tools\parse_player_log.py tools\check_layout.py` passed in the original verification pass.
+  - `python -m compileall tools` passed from the current `HEAD`.
   - `python tools\check_layout.py` passed after updating stale required docs paths.
   - `python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py` passed.
+  - `python tools\parse_player_log.py --require-launchlogs --require-snapshots` passed against the active `Player.log`.
   - `rg -n "ReadyShots|readyShots|TotalReadyShots|readyShot|ready-shot|ready shots" src tools` returned no matches.
   - Broader docs search leaves only prohibition wording, validation search strings, or historical context.
   - `phase_plan_helper.py validate --plan-dir dev-docs\plan\issue_17` does not support excluding `00-context.md`; it failed only because that issue-context file is not a phase file.
+  - The active `Player.log` was produced by the old deployed schema and still contains old `readyShots` missing-field values; it is parser-validation evidence only, not runtime proof of new `ammoGateBudgetShots` rows.
 
 ## Decision log
 
