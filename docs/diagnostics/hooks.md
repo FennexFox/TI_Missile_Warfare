@@ -126,8 +126,9 @@ fields, `preFireAmmoEvidenceSource=shipAmmoByWeaponData`, numeric
 `preFireRemaining`, and numeric `postFireRemaining`. Every numeric pair had
 `preFireRemaining - postFireRemaining = 1`, consistent with pre/post observation
 of the `FireWeapon` ammo decrement. The same log had 670 `SnapshotLog` rows, and
-all 670 still reported `readyShots=unknown`; no allocator-safe fireable-shot
-source beyond ammo/gate evidence was recovered.
+all 670 still reported `readyShots=unknown`; the run did not validate either
+ammo/gate evidence as an allocator-safe shot budget or a distinct shot-budget
+source.
 
 Issue #15 reuses that same-thread prefix evidence for the projectile-fire
 snapshot and shadow allocation diagnostics. When a `TISpaceCombatProjectileState`

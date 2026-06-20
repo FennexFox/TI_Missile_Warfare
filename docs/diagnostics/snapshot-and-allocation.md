@@ -1,7 +1,16 @@
 # Battle snapshot and allocation diagnostics
 
-Issue #3 adds an observation-only adapter that converts confirmed Terra Invicta
-combat launch objects into the game-independent Core snapshot model.
+This document describes the current observation-only snapshot and shadow allocation diagnostics.
+
+For historical smoke results and issue-by-issue runtime validation numbers, see [`runtime-validation-history.md`](runtime-validation-history.md).
+
+## Current status
+
+Current logs can correlate projectile-fire snapshots with live `MissileWeapon.TryFire` ammo and gate/cooldown evidence, but they do not yet validate an allocator-safe shot budget.
+
+Do not treat `readyShots=unknown` as proof that a separate ready-state model exists. The open question is whether `TISpaceShipState.ammo[weaponData]` plus known gates is the game-equivalent shot budget, whether a distinct runtime source exists, or whether the allocator should avoid a numeric fleet-level budget. That decision is tracked in [`readiness-semantics.md`](../research/readiness-semantics.md).
+
+Shadow allocation output is currently useful for schema validation, parser validation, and missing-input accounting. It is not yet a validated combat recommendation path.
 
 ## Runtime source
 
@@ -11,31 +20,21 @@ The first extractor is wired to the confirmed missile projectile hook:
 PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState.Fire
 ```
 
-This hook is used because it has confirmed missile-only launch coverage and
-exposes the launcher/carrier, missile template, launch time, origin position,
-expected target position, and origin velocity.
+This hook is used because it has confirmed missile-only launch coverage and exposes the launcher/carrier, missile template, launch time, origin position, expected target position, and origin velocity.
 
-## Toggle
+## Toggles
 
-Snapshot logging is controlled by two UMM settings:
+Snapshot logging requires both settings:
 
 - `EnableDiagnostics`
 - `EnableSnapshotDiagnostics`
 
-Both must be enabled before `[SnapshotLog]` entries are emitted.
-`EnableSnapshotDiagnostics` defaults to `false` so normal diagnostic runs keep
-their previous log volume.
-
-Shadow allocation diagnostics are controlled separately:
+Shadow allocation diagnostics require both settings:
 
 - `EnableDiagnostics`
 - `EnableShadowAllocationDiagnostics`
 
-`EnableShadowAllocationDiagnostics` also defaults to `false`. It is
-diagnostics-only and independent from `EnableSnapshotDiagnostics`; when enabled
-it runs from the same confirmed projectile-fire diagnostics path after the
-normal launch diagnostic has emitted and after SnapshotLog has had its chance to
-emit when snapshot logging is enabled.
+Both snapshot and shadow allocation diagnostics default to `false` beyond the base diagnostics toggle. Shadow allocation is diagnostics-only: it never applies assignments, never issues commands, never changes fire mode, and never suppresses or delays original game methods.
 
 ## Snapshot mapping
 
@@ -47,49 +46,35 @@ The mod adapter maps visible runtime objects into Core models:
 - launcher missile weapon -> `WeaponSnapshot`
 - optional launcher-selected targetable state -> target `ShipSnapshot`
 
-Weapon role mapping is conservative. The confirmed projectile-fire snapshot
-marks the launcher weapon as `WeaponRole.Missile` when the template reports
-`isMissileWeapon` or when the confirmed missile hook is the only available
-signal. Unknown counts are emitted as `unknown` in logs and stored as `-1` in
-Core snapshot count fields.
+Weapon role mapping is conservative. The confirmed projectile-fire snapshot marks the launcher weapon as `WeaponRole.Missile` when the template reports `isMissileWeapon` or when the confirmed missile hook is the only available signal.
 
-Launcher-selected target identity probing is also conservative. The
-projectile-state fire hook does not receive the live `MissileController.target`
-object; `MissileWeapon` passes that target to the Unity controller immediately
-after the state fire call. The snapshot extractor therefore checks the
-launcher/carrier for `combatPrimaryTarget` or related primary-target members.
-Candidate target wrappers are unwrapped through `combatTargetableState`,
-`GetCombatantState`, `GetTargetableState`, `ShipState`, and
-`WeaponCarrierState` when those members are present. This keeps the diagnostic
-path compact and avoids repeated broad reflection probes that did not recover
-identity in the first runtime test. If no concrete launcher-selected identity is
-visible, `targetId`, `target`, and `targetTeam` remain `unknown`,
-`targetIdentitySource` is `none`, and `missing=targetIdentity` remains valid.
+Unknown counts are emitted as `unknown` in logs and stored as `-1` in Core snapshot count fields.
 
-## Log format
+## Target identity semantics
 
-Snapshot diagnostics use a separate marker so existing launch diagnostics remain
-unchanged:
+Launcher-selected target identity probing is conservative. The projectile-state fire hook does not receive the live `MissileController.target` object. `MissileWeapon` passes that target to the Unity controller immediately after the state fire call.
+
+The snapshot extractor checks the launcher/carrier for `combatPrimaryTarget` or related primary-target members. Candidate target wrappers are unwrapped through members such as `combatTargetableState`, `GetCombatantState`, `GetTargetableState`, `ShipState`, and `WeaponCarrierState` when present.
+
+`targetIdentitySource=launcher` means launcher/carrier primary-target or focus-fire identity. It is not proof of the actual in-flight missile guidance target. For projectile/controller guidance target coverage, add a separate observation point around `MissileWeapon.target` or `MissileController.target`.
+
+If no concrete launcher-selected identity is visible, `targetId`, `target`, and `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and `missing=targetIdentity` remains valid.
+
+## SnapshotLog schema
+
+Snapshot diagnostics use a separate marker so existing launch diagnostics remain unchanged:
 
 ```text
 [SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." missileId="..." missile="..." weaponRole="Missile" readyShots="unknown" readyShotEvidenceSource="unknown" readinessMissingReason="ammo-and-gate-only live weapon evidence" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." readyWeaponCount="unknown" unknownReadinessWeaponCount="1" remainingShots="..." missing="targetIdentity,readyShots"
 ```
 
-The `missing` field is expected to be useful early on. It records which fields
-were not visible from the hook rather than treating partial snapshots as fatal.
+The `missing` field records which fields were not visible from the hook rather than treating partial snapshots as fatal.
 
-## Shadow allocation log format
+## AllocationLog schema
 
-Issue #4 adds an observation-only shadow allocation loop. The loop builds an
-`AllocationRequest` from the available projectile-fire snapshot fields and runs
-the existing Core `SalvoAllocator` only when there is enough safe data to form a
-launcher, target list, and missile profile. It never applies assignments, never
-issues launch commands, never changes fire mode, and never suppresses or delays
-the original game methods.
+Issue #4 adds an observation-only shadow allocation loop. The loop builds an `AllocationRequest` from available projectile-fire snapshot fields and runs the existing Core `SalvoAllocator` only when enough safe data exists to form a launcher, target list, and missile profile.
 
 The sample numeric allocation values below are illustrative schema examples. They are not validated combat recommendations unless the corresponding runtime inputs are present and documented.
-
-Shadow allocation emits compact structured records:
 
 ```text
 [AllocationLog] recordType="cycle" cycleId="1" status="evaluated" sourceHook="TISpaceCombatProjectileState.Fire(missile)" battle="..." friendlyLaunchers="1" targetCount="1" totalReadyShots="unknown" readyShotEvidenceSource="unknown" readinessMissingReason="ammo-and-gate-only live weapon evidence" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." readyWeaponCount="unknown" unknownReadinessWeaponCount="1" assignedShots="0" unassignedShots="unknown" missingInputs="readyShots,targetVelocity,pdWeightsDefaulted"
@@ -97,123 +82,58 @@ Shadow allocation emits compact structured records:
 [AllocationLog] recordType="rejection" cycleId="1" targetId="..." target="..." assignedShots="0" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.12" scorePerShot="0" rejectionReason="outside estimated launch window"
 ```
 
-Cycle records include battle context, source hook, cycle id, friendly launcher
-count, target count, total ready shots, assigned shots, unassigned shots, and
-missing inputs. Allocation and rejection records include target identity,
-assigned shots, PD score, target value, saturation and kill package sizes,
-launch-window score, score per shot, and the reason.
+Cycle records include battle context, source hook, cycle id, friendly launcher count, target count, total ready shots, assigned shots, unassigned shots, and missing inputs.
 
-Known limitations are explicit in `missingInputs` and the readiness evidence
-fields. `readyShots` remains unknown when the snapshot cannot see an
-allocator-safe fireable-shot source beyond ammo/gate evidence. The shadow path
-does not infer readiness from
-`remainingShots`, pre/post ammo evidence, or gate/cooldown state. Issue #15 wires
-the current live `MissileWeapon.TryFire` pre-fire ammo and gate evidence into
-`SnapshotLog` and allocation cycle records as metadata:
+Allocation and rejection records include target identity, assigned shots, PD score, target value, saturation and kill package sizes, launch-window score, score per shot, and reason.
 
-- `readyShotEvidenceSource`: `unknown` until an allocator-safe fireable-shot
-  source beyond ammo/gate evidence is documented.
-- `readinessMissingReason`: why `readyShots` is still unknown, such as
-  `ammo-and-gate-only live weapon evidence`, `ammo-only projectile snapshot
-  evidence`, or `missing live weapon correlation`.
-- `ammoEvidenceSource`: where ammo-like evidence came from, such as
-  `shipAmmoByWeaponData` or `projectileSnapshotCount`.
-- `liveWeaponState`: compact live gate/cooldown state from the correlated
-  `MissileWeapon.TryFire` prefix when available.
-- `readyWeaponCount`: unknown until allocator-safe fireable-shot semantics are
-  proven.
-- `unknownReadinessWeaponCount`: count of weapons whose readiness remains
-  unknown for this snapshot.
+## Readiness evidence fields
 
-`pdWeightsDefaulted` is reported because the current snapshot does not recover
-detailed target point-defense weapon weights from the runtime ship state.
-`targetVelocity` is reported when the target is unavailable or the snapshot only
-has the default zero vector. `missileProfileData` is reported when the missile
-identity or profile cannot be safely formed.
+Known limitations are explicit in `missingInputs` and the readiness evidence fields. `readyShots` remains unknown until the project validates one of these designs:
 
-## Allocation parser report
+- `ammo[weaponData]` plus known gates as the game-equivalent shot budget;
+- a distinct allocator-safe source;
+- a controlled-allocation design that does not need a numeric fleet-level budget.
 
-`tools/parse_player_log.py` summarizes `[AllocationLog]` rows into a compact
-battle-level allocation report for before/after tuning comparisons. Current
-Issue #4 logs are shadow-only, so the parser separates shadow cycles,
-allocations, and rejections from future controlled-apply records. Future record
-types such as applied decisions, skipped decisions, and failed command
-applications are bucketed when they appear, but current logs are expected to
-show zero for those controlled-apply counts.
+The shadow path does not infer readiness from `remainingShots`, pre/post ammo evidence, or gate/cooldown state.
 
-Battle-level shot totals are taken from `recordType="cycle"` rows only. The
-report shows numeric and unknown cycle counts for ready, assigned, and
-unassigned shot fields; when any cycle has an unknown value, the corresponding
-total remains `unknown` rather than implying a complete battle total. Target
-allocation and rejection rows are used for target-level counts, rejection
-reasons, average/median kill package size, saturation size, launch-window
-score, score per shot, and conservative suspicious-pattern hints. This avoids
-double-counting assigned shots when a cycle also has one or more target rows.
+Readiness-related fields:
 
-Missing-field rates are computed from shadow cycle `missingInputs` values for
-allocator-critical fields: `readyShots`, `targetIdentity`, `targetVelocity`,
-`missileProfileData`, and `pdWeightsDefaulted`. Parser warnings such as
-`all shadow cycles missing readyShots`, `too many launch-window rejects`, or
-`allocation report limited by missing runtime inputs` are tuning hints from the
-observed diagnostic fields. They are not proof of combat outcome quality.
+- `readyShotEvidenceSource`: `unknown` until allocator-safe shot-budget semantics are documented.
+- `readinessMissingReason`: why `readyShots` is still unknown, such as `ammo-and-gate-only live weapon evidence`, `ammo-only projectile snapshot evidence`, or `missing live weapon correlation`.
+- `ammoEvidenceSource`: where ammo-like evidence came from, such as `shipAmmoByWeaponData` or `projectileSnapshotCount`.
+- `liveWeaponState`: compact live gate/cooldown state from the correlated `MissileWeapon.TryFire` prefix when available.
+- `readyWeaponCount`: unknown until allocator-safe fireable-shot semantics are proven.
+- `unknownReadinessWeaponCount`: count of weapons whose readiness remains unknown for this snapshot.
 
-Issue #15 adds readiness evidence histograms to the parser report. The parser
-now separates numeric ready-shot cycles, unknown ready-shot cycles, ammo-only
-readiness evidence cycles, and cycles blocked by missing readiness evidence.
-The same fields are additive in JSON output, so older logs that lack
-`readyShotEvidenceSource`, `readinessMissingReason`, or `ammoEvidenceSource`
-continue to parse.
+## Other known missing inputs
 
-Known limitation: current Issue #4 runtime logs may show every shadow cycle as
-a rejection because `readyShots`, target velocity, or point-defense weights are
-still unavailable from the projectile-fire snapshot path. In that case the
-allocation report should make those missing runtime inputs visible rather than
-pretending to evaluate whether combat allocation would have succeeded.
+`pdWeightsDefaulted` is reported because the current snapshot does not recover detailed target point-defense weapon weights from the runtime ship state.
 
-Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow
-allocation diagnostics confirmed the shadow loop was observation-only and
-conservative when allocator-safe numeric `readyShots` were unavailable. That
-first smoke was run on 2026-06-19 with the initial Issue #4 build:
+`targetVelocity` is reported when the target is unavailable or the snapshot only has the default zero vector.
 
-- parser verdict: `OK`
-- diagnostics bootstrap: `patched=3`, `skipped=0`
-- `LaunchLog` entries: 12,304, with contiguous sequence range `1-12304`
-- `MissileWeapon.TryFire` rows: 665
-- `SnapshotLog` entries: 665
-- `AllocationLog` entries: 1,330
-- `recordType=cycle`: 665
-- `recordType=rejection`: 665
-- `status=evaluated`: 665
-- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 665
-- `rejectionReason=missing readyShots`: 665
-- MissileWarfare issues: none
+`missileProfileData` is reported when the missile identity or profile cannot be safely formed.
 
-That first smoke also showed `battle="unavailable"` on both existing LaunchLog
-records and new AllocationLog records. Source tracing against the read-only
-decompiled reference found that `GameControl` is in the global namespace, while
-the diagnostic reflection lookup only tried
-`PavonisInteractive.TerraInvicta.GameControl`. The lookup now tries the global
-`GameControl` type first and keeps the namespaced form as a fallback.
+## Parser report
 
-A follow-up runtime smoke on 2026-06-19 after rebuilding and redeploying that
-lookup fix confirmed the current PR validation state:
+`tools/parse_player_log.py` summarizes `[AllocationLog]` rows into a compact battle-level allocation report for before/after tuning comparisons.
 
-- parser verdict: `OK`
-- diagnostics bootstrap: `patched=3`, `skipped=0`
-- `LaunchLog` entries: 3,742, with contiguous sequence range `1-3742`
-- `MissileWeapon.TryFire` rows: 675
-- `SnapshotLog` entries: 675
-- `AllocationLog` entries: 1,350
-- `recordType=cycle`: 675
-- `recordType=rejection`: 675
-- `status=evaluated`: 675
-- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 675
-- `rejectionReason=missing readyShots`: 675
-- `AllocationLog battle unavailable`: `0/1350`
-- `LaunchLog battle unavailable`: `0/3742`
-- MissileWarfare issues: none
+The parser separates current shadow cycles, allocations, and rejections from future controlled-apply records. Future record types such as applied decisions, skipped decisions, and failed command applications are bucketed when they appear, but current logs are expected to show zero controlled-apply counts.
 
-## Validation
+Battle-level shot totals are taken from `recordType="cycle"` rows only. When any cycle has an unknown value, the corresponding total remains `unknown` rather than implying a complete battle total.
+
+Missing-field rates are computed from shadow cycle `missingInputs` values for allocator-critical fields:
+
+- `readyShots`
+- `targetIdentity`
+- `targetVelocity`
+- `missileProfileData`
+- `pdWeightsDefaulted`
+
+Parser warnings such as `all shadow cycles missing readyShots`, `too many launch-window rejects`, or `allocation report limited by missing runtime inputs` are tuning hints from observed diagnostic fields. They are not proof of combat outcome quality.
+
+Issue #15 adds readiness evidence histograms to the parser report. The parser separates numeric ready-shot cycles, unknown ready-shot cycles, ammo-only readiness evidence cycles, and cycles blocked by missing readiness evidence. Older logs that lack `readyShotEvidenceSource`, `readinessMissingReason`, or `ammoEvidenceSource` continue to parse.
+
+## Validation commands
 
 Static validation:
 
@@ -236,177 +156,3 @@ Expected runtime result:
 - LaunchLog entries remain present and contiguous;
 - SnapshotLog entries are present;
 - MissileWarfare issues remain empty.
-
-## Launcher-selected target identity runtime findings
-
-Issue #10 smoke tests confirmed that the launcher primary-target path can
-recover launcher-selected target identity without changing combat behavior.
-
-The first launcher-selected target identity smoke test found partial coverage:
-
-- `SnapshotLog` entries: 1416
-- `targetIdentitySource=launcher`: 816
-- `targetIdentitySource=none`: 600
-- `readyShots=unknown`: 1416
-- `remainingShots`: visible for every snapshot
-
-A later focused-target smoke run with the trimmed launcher-only path found full
-launcher-selected target identity coverage for that combat:
-
-- `SnapshotLog` entries: 671
-- `targetIdentitySource=launcher`: 671
-- launcher-selected target identity: 671/671 snapshots
-- `readyShots=unknown`: 671
-- `remainingShots`: visible for every snapshot
-- MissileWarfare issues: none
-
-`targetIdentitySource=launcher` means the extractor recovered identity from the
-launcher/carrier primary-target or focus-fire state. It is not evidence of the
-actual in-flight missile guidance target held by `MissileController.target`.
-`targetIdentitySource=none` does not mean the missile had no target;
-`MissileWeapon.TryFire` logged target values for the same run. It means the
-projectile-state snapshot hook could not see a concrete launcher-selected target
-identity through the launcher primary-target path for that launch.
-
-`readyShots` remains unknown because the projectile-state hook does not expose
-the live `MissileWeapon` runtime object. The hook can see remaining magazine-like
-counts from visible launcher/template state, but Issue #11 source discovery
-found that the reliable runtime ammo value is `TISpaceShipState.ammo[weaponData]`.
-That value is keyed by `ModuleDataEntry`, and the projectile-state hook does not
-receive the firing module key. Any count found from the snapshot path should
-therefore be treated as magazine-like evidence until a live weapon/module
-observation confirms its semantics. No separate ready/loaded/chambered missile
-state model has been confirmed; do not infer allocator-safe `readyShots` from
-`remainingShots` without a documented source.
-
-Issue #11 Phase 01 recommends a separate live weapon diagnostic path around
-`MissileWeapon.TryFire` or `TISpaceShipState.FireWeapon` to record post-fire
-remaining ammo and capacity evidence. Existing postfix observations occur after
-ammo decrement, so those values should be named as post-fire remaining ammo, not
-`readyShots`.
-
-Issue #11 Phase 02 adds that evidence to successful `MissileWeapon.TryFire`
-`LaunchLog` rows. The new fields are optional diagnostics:
-
-- `ammoEvidenceSource`: `shipAmmoByWeaponData` when `TISpaceShipState.ammo` can
-  be indexed by the live weapon's `weaponData`; otherwise `none`.
-- `postFireRemaining`: the post-decrement value from
-  `TISpaceShipState.ammo[weaponData]`, or `unknown`.
-- `postFireWeaponHasAmmo`, `postFireWeaponCanFire`, and `postFireOnCooldown`:
-  post-fire gate/cooldown evidence, not ready-shot counts.
-- `cooldownDuration`, `lastFiredAt`, `salvoShotsFired`, `salvoShots`, and
-  `intraSalvoCooldownS`: compact cooldown and salvo timing evidence.
-- `templateMagazine`, `magazineCapacityCurrent`, and `magazineCapacityMax`:
-  capacity evidence from the projectile weapon template and launcher state, not
-  allocator-safe `readyShots`.
-
-These fields do not populate `SnapshotLog readyShots`. `readyShots` remains
-unknown until [`readiness-semantics.md`](../research/readiness-semantics.md) resolves whether `ammo[weaponData]`
-plus known fire gates is itself the allocator-safe shot budget, or whether a
-distinct runtime source is required.
-
-Fresh Phase 02 runtime validation confirmed the live weapon evidence path:
-
-- `MissileWeapon.TryFire` rows: 649
-- `ammoEvidenceSource=shipAmmoByWeaponData`: 649/649
-- `postFireRemaining`: populated 649/649, ranging from `0` through `14`
-- `postFireWeaponHasAmmo=False` and `postFireWeaponCanFire=False`: 42 rows,
-  matching the 42 `postFireRemaining=0` rows
-- `postFireOnCooldown=True`: 649/649
-- capacity evidence: `templateMagazine=6`, `magazineCapacityCurrent=15`, and
-  `magazineCapacityMax=15` on every row
-
-This confirms that `TISpaceShipState.ammo[weaponData]` is visible from the
-live weapon postfix path and behaves as post-decrement ammo. It is not yet
-classified as allocator-safe fireable-shot evidence, but [`readiness-semantics.md`](../research/readiness-semantics.md)
-tracks the explicit hypothesis that this keyed ammo value may be the vanilla
-runtime shot budget when combined with known fire gates.
-
-The same runtime log showed `cooldownDuration=null`. Phase 03 traced this to
-`currentCooldownDuration_s` being a private field declared on the base `Weapon`
-class while the observed runtime object is `MissileWeapon`. The diagnostics now
-use a narrow inherited-member read for that exact cooldown field. Fresh runtime
-validation after that change confirmed `cooldownDuration=00:00:07` on all 675
-successful `MissileWeapon.TryFire` rows in the follow-up smoke log.
-
-The initial target probe tried broader reflection fallbacks, but runtime data
-showed only the launcher path recovered identity. The extractor now keeps that
-narrow path to reduce diagnostic overhead while preserving the confirmed signal.
-For actual projectile/controller guidance target coverage, add a separate
-observation point around
-`MissileWeapon.target` or `MissileController.target`.
-
-Issue #11 Phase 04 adds paired pre/post observation on the live
-`MissileWeapon.TryFire(DateTime)` hook. The prefix captures gate and ammo
-evidence before `MissileWeapon.TryFire` calls `TryFireCommon`, launches the
-projectile, enters cooldown, and calls `TISpaceShipState.FireWeapon`. The
-decompiled path shows `FireWeapon(module, targetedProjectile)` performs the
-magazine decrement through `ChangeAmmoValue(module, -1)`, so the pre-fire and
-post-fire values must remain separately named. The Harmony prefix returns
-normally and does not suppress the original `TryFire` method; it only captures
-diagnostic `__state` for the successful postfix row.
-
-New optional successful-launch fields are:
-
-- `preFireAmmoEvidenceSource`: `shipAmmoByWeaponData` when
-  `TISpaceShipState.ammo` can be indexed by the live weapon's `weaponData`;
-  otherwise `none` or `unavailable`.
-- `preFireRemaining`: the pre-decrement value from
-  `TISpaceShipState.ammo[weaponData]`, or `unknown`.
-- `preFireWeaponHasAmmo`, `preFireWeaponCanFire`, and `preFireOnCooldown`:
-  pre-fire gate/cooldown evidence captured before `TryFireCommon`.
-- `preFireSalvoShotsFired` and `preFireSalvoShots`: pre-fire salvo evidence.
-
-The static source review still found no dedicated allocator-safe fireable-shot
-count in the confirmed `MissileWeapon.TryFire` / `TryFireCommon` path.
-`SnapshotLog readyShots` therefore remains `unknown` until runtime evidence
-shows either that `ammo[weaponData]` plus known fire gates is the vanilla shot
-budget, or that a distinct fireable-shot source exists.
-
-Fresh Phase 04 runtime smoke validation on the active `Player.log` confirmed the
-paired observation. This active-log smoke run supersedes the earlier
-pre-smoke parser check that reported 4,798 `LaunchLog` rows and 675
-`MissileWeapon.TryFire` rows from a previous log:
-
-- parser verdict: `OK`
-- diagnostics bootstrap: `patched=3`, `skipped=0`
-- `LaunchLog` entries: 21,474, with contiguous sequence range `1-21474`
-- `MissileWeapon.TryFire` rows: 670
-- `preFireAmmoEvidenceSource=shipAmmoByWeaponData`: 670/670
-- all seven `preFire*` fields present on 670/670 successful try-fire rows
-- numeric `preFireRemaining` and `postFireRemaining` pairs: 670/670
-- `preFireRemaining - postFireRemaining = 1`: 670/670
-- `SnapshotLog` entries: 670
-- `readyShots=unknown`: 670/670
-- MissileWarfare issues: none
-
-This relationship is consistent with observing the ship ammo dictionary before
-and after the `FireWeapon` magazine decrement. It proves useful pre-fire ammo
-state is visible from the live weapon hook, but `preFireRemaining` is still
-ammo-state evidence. It is not automatically an allocator-safe `readyShots`
-source.
-
-## Issue #15 readiness evidence result
-
-Issue #15 wires the live `MissileWeapon.TryFire` pre-fire evidence into the
-projectile-fire snapshot/allocation diagnostic path when those hooks execute on
-the same thread. The new snapshot and allocation cycle fields preserve the
-distinction between:
-
-- numeric `readyShots` from a future proven allocator-safe fireable-shot source;
-- ammo-only evidence from `TISpaceShipState.ammo[weaponData]`;
-- gate/cooldown evidence such as `WeaponHasAmmo`, `WeaponCanFire`, and
-  `OnCooldown`;
-- unknown readiness with a concrete missing reason.
-
-The current implementation deliberately removed the earlier optimistic
-projectile-snapshot ready-shot inference from names such as `loadedAmmo`,
-`loadedMissiles`, and `readyMissiles`. Current runtime evidence remains
-ammo/gate evidence, not allocator-safe fireable-shot evidence, so `SnapshotLog
-readyShots` and allocation `totalReadyShots` remain `unknown` until a source
-beyond ammo/gate evidence is documented.
-
-That means the project is not ready to proceed to Issue #6 controlled allocation
-based on numeric ready-shot counts alone. It is ready to collect a fresh runtime
-smoke log with Issue #15 fields and decide whether another runtime source can
-prove true readiness semantics.
