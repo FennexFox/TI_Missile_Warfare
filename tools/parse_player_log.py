@@ -93,6 +93,11 @@ class AllocationBattleSummary:
     launch_window_score: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     score_per_shot: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     missing_input_counts: dict[str, int] = field(default_factory=dict)
+    ready_shot_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    readiness_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    ammo_only_readiness_cycles: int = 0
+    missing_readiness_evidence_cycles: int = 0
     suspicious_patterns: list[str] = field(default_factory=list)
 
 
@@ -130,6 +135,10 @@ class LogSummary:
     snapshot_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
     snapshot_ready_shots_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ready_shot_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_readiness_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_live_weapon_state_counts: dict[str, int] = field(default_factory=dict)
     snapshot_known_target_count: int = 0
     snapshot_target_identity_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_counts: dict[str, int] = field(default_factory=dict)
@@ -140,6 +149,9 @@ class LogSummary:
     allocation_record_type_counts: dict[str, int] = field(default_factory=dict)
     allocation_status_counts: dict[str, int] = field(default_factory=dict)
     allocation_missing_input_counts: dict[str, int] = field(default_factory=dict)
+    allocation_ready_shot_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_readiness_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
     allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
     allocation_summary: AllocationBattleSummary = field(default_factory=AllocationBattleSummary)
@@ -219,6 +231,11 @@ def split_csv_field(text: str | None) -> list[str]:
     return [value.strip() for value in text.split(",") if value.strip()]
 
 
+def is_ammo_only_readiness_reason(text: str | None) -> bool:
+    """Return whether a readiness missing reason is explicitly ammo-only evidence."""
+    return bool(text and "ammo-only" in text.lower())
+
+
 def top_count(counter: Counter[str]) -> tuple[str | None, int]:
     """Return a deterministic top key and count."""
     if not counter:
@@ -244,6 +261,11 @@ def build_allocation_battle_summary(
     allocation_overkill_count: int,
     cycle_allocated_target_values: dict[str, list[float]],
     cycle_rejected_target_values: dict[str, list[float]],
+    cycle_ready_shot_evidence_source_counts: Counter[str],
+    cycle_readiness_missing_reason_counts: Counter[str],
+    cycle_ammo_evidence_source_counts: Counter[str],
+    cycle_ammo_only_readiness_count: int,
+    cycle_missing_readiness_evidence_count: int,
 ) -> AllocationBattleSummary:
     """Build a compact battle-level allocation summary from parsed records."""
     summary = AllocationBattleSummary()
@@ -289,6 +311,11 @@ def build_allocation_battle_summary(
     summary.launch_window_score = summarize_numeric(launch_window_score_values)
     summary.score_per_shot = summarize_numeric(score_per_shot_values)
     summary.missing_input_counts = {field_name: cycle_missing_input_counts.get(field_name, 0) for field_name in CRITICAL_ALLOCATION_INPUTS}
+    summary.ready_shot_evidence_source_counts = dict(sorted(cycle_ready_shot_evidence_source_counts.items()))
+    summary.readiness_missing_reason_counts = dict(sorted(cycle_readiness_missing_reason_counts.items()))
+    summary.ammo_evidence_source_counts = dict(sorted(cycle_ammo_evidence_source_counts.items()))
+    summary.ammo_only_readiness_cycles = cycle_ammo_only_readiness_count
+    summary.missing_readiness_evidence_cycles = cycle_missing_readiness_evidence_count
     summary.suspicious_patterns = allocation_suspicious_patterns(
         summary,
         rejection_reason_counts,
@@ -314,6 +341,12 @@ def allocation_suspicious_patterns(
 
     if shadow_cycles and summary.missing_input_counts.get("readyShots", 0) == shadow_cycles:
         patterns.append("all shadow cycles missing readyShots")
+
+    if shadow_cycles and summary.ammo_only_readiness_cycles == shadow_cycles:
+        patterns.append("all shadow cycles have ammo-only readiness evidence")
+
+    if shadow_cycles and summary.missing_readiness_evidence_cycles == shadow_cycles:
+        patterns.append("all shadow cycles blocked by missing readiness evidence")
 
     if (
         summary.ready_shots_numeric_cycles
@@ -382,12 +415,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     snapshot_source_counts: Counter[str] = Counter()
     snapshot_missing_counts: Counter[str] = Counter()
     snapshot_ready_shots_counts: Counter[str] = Counter()
+    snapshot_ready_shot_evidence_source_counts: Counter[str] = Counter()
+    snapshot_readiness_missing_reason_counts: Counter[str] = Counter()
+    snapshot_ammo_evidence_source_counts: Counter[str] = Counter()
+    snapshot_live_weapon_state_counts: Counter[str] = Counter()
     snapshot_target_identity_source_counts: Counter[str] = Counter()
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
     allocation_record_type_counts: Counter[str] = Counter()
     allocation_status_counts: Counter[str] = Counter()
     allocation_missing_input_counts: Counter[str] = Counter()
+    allocation_ready_shot_evidence_source_counts: Counter[str] = Counter()
+    allocation_readiness_missing_reason_counts: Counter[str] = Counter()
+    allocation_ammo_evidence_source_counts: Counter[str] = Counter()
     allocation_rejection_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
     cycle_missing_input_counts: Counter[str] = Counter()
@@ -401,6 +441,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     score_per_shot_values: list[float] = []
     allocation_partial_saturation_count = 0
     allocation_overkill_count = 0
+    cycle_ready_shot_evidence_source_counts: Counter[str] = Counter()
+    cycle_readiness_missing_reason_counts: Counter[str] = Counter()
+    cycle_ammo_evidence_source_counts: Counter[str] = Counter()
+    cycle_ammo_only_readiness_count = 0
+    cycle_missing_readiness_evidence_count = 0
     cycle_allocated_target_values: dict[str, list[float]] = {}
     cycle_rejected_target_values: dict[str, list[float]] = {}
     pre_fire_fields = (
@@ -503,6 +548,18 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 source = pairs.get("source", "unknown")
                 snapshot_source_counts[source] += 1
                 snapshot_ready_shots_counts[pairs.get("readyShots", "unknown")] += 1
+                ready_shot_evidence_source = pairs.get("readyShotEvidenceSource")
+                if ready_shot_evidence_source:
+                    snapshot_ready_shot_evidence_source_counts[ready_shot_evidence_source] += 1
+                readiness_missing_reason = pairs.get("readinessMissingReason")
+                if readiness_missing_reason:
+                    snapshot_readiness_missing_reason_counts[readiness_missing_reason] += 1
+                ammo_evidence_source = pairs.get("ammoEvidenceSource")
+                if ammo_evidence_source:
+                    snapshot_ammo_evidence_source_counts[ammo_evidence_source] += 1
+                live_weapon_state = pairs.get("liveWeaponState")
+                if live_weapon_state:
+                    snapshot_live_weapon_state_counts[live_weapon_state] += 1
 
                 target_id = pairs.get("targetId", "unknown")
                 target_name = pairs.get("target", "unknown")
@@ -549,6 +606,24 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if record_type == "cycle":
                         cycle_missing_input_counts[field_name] += 1
 
+                ready_shot_evidence_source = pairs.get("readyShotEvidenceSource")
+                if ready_shot_evidence_source:
+                    allocation_ready_shot_evidence_source_counts[ready_shot_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_ready_shot_evidence_source_counts[ready_shot_evidence_source] += 1
+
+                readiness_missing_reason = pairs.get("readinessMissingReason")
+                if readiness_missing_reason:
+                    allocation_readiness_missing_reason_counts[readiness_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_readiness_missing_reason_counts[readiness_missing_reason] += 1
+
+                ammo_evidence_source = pairs.get("ammoEvidenceSource")
+                if ammo_evidence_source:
+                    allocation_ammo_evidence_source_counts[ammo_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_ammo_evidence_source_counts[ammo_evidence_source] += 1
+
                 rejection_reason = pairs.get("rejectionReason")
                 if rejection_reason:
                     allocation_rejection_reason_counts[rejection_reason] += 1
@@ -561,9 +636,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     target_count = try_parse_int(pairs.get("targetCount"))
                     if target_count is not None:
                         cycle_target_counts.append(target_count)
-                    ready_shot_values.append(try_parse_int(pairs.get("totalReadyShots")))
+                    ready_shots = try_parse_int(pairs.get("totalReadyShots"))
+                    ready_shot_values.append(ready_shots)
                     assigned_shot_values.append(try_parse_int(pairs.get("assignedShots")))
                     unassigned_shot_values.append(try_parse_int(pairs.get("unassignedShots")))
+                    if ready_shots is None and is_ammo_only_readiness_reason(readiness_missing_reason):
+                        cycle_ammo_only_readiness_count += 1
+                    if ready_shots is None and (
+                        "readyShots" in missing_inputs or readiness_missing_reason is not None
+                    ):
+                        cycle_missing_readiness_evidence_count += 1
 
                 if record_type in {"allocation", "rejection"}:
                     kill_size = try_parse_float(pairs.get("killSize"))
@@ -618,12 +700,25 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
     summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
     summary.snapshot_ready_shots_counts = dict(sorted(snapshot_ready_shots_counts.items()))
+    summary.snapshot_ready_shot_evidence_source_counts = dict(
+        sorted(snapshot_ready_shot_evidence_source_counts.items())
+    )
+    summary.snapshot_readiness_missing_reason_counts = dict(sorted(snapshot_readiness_missing_reason_counts.items()))
+    summary.snapshot_ammo_evidence_source_counts = dict(sorted(snapshot_ammo_evidence_source_counts.items()))
+    summary.snapshot_live_weapon_state_counts = dict(sorted(snapshot_live_weapon_state_counts.items()))
     summary.snapshot_target_identity_source_counts = dict(sorted(snapshot_target_identity_source_counts.items()))
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
+    summary.allocation_ready_shot_evidence_source_counts = dict(
+        sorted(allocation_ready_shot_evidence_source_counts.items())
+    )
+    summary.allocation_readiness_missing_reason_counts = dict(
+        sorted(allocation_readiness_missing_reason_counts.items())
+    )
+    summary.allocation_ammo_evidence_source_counts = dict(sorted(allocation_ammo_evidence_source_counts.items()))
     summary.allocation_rejection_reason_counts = sorted_count_dict(allocation_rejection_reason_counts, limit=12)
     summary.allocation_assigned_shots_counts = dict(
         sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
@@ -644,6 +739,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         allocation_overkill_count,
         cycle_allocated_target_values,
         cycle_rejected_target_values,
+        cycle_ready_shot_evidence_source_counts,
+        cycle_readiness_missing_reason_counts,
+        cycle_ammo_evidence_source_counts,
+        cycle_ammo_only_readiness_count,
+        cycle_missing_readiness_evidence_count,
     )
     if sequences:
         ordered = sorted(sequences)
@@ -755,6 +855,14 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         f"{summary.ready_shots_unknown_cycles} unknown cycles, "
         f"total {format_optional_total(summary.total_ready_shots)}"
     )
+    print(f"- ammo-only readiness cycles: {summary.ammo_only_readiness_cycles}")
+    print(f"- missing readiness evidence cycles: {summary.missing_readiness_evidence_cycles}")
+    if summary.ready_shot_evidence_source_counts:
+        print("- ready-shot evidence sources: " + format_count_dict(summary.ready_shot_evidence_source_counts))
+    if summary.readiness_missing_reason_counts:
+        print("- readiness missing reasons: " + format_count_dict(summary.readiness_missing_reason_counts))
+    if summary.ammo_evidence_source_counts:
+        print("- ammo evidence sources: " + format_count_dict(summary.ammo_evidence_source_counts))
     print(
         "- assigned shots observed: "
         f"{summary.assigned_shots_numeric_cycles} numeric cycles, "
@@ -863,6 +971,22 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  readyShots:")
             for value, count in summary.snapshot_ready_shots_counts.items():
                 print(f"    {value}: {count}")
+        if summary.snapshot_ready_shot_evidence_source_counts:
+            print("  ready-shot evidence sources:")
+            for source, count in summary.snapshot_ready_shot_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_readiness_missing_reason_counts:
+            print("  readiness missing reasons:")
+            for reason, count in summary.snapshot_readiness_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_ammo_evidence_source_counts:
+            print("  ammo evidence sources:")
+            for source, count in summary.snapshot_ammo_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_live_weapon_state_counts:
+            print("  live weapon states:")
+            for state, count in summary.snapshot_live_weapon_state_counts.items():
+                print(f"    {state}: {count}")
         print(
             "  target identity: "
             f"{summary.snapshot_known_target_count}/{summary.snapshot_log_count} snapshots"
@@ -895,6 +1019,18 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  missing inputs:")
             for field_name, count in summary.allocation_missing_input_counts.items():
                 print(f"    {field_name}: {count}")
+        if summary.allocation_ready_shot_evidence_source_counts:
+            print("  ready-shot evidence sources:")
+            for source, count in summary.allocation_ready_shot_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_readiness_missing_reason_counts:
+            print("  readiness missing reasons:")
+            for reason, count in summary.allocation_readiness_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_ammo_evidence_source_counts:
+            print("  ammo evidence sources:")
+            for source, count in summary.allocation_ammo_evidence_source_counts.items():
+                print(f"    {source}: {count}")
         if summary.allocation_assigned_shots_counts:
             print("  assigned shots:")
             for assigned_shots, count in summary.allocation_assigned_shots_counts.items():

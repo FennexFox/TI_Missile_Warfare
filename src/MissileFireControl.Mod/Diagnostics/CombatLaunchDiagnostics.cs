@@ -5,12 +5,16 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using MissileFireControl.Mod.Adapters;
 
 namespace MissileFireControl.Mod.Diagnostics
 {
     internal static class CombatLaunchDiagnostics
     {
         private static int _sequence;
+
+        [ThreadStatic]
+        private static ReadinessEvidenceSnapshot _currentMissileTryFireReadiness;
 
         public static void OnShipFireWeaponPostfix(object __instance, object[] __args)
         {
@@ -38,15 +42,19 @@ namespace MissileFireControl.Mod.Diagnostics
             __state = null;
             if (!ShouldLog())
             {
+                _currentMissileTryFireReadiness = null;
                 return;
             }
 
             try
             {
-                __state = CaptureTryFireObservation(__instance, GetArg(__args, 0));
+                TryFireObservation observation = CaptureTryFireObservation(__instance, GetArg(__args, 0));
+                __state = observation;
+                _currentMissileTryFireReadiness = ToReadinessEvidence(observation);
             }
             catch (Exception ex)
             {
+                _currentMissileTryFireReadiness = null;
                 Log.Warning($"Pre-fire missile diagnostics failed: {ex.GetType().Name}: {ex.Message}");
             }
         }
@@ -55,6 +63,7 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             if (!__result || !ShouldLog())
             {
+                _currentMissileTryFireReadiness = null;
                 return;
             }
 
@@ -75,6 +84,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendLiveWeaponAmmoEvidence(builder, __instance, launcher, weaponData, weaponTemplate, GetArg(__args, 0));
                 AppendPair(builder, "battle", BattleContext());
             });
+            _currentMissileTryFireReadiness = null;
         }
 
         public static void OnProjectileMissileFirePostfix(object __instance, object[] __args)
@@ -95,8 +105,8 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "originVelocityKps", DescribeVector(GetArg(__args, 5)));
                 AppendPair(builder, "battle", BattleContext());
             });
-            SnapshotDiagnostics.LogProjectileFireSnapshot(__instance, __args);
-            ShadowAllocationDiagnostics.LogProjectileFireShadowAllocation(__instance, __args);
+            SnapshotDiagnostics.LogProjectileFireSnapshot(__instance, __args, _currentMissileTryFireReadiness);
+            ShadowAllocationDiagnostics.LogProjectileFireShadowAllocation(__instance, __args, _currentMissileTryFireReadiness);
         }
 
         private static bool ShouldLog()
@@ -298,6 +308,39 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "preFireOnCooldown", observation.OnCooldown);
             AppendPair(builder, "preFireSalvoShotsFired", observation.SalvoShotsFired);
             AppendPair(builder, "preFireSalvoShots", observation.SalvoShots);
+        }
+
+        private static ReadinessEvidenceSnapshot ToReadinessEvidence(TryFireObservation observation)
+        {
+            if (observation == null)
+            {
+                return null;
+            }
+
+            return new ReadinessEvidenceSnapshot
+            {
+                ReadyShots = -1,
+                ReadyShotEvidenceSource = "unknown",
+                ReadinessMissingReason = HasLiveGateEvidence(observation)
+                    ? "ammo-and-gate-only live weapon evidence"
+                    : "ammo-only live weapon evidence",
+                AmmoEvidenceSource = observation.AmmoEvidenceSource,
+                LiveWeaponState = "preFireWeaponHasAmmo=" + observation.WeaponHasAmmo
+                    + ";preFireWeaponCanFire=" + observation.WeaponCanFire
+                    + ";preFireOnCooldown=" + observation.OnCooldown
+                    + ";preFireSalvoShotsFired=" + observation.SalvoShotsFired
+                    + ";preFireSalvoShots=" + observation.SalvoShots,
+                ReadyWeaponCount = -1,
+                UnknownReadinessWeaponCount = 1
+            };
+        }
+
+        private static bool HasLiveGateEvidence(TryFireObservation observation)
+        {
+            return observation != null
+                && observation.WeaponHasAmmo != "unknown"
+                && observation.WeaponCanFire != "unknown"
+                && observation.OnCooldown != "unknown";
         }
 
         private static void AppendCapacityEvidence(StringBuilder builder, object launcher, object weaponTemplate)

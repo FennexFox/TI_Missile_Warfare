@@ -17,7 +17,10 @@ namespace MissileFireControl.Mod.Diagnostics
     {
         private static int _cycleSequence;
 
-        public static void LogProjectileFireShadowAllocation(object projectile, object[] args)
+        public static void LogProjectileFireShadowAllocation(
+            object projectile,
+            object[] args,
+            ReadinessEvidenceSnapshot readinessEvidence)
         {
             if (!ShouldLog())
             {
@@ -26,7 +29,7 @@ namespace MissileFireControl.Mod.Diagnostics
 
             try
             {
-                ExtractedCombatSnapshot snapshot = CombatSnapshotExtractor.FromProjectileMissileFire(projectile, args);
+                ExtractedCombatSnapshot snapshot = CombatSnapshotExtractor.FromProjectileMissileFire(projectile, args, readinessEvidence);
                 LogShadowCycle(snapshot);
             }
             catch (Exception ex)
@@ -106,7 +109,13 @@ namespace MissileFireControl.Mod.Diagnostics
                 WeaponId = snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
                 MissileProfileId = snapshot.Missile.Id,
                 ReadyShots = Math.Max(0, ReadyShots(snapshot)),
-                RemainingShots = snapshot.Inventory == null ? -1 : snapshot.Inventory.RemainingShots
+                RemainingShots = snapshot.Inventory == null ? -1 : snapshot.Inventory.RemainingShots,
+                ReadyShotEvidenceSource = Evidence(snapshot, inventory => inventory.ReadyShotEvidenceSource, "unknown"),
+                ReadinessMissingReason = Evidence(snapshot, inventory => inventory.ReadinessMissingReason, "unknown"),
+                AmmoEvidenceSource = Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"),
+                LiveWeaponState = Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"),
+                ReadyWeaponCount = snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyWeaponCount,
+                UnknownReadinessWeaponCount = snapshot.Inventory == null ? 1 : snapshot.Inventory.UnknownReadinessWeaponCount
             });
 
             return request;
@@ -179,6 +188,12 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "friendlyLaunchers", HasConcreteIdentity(snapshot == null ? null : snapshot.Launcher, "launcher") ? "1" : "0");
             AppendPair(builder, "targetCount", snapshot == null || snapshot.Target == null ? "0" : "1");
             AppendPair(builder, "totalReadyShots", ReadyShots(snapshot) < 0 ? "unknown" : ReadyShots(snapshot).ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "readyShotEvidenceSource", Evidence(snapshot, inventory => inventory.ReadyShotEvidenceSource, "unknown"));
+            AppendPair(builder, "readinessMissingReason", Evidence(snapshot, inventory => inventory.ReadinessMissingReason, "unknown"));
+            AppendPair(builder, "ammoEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"));
+            AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
+            AppendPair(builder, "readyWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyWeaponCount));
+            AppendPair(builder, "unknownReadinessWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownReadinessWeaponCount));
             AppendPair(builder, "assignedShots", result == null ? "0" : result.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "unassignedShots", result == null || ReadyShots(snapshot) < 0 ? "unknown" : result.UnassignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
@@ -223,6 +238,20 @@ namespace MissileFireControl.Mod.Diagnostics
         private static int ReadyShots(ExtractedCombatSnapshot snapshot)
         {
             return snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyShots;
+        }
+
+        private static string Evidence(
+            ExtractedCombatSnapshot snapshot,
+            Func<MissileInventorySnapshot, string> read,
+            string fallback)
+        {
+            if (snapshot == null || snapshot.Inventory == null || read == null)
+            {
+                return fallback;
+            }
+
+            string value = read(snapshot.Inventory);
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
 
         private static bool HasConcreteMissile(MissileProfile missile)
@@ -383,6 +412,11 @@ namespace MissileFireControl.Mod.Diagnostics
         private static string Format(double value)
         {
             return value.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatCount(int value)
+        {
+            return value < 0 ? "unknown" : value.ToString(CultureInfo.InvariantCulture);
         }
 
         private static void AppendPair(StringBuilder builder, string key, string value)

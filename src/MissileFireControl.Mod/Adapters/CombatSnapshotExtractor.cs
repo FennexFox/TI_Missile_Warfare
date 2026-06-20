@@ -25,9 +25,23 @@ namespace MissileFireControl.Mod.Adapters
         public List<string> MissingFields { get; private set; }
     }
 
+    internal sealed class ReadinessEvidenceSnapshot
+    {
+        public int ReadyShots { get; set; } = -1;
+        public string ReadyShotEvidenceSource { get; set; }
+        public string ReadinessMissingReason { get; set; }
+        public string AmmoEvidenceSource { get; set; }
+        public string LiveWeaponState { get; set; }
+        public int ReadyWeaponCount { get; set; } = -1;
+        public int UnknownReadinessWeaponCount { get; set; } = 1;
+    }
+
     internal static class CombatSnapshotExtractor
     {
-        public static ExtractedCombatSnapshot FromProjectileMissileFire(object projectile, object[] args)
+        public static ExtractedCombatSnapshot FromProjectileMissileFire(
+            object projectile,
+            object[] args,
+            ReadinessEvidenceSnapshot readinessEvidence)
         {
             object launcher = GetArg(args, 0);
             object missileTemplate = GetArg(args, 1);
@@ -51,7 +65,7 @@ namespace MissileFireControl.Mod.Adapters
                 OriginVelocityKps = GameObjectReader.ReadVector(originVelocity)
             };
 
-            snapshot.Inventory = ExtractInventory(launcher, missileTemplate, snapshot.Launcher, snapshot.Missile);
+            snapshot.Inventory = ExtractInventory(launcher, missileTemplate, snapshot.Launcher, snapshot.Missile, readinessEvidence);
             AddWeapon(snapshot.Launcher, missileTemplate, snapshot.Inventory);
             AddMissingFields(snapshot);
             return snapshot;
@@ -149,19 +163,26 @@ namespace MissileFireControl.Mod.Adapters
             object launcher,
             object missileTemplate,
             ShipSnapshot launcherSnapshot,
-            MissileProfile missileProfile)
+            MissileProfile missileProfile,
+            ReadinessEvidenceSnapshot readinessEvidence)
         {
             object weapon = GameObjectReader.ReadFirstMember(launcher, "weapon", "Weapon", "weaponData", "module", "Module");
-            int readyShots = FirstKnownCount(weapon, launcher, missileTemplate, "readyShots", "ReadyShots", "loadedAmmo", "loadedMissiles", "readyMissiles");
             int remainingShots = FirstKnownCount(weapon, launcher, missileTemplate, "remainingShots", "RemainingShots", "ammo", "Ammo", "magazine", "missileCount", "remainingMissiles");
+            ReadinessEvidenceSnapshot evidence = BuildInventoryReadinessEvidence(readinessEvidence, remainingShots);
 
             return new MissileInventorySnapshot
             {
                 LauncherShipId = launcherSnapshot == null ? "unknown-launcher" : launcherSnapshot.Id,
                 WeaponId = GameObjectReader.StableId(weapon ?? missileTemplate, "weapon"),
                 MissileProfileId = missileProfile == null ? "unknown-missile" : missileProfile.Id,
-                ReadyShots = readyShots,
-                RemainingShots = remainingShots
+                ReadyShots = evidence.ReadyShots,
+                RemainingShots = remainingShots,
+                ReadyShotEvidenceSource = evidence.ReadyShotEvidenceSource,
+                ReadinessMissingReason = evidence.ReadinessMissingReason,
+                AmmoEvidenceSource = evidence.AmmoEvidenceSource,
+                LiveWeaponState = evidence.LiveWeaponState,
+                ReadyWeaponCount = evidence.ReadyWeaponCount,
+                UnknownReadinessWeaponCount = evidence.UnknownReadinessWeaponCount
             };
         }
 
@@ -182,8 +203,54 @@ namespace MissileFireControl.Mod.Adapters
                 CanDefendOtherShips = false,
                 SupportRangeKm = 0.0,
                 ReadyShots = inventory == null ? -1 : inventory.ReadyShots,
-                RemainingShots = inventory == null ? -1 : inventory.RemainingShots
+                RemainingShots = inventory == null ? -1 : inventory.RemainingShots,
+                ReadyShotEvidenceSource = inventory == null ? "unknown" : inventory.ReadyShotEvidenceSource,
+                ReadinessMissingReason = inventory == null ? "missing inventory" : inventory.ReadinessMissingReason,
+                AmmoEvidenceSource = inventory == null ? "unknown" : inventory.AmmoEvidenceSource,
+                LiveWeaponState = inventory == null ? "unknown" : inventory.LiveWeaponState,
+                ReadyWeaponCount = inventory == null ? -1 : inventory.ReadyWeaponCount,
+                UnknownReadinessWeaponCount = inventory == null ? 1 : inventory.UnknownReadinessWeaponCount
             });
+        }
+
+        private static ReadinessEvidenceSnapshot BuildInventoryReadinessEvidence(
+            ReadinessEvidenceSnapshot readinessEvidence,
+            int remainingShots)
+        {
+            if (readinessEvidence != null)
+            {
+                return new ReadinessEvidenceSnapshot
+                {
+                    ReadyShots = readinessEvidence.ReadyShots,
+                    ReadyShotEvidenceSource = CleanEvidence(readinessEvidence.ReadyShotEvidenceSource, "unknown"),
+                    ReadinessMissingReason = CleanEvidence(readinessEvidence.ReadinessMissingReason, "unknown"),
+                    AmmoEvidenceSource = CleanEvidence(readinessEvidence.AmmoEvidenceSource, "unknown"),
+                    LiveWeaponState = CleanEvidence(readinessEvidence.LiveWeaponState, "unknown"),
+                    ReadyWeaponCount = readinessEvidence.ReadyWeaponCount,
+                    UnknownReadinessWeaponCount = readinessEvidence.UnknownReadinessWeaponCount
+                };
+            }
+
+            if (remainingShots >= 0)
+            {
+                return new ReadinessEvidenceSnapshot
+                {
+                    ReadyShotEvidenceSource = "unknown",
+                    ReadinessMissingReason = "ammo-only projectile snapshot evidence",
+                    AmmoEvidenceSource = "projectileSnapshotCount",
+                    LiveWeaponState = "missing live weapon correlation",
+                    UnknownReadinessWeaponCount = 1
+                };
+            }
+
+            return new ReadinessEvidenceSnapshot
+            {
+                ReadyShotEvidenceSource = "unknown",
+                ReadinessMissingReason = "missing live weapon correlation",
+                AmmoEvidenceSource = "none",
+                LiveWeaponState = "missing live weapon correlation",
+                UnknownReadinessWeaponCount = 1
+            };
         }
 
         private static WeaponRole MapWeaponRole(object weaponTemplate)
@@ -212,6 +279,11 @@ namespace MissileFireControl.Mod.Adapters
         private static object GetArg(object[] args, int index)
         {
             return args == null || index < 0 || index >= args.Length ? null : args[index];
+        }
+
+        private static string CleanEvidence(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
 
         private static void AddMissingFields(ExtractedCombatSnapshot snapshot)

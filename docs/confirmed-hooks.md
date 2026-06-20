@@ -130,6 +130,24 @@ of the `FireWeapon` ammo decrement. The same log had 670 `SnapshotLog` rows, and
 all 670 still reported `readyShots=unknown`; no true ready, loaded, or chambered
 source was recovered.
 
+Issue #15 reuses that same-thread prefix evidence for the projectile-fire
+snapshot and shadow allocation diagnostics. When a `TISpaceCombatProjectileState`
+missile fire hook runs inside a successful `MissileWeapon.TryFire`, the snapshot
+path can now log:
+
+- `readyShotEvidenceSource`;
+- `readinessMissingReason`;
+- `ammoEvidenceSource`;
+- `liveWeaponState`;
+- `readyWeaponCount`;
+- `unknownReadinessWeaponCount`.
+
+The current source remains `readyShotEvidenceSource=unknown` because the
+correlated live evidence is ammo and gate/cooldown state, not a proven true
+ready, loaded, or chambered missile count. `preFireRemaining` continues to mean
+pre-decrement ammo dictionary state. It must not be used as controlled
+allocation-ready `readyShots` without a separately documented source.
+
 ## Caveats
 
 - The hooks are diagnostics only. The missile try-fire hook now has an
