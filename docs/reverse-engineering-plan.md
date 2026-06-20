@@ -66,8 +66,8 @@ Current confirmed runtime hook findings are recorded in
 ### Current readiness blocker
 
 Issue #15 confirmed that live `MissileWeapon.TryFire` ammo and gate/cooldown
-evidence can be correlated into `SnapshotLog` and `AllocationLog`, but it did
-not find an allocator-safe fireable-shot count beyond ammo/gate evidence. The
+evidence can be correlated into `SnapshotLog` and `AllocationLog`, but the
+shot-budget semantics remain unresolved. See `docs/readiness-semantics.md`. The
 active runtime evidence is:
 
 - `preFireRemaining` and `postFireRemaining` from
@@ -76,13 +76,16 @@ active runtime evidence is:
 - `preFireRemaining - postFireRemaining = 1` on successful launches.
 
 That evidence proves magazine/ammo visibility and current-fire gate state. It
-does not prove allocator-safe numeric `readyShots`. Do not use ammo dictionary
-or gate state as `readyShots` without a separately documented runtime source.
+does not by itself prove allocator-safe numeric `readyShots`. Do not label ammo
+or gate state as `readyShots` until runtime evidence shows either that
+`ammo[weaponData]` plus known fire gates is the game-equivalent shot budget, or
+that a distinct shot-budget source exists.
 
 Before controlled allocation depends on shot budgets, add a focused
-reverse-engineering pass to determine whether any allocator-safe fireable-shot
-source exists beyond ammo/gate evidence. Search likely areas without assuming a
-separate loaded/chambered state model exists:
+reverse-engineering pass to decide between the documented hypotheses: keyed ammo
+plus known gates as the game-equivalent shot budget, a distinct runtime source,
+or a design that avoids numeric fleet-level shot budgets. Search likely areas
+without assuming a separate loaded/chambered state model exists:
 
 - `MissileWeapon` and base `Weapon` fields/properties beyond the confirmed
   `TryFire` path;
@@ -127,11 +130,10 @@ resolved:
 - Apply target assignments to selected ships only.
 - Keep an option to stay in recommendation-only mode.
 
-Do not start controlled allocation from numeric `readyShots` until an
-allocator-safe fireable-shot source beyond ammo/gate evidence is documented. If
-readiness remains unknown, controlled allocation needs a different design that
-avoids pretending a
-fleet-level ready-shot budget exists.
+Do not start controlled allocation from numeric `readyShots` until the
+shot-budget semantics are resolved in `docs/readiness-semantics.md`. If the
+semantics remain unresolved, controlled allocation needs a different design that
+avoids pretending a fleet-level ready-shot budget exists.
 
 ## Phase 5: launch discipline
 

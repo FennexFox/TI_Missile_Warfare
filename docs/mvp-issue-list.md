@@ -61,24 +61,24 @@ Acceptance criteria:
 Goal: apply target assignments for selected friendly missile ships.
 
 Prerequisite: Issue #15 showed live ammo/gate evidence in snapshot/allocation
-diagnostics, but `readyShots` remains unknown because no allocator-safe
-fireable-shot source beyond ammo/gate evidence has been proven. Do not implement
-Issue 6 using numeric `readyShots` until a focused reverse-engineering pass
-either finds such a source or revises the controlled-allocation design to avoid
-a fleet-level ready-shot budget.
+diagnostics, but `readyShots` remains unresolved. Do not implement Issue 6 using
+a numeric shot budget until `docs/readiness-semantics.md` resolves whether
+`ammo[weaponData]` plus known fire gates is the game-equivalent shot budget,
+whether a distinct fireable-shot source exists, or whether the controlled-
+allocation design should avoid a fleet-level shot budget entirely.
 
 Acceptance criteria:
 
-- Only selected player ships are affected.
-- Existing manual control remains possible.
-- Recommendation-only mode prevents actual command changes.
+- Selection scope is based on a verified player-selection or player-command hook; until then, command application remains disabled.
+- Existing manual control remains possible after the selected-ship command path is verified.
+- Recommendation-only mode prevents command changes.
 - Failures are logged without breaking combat.
 
 Readiness gate:
 
-- Prove an allocator-safe fireable-shot source beyond ammo/gate evidence; or
-- document that no such source exists and update the Issue 6 design around
-  weaker per-weapon gate/ammo evidence without treating it as `readyShots`.
+- Validate `ammo[weaponData]` plus known fire gates as the game-equivalent shot budget; or
+- prove a distinct allocator-safe fireable-shot source; or
+- document that no numeric source is needed and update the Issue 6 design to use weaker per-weapon gate/ammo evidence without calling it `readyShots`.
 
 ## Issue 7: Launch discipline prototype
 
@@ -86,7 +86,7 @@ Goal: prevent obviously wasteful launches.
 
 Acceptance criteria:
 
-- Launch window score is computed from range and relative velocity.
-- Conservative/balanced/aggressive thresholds are configurable.
-- Rejected launches are logged with reason.
+- Launch window score is computed only from validated range and target/relative-velocity evidence; otherwise the score is marked provisional or unavailable.
+- Conservative/balanced/aggressive thresholds are configurable after the scoring inputs are validated.
+- Rejected launches are logged with reason, including missing-input reasons.
 - Feature can be disabled independently from allocation.
