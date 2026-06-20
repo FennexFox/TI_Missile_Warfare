@@ -13,19 +13,38 @@ artifacts/
 *.pdb
 *.mdb
 *.zip
+.ruff_cache/
 
 # Local tool state and generated metadata
+.serena/
 .serena/cache/
 .serena/memories/
 .serena/project.local.yml
+
+# Repository process metadata
+.github/
+.gitattributes
+.editorconfig
+.gitignore
+.graphifyignore
 
 # Logs and diagnostic exports
 logs/
 *.log
 *.csv
 *.jsonl
+.chatgpt/
+
+# Project/build manifests and utility scripts
+# Keep the graph focused on product source plus docs/dev-docs.
+*.sln
+*.csproj
+ModInfo.json
+build.ps1
+tools/
 
 # Local machine-specific config
 Directory.Build.props
+Directory.Build.props.example
 *.user
 *.suo
