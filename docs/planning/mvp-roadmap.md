@@ -8,14 +8,17 @@ The project has enough diagnostics to observe missile launches and shadow alloca
 
 Current blocker:
 
-- Shot-budget semantics are unresolved. `TISpaceShipState.ammo[weaponData]` plus known gates may be the game-equivalent budget, a distinct runtime source may exist, or the controlled allocator may need to avoid a numeric fleet-level budget. See [`readiness-semantics.md`](../research/readiness-semantics.md).
+- Issue #17 resolved the shot-budget design gate to Path A:
+  `TISpaceShipState.ammo[weaponData]` plus vanilla fire gates is the
+  game-equivalent per-weapon fire budget. The mod names this explicit value
+  `ammoGateBudgetShots`; no distinct loaded/chambered source was found. See
+  [`readiness-semantics.md`](../research/readiness-semantics.md).
 
 Current missing or provisional inputs:
 
-- allocator-safe shot budget;
+- selected-player command scope;
 - target velocity / relative velocity evidence;
 - target point-defense weapon weights;
-- verified selected-player command scope;
 - in-flight projectile/controller guidance target identity.
 
 ## Completed diagnostic foundation
@@ -90,13 +93,19 @@ Acceptance criteria:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked.
+Status: blocked pending selected-player command scope validation and
+command-application safety work.
 
-Do not implement Issue 6 using a numeric shot budget until [`readiness-semantics.md`](../research/readiness-semantics.md) resolves whether:
+Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
+validated the per-weapon `ammoGateBudgetShots` semantics, but controlled command
+application still needs a verified selected-player command path and must let
+vanilla combat enforce the final legal launch result.
 
-- `ammo[weaponData]` plus known fire gates is the game-equivalent shot budget;
-- a distinct fireable-shot source exists; or
-- the controlled-allocation design should avoid a fleet-level shot budget entirely.
+Future #6 design should log selected player ship identity, visible weapon/module
+identity, `ammoGateBudgetShots` and its evidence source, the allocator
+recommendation that motivated the command, command intent and target,
+skipped/failure reason, and observed ammo delta or launch evidence when
+available.
 
 Additional gate: selection scope must be based on a verified player-selection or player-command hook. Until then, command application remains disabled.
 
@@ -122,7 +131,7 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Resolve shot-budget semantics with a focused runtime/decompiled-source pass.
+1. Verify selected-player command scope before any command application.
 2. Locate target velocity and point-defense weapon data sources.
-3. Verify selected-player command scope before any command application.
+3. Design Issue #6 around the vanilla selected ship/weapon command path and explicit `ammoGateBudgetShots` diagnostics.
 4. Only then revisit controlled allocation and launch discipline behavior.

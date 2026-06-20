@@ -36,13 +36,13 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "rangeKm", snapshot.Missile == null ? "unknown" : Format(snapshot.Missile.NominalRangeKm));
                 AppendPair(builder, "velocityKps", snapshot.Missile == null ? "unknown" : Format(snapshot.Missile.EffectiveVelocityKps));
                 AppendPair(builder, "weaponRole", WeaponRole(snapshot));
-                AppendPair(builder, "readyShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyShots));
-                AppendPair(builder, "readyShotEvidenceSource", Evidence(snapshot, inventory => inventory.ReadyShotEvidenceSource, "unknown"));
-                AppendPair(builder, "readinessMissingReason", Evidence(snapshot, inventory => inventory.ReadinessMissingReason, "unknown"));
+                AppendPair(builder, "ammoGateBudgetShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateBudgetShots));
+                AppendPair(builder, "ammoGateBudgetEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoGateBudgetEvidenceSource, "unknown"));
+                AppendPair(builder, "ammoGateBudgetMissingReason", Evidence(snapshot, inventory => inventory.AmmoGateBudgetMissingReason, "unknown"));
                 AppendPair(builder, "ammoEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"));
                 AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
-                AppendPair(builder, "readyWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyWeaponCount));
-                AppendPair(builder, "unknownReadinessWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownReadinessWeaponCount));
+                AppendPair(builder, "ammoGateWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount));
+                AppendPair(builder, "unknownAmmoGateWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownAmmoGateWeaponCount));
                 AppendPair(builder, "remainingShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.RemainingShots));
                 AppendPair(builder, "originPosition", snapshot.HasOriginPosition ? Format(snapshot.OriginPositionKm) : "unknown");
                 AppendPair(builder, "originVelocityKps", snapshot.HasOriginVelocity ? Format(snapshot.OriginVelocityKps) : "unknown");

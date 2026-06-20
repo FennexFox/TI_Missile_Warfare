@@ -27,13 +27,13 @@ namespace MissileFireControl.Mod.Adapters
 
     internal sealed class ReadinessEvidenceSnapshot
     {
-        public int ReadyShots { get; set; } = -1;
-        public string ReadyShotEvidenceSource { get; set; }
-        public string ReadinessMissingReason { get; set; }
+        public int AmmoGateBudgetShots { get; set; } = -1;
+        public string AmmoGateBudgetEvidenceSource { get; set; }
+        public string AmmoGateBudgetMissingReason { get; set; }
         public string AmmoEvidenceSource { get; set; }
         public string LiveWeaponState { get; set; }
-        public int ReadyWeaponCount { get; set; } = -1;
-        public int UnknownReadinessWeaponCount { get; set; } = 1;
+        public int AmmoGateWeaponCount { get; set; } = -1;
+        public int UnknownAmmoGateWeaponCount { get; set; } = 1;
     }
 
     internal static class CombatSnapshotExtractor
@@ -175,14 +175,14 @@ namespace MissileFireControl.Mod.Adapters
                 LauncherShipId = launcherSnapshot == null ? "unknown-launcher" : launcherSnapshot.Id,
                 WeaponId = GameObjectReader.StableId(weapon ?? missileTemplate, "weapon"),
                 MissileProfileId = missileProfile == null ? "unknown-missile" : missileProfile.Id,
-                ReadyShots = evidence.ReadyShots,
+                AmmoGateBudgetShots = evidence.AmmoGateBudgetShots,
                 RemainingShots = remainingShots,
-                ReadyShotEvidenceSource = evidence.ReadyShotEvidenceSource,
-                ReadinessMissingReason = evidence.ReadinessMissingReason,
+                AmmoGateBudgetEvidenceSource = evidence.AmmoGateBudgetEvidenceSource,
+                AmmoGateBudgetMissingReason = evidence.AmmoGateBudgetMissingReason,
                 AmmoEvidenceSource = evidence.AmmoEvidenceSource,
                 LiveWeaponState = evidence.LiveWeaponState,
-                ReadyWeaponCount = evidence.ReadyWeaponCount,
-                UnknownReadinessWeaponCount = evidence.UnknownReadinessWeaponCount
+                AmmoGateWeaponCount = evidence.AmmoGateWeaponCount,
+                UnknownAmmoGateWeaponCount = evidence.UnknownAmmoGateWeaponCount
             };
         }
 
@@ -202,14 +202,14 @@ namespace MissileFireControl.Mod.Adapters
                 ThreatWeight = 1.0,
                 CanDefendOtherShips = false,
                 SupportRangeKm = 0.0,
-                ReadyShots = inventory == null ? -1 : inventory.ReadyShots,
+                AmmoGateBudgetShots = inventory == null ? -1 : inventory.AmmoGateBudgetShots,
                 RemainingShots = inventory == null ? -1 : inventory.RemainingShots,
-                ReadyShotEvidenceSource = inventory == null ? "unknown" : inventory.ReadyShotEvidenceSource,
-                ReadinessMissingReason = inventory == null ? "missing inventory" : inventory.ReadinessMissingReason,
+                AmmoGateBudgetEvidenceSource = inventory == null ? "unknown" : inventory.AmmoGateBudgetEvidenceSource,
+                AmmoGateBudgetMissingReason = inventory == null ? "missing inventory" : inventory.AmmoGateBudgetMissingReason,
                 AmmoEvidenceSource = inventory == null ? "unknown" : inventory.AmmoEvidenceSource,
                 LiveWeaponState = inventory == null ? "unknown" : inventory.LiveWeaponState,
-                ReadyWeaponCount = inventory == null ? -1 : inventory.ReadyWeaponCount,
-                UnknownReadinessWeaponCount = inventory == null ? 1 : inventory.UnknownReadinessWeaponCount
+                AmmoGateWeaponCount = inventory == null ? -1 : inventory.AmmoGateWeaponCount,
+                UnknownAmmoGateWeaponCount = inventory == null ? 1 : inventory.UnknownAmmoGateWeaponCount
             });
         }
 
@@ -221,13 +221,13 @@ namespace MissileFireControl.Mod.Adapters
             {
                 return new ReadinessEvidenceSnapshot
                 {
-                    ReadyShots = readinessEvidence.ReadyShots,
-                    ReadyShotEvidenceSource = CleanEvidence(readinessEvidence.ReadyShotEvidenceSource, "unknown"),
-                    ReadinessMissingReason = CleanEvidence(readinessEvidence.ReadinessMissingReason, "unknown"),
+                    AmmoGateBudgetShots = readinessEvidence.AmmoGateBudgetShots,
+                    AmmoGateBudgetEvidenceSource = CleanEvidence(readinessEvidence.AmmoGateBudgetEvidenceSource, "unknown"),
+                    AmmoGateBudgetMissingReason = CleanEvidence(readinessEvidence.AmmoGateBudgetMissingReason, "unknown"),
                     AmmoEvidenceSource = CleanEvidence(readinessEvidence.AmmoEvidenceSource, "unknown"),
                     LiveWeaponState = CleanEvidence(readinessEvidence.LiveWeaponState, "unknown"),
-                    ReadyWeaponCount = readinessEvidence.ReadyWeaponCount,
-                    UnknownReadinessWeaponCount = readinessEvidence.UnknownReadinessWeaponCount
+                    AmmoGateWeaponCount = readinessEvidence.AmmoGateWeaponCount,
+                    UnknownAmmoGateWeaponCount = readinessEvidence.UnknownAmmoGateWeaponCount
                 };
             }
 
@@ -235,21 +235,21 @@ namespace MissileFireControl.Mod.Adapters
             {
                 return new ReadinessEvidenceSnapshot
                 {
-                    ReadyShotEvidenceSource = "unknown",
-                    ReadinessMissingReason = "ammo-only projectile snapshot evidence",
+                    AmmoGateBudgetEvidenceSource = "unknown",
+                    AmmoGateBudgetMissingReason = "ammo-only projectile snapshot evidence",
                     AmmoEvidenceSource = "projectileSnapshotCount",
                     LiveWeaponState = "missing live weapon correlation",
-                    UnknownReadinessWeaponCount = 1
+                    UnknownAmmoGateWeaponCount = 1
                 };
             }
 
             return new ReadinessEvidenceSnapshot
             {
-                ReadyShotEvidenceSource = "unknown",
-                ReadinessMissingReason = "missing live weapon correlation",
+                AmmoGateBudgetEvidenceSource = "unknown",
+                AmmoGateBudgetMissingReason = "missing live weapon correlation",
                 AmmoEvidenceSource = "none",
                 LiveWeaponState = "missing live weapon correlation",
-                UnknownReadinessWeaponCount = 1
+                UnknownAmmoGateWeaponCount = 1
             };
         }
 
@@ -303,9 +303,9 @@ namespace MissileFireControl.Mod.Adapters
                 snapshot.MissingFields.Add("expectedTargetPosition");
             }
 
-            if (snapshot.Inventory == null || snapshot.Inventory.ReadyShots < 0)
+            if (snapshot.Inventory == null || snapshot.Inventory.AmmoGateBudgetShots < 0)
             {
-                snapshot.MissingFields.Add("readyShots");
+                snapshot.MissingFields.Add("ammoGateBudgetShots");
             }
 
             if (snapshot.Inventory == null || snapshot.Inventory.RemainingShots < 0)

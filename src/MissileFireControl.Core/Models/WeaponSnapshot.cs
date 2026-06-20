@@ -9,13 +9,13 @@ namespace MissileFireControl.Core.Models
         public double ThreatWeight { get; set; }
         public bool CanDefendOtherShips { get; set; }
         public double SupportRangeKm { get; set; }
-        public int ReadyShots { get; set; }
+        public int AmmoGateBudgetShots { get; set; }
         public int RemainingShots { get; set; }
-        public string ReadyShotEvidenceSource { get; set; }
-        public string ReadinessMissingReason { get; set; }
+        public string AmmoGateBudgetEvidenceSource { get; set; }
+        public string AmmoGateBudgetMissingReason { get; set; }
         public string AmmoEvidenceSource { get; set; }
         public string LiveWeaponState { get; set; }
-        public int ReadyWeaponCount { get; set; } = -1;
-        public int UnknownReadinessWeaponCount { get; set; }
+        public int AmmoGateWeaponCount { get; set; } = -1;
+        public int UnknownAmmoGateWeaponCount { get; set; }
     }
 }

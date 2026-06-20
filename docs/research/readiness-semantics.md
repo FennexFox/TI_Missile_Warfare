@@ -1,57 +1,91 @@
 # Readiness Semantics
 
-This document records the current evidence and open questions for Terra Invicta tactical-combat projectile allocation diagnostics.
+This document records the shot-budget semantics used by Terra Invicta tactical-combat projectile allocation diagnostics.
 
 ## Current conclusion
 
-Do not assume that the game has a separate `readyShots`, loaded, or chambered state model.
+Issue #17 chooses Path A with explicit scope: `TISpaceShipState.ammo[weaponData]`
+plus the vanilla fire gates is the game-equivalent budget for the observed
+per-weapon missile fire decision.
 
-The current live evidence shows that `TISpaceShipState.ammo[weaponData]` can be read around `MissileWeapon.TryFire`, and successful launches show a one-count decrease across the observed fire path. That evidence may mean one of two things:
+That does not mean the game exposes a distinct `readyShots`, loaded, or
+chambered-shot source. The reviewed source path uses module-keyed ammo plus
+gates. The mod therefore names this derived value `ammoGateBudgetShots`, and it
+must stay tied to the gates and timing that make it valid.
 
-1. `ammo[weaponData]` is the vanilla runtime source for the currently usable shot budget at that moment.
-2. `ammo[weaponData]` is only a broader magazine/ammunition count, while some other gate/cooldown/salvo logic determines whether a shot can actually fire.
+## Evidence
 
-Both interpretations remain possible until the runtime call path and UI semantics are checked more carefully.
+Reviewed decompiled source is under `../TI_RE_Workspace/decompiled_source`.
 
-## Hypothesis A: ammo-as-fireable-budget
+- `PavonisInteractive.TerraInvicta.Ship/MissileWeapon.cs:38-50` calls
+  `TryFireCommon(currentTime)`, fires the projectile, enters cooldown, and then
+  calls `WeaponCarrierState.FireWeapon(base.weaponData, ref_projectile)`.
+- `PavonisInteractive.TerraInvicta.Ship/Weapon.cs:475-489` rejects fire when the
+  weapon is on cooldown, has no target, fails
+  `combatant.WeaponCarrierState.WeaponCanFire(weaponData)`, or is not on target.
+- `PavonisInteractive.TerraInvicta/TISpaceShipState.cs:741` stores ammo as
+  `Dictionary<ModuleDataEntry, int> ammo`.
+- `TISpaceShipState.cs:3052-3075` loads and reads magazine ammo by module key;
+  `WeaponHasAmmo(module)` returns `ammo[module] > 0` for magazine weapons.
+- `TISpaceShipState.cs:3130-3158` decrements the same keyed ammo in
+  `FireWeapon(module, targetedProjectile)` through `ChangeAmmoValue(module, -1)`
+  and then triggers `ShipWeaponFired`.
+- `TISpaceShipState.cs:3581-3597` makes `WeaponCanFire(moduleData)` depend on
+  `WeaponIsOperable`, ammo, power, heat, and active fire control.
+- `SpaceCombat.UI/ShipWeaponUIController.cs:109-113` displays
+  `ship.ammo[weapon.weaponData]` as the weapon ammo count.
+- `PavonisInteractive.TerraInvicta.Ship/SalvoFireMode.cs:22-49` counts fired
+  `ShipWeaponFired` events and resets mode after a salvo quota. This is
+  fire-mode accounting, not a separate shot-budget source.
+- `SelectSalvoTargetCommand.cs:15-20` gates the command on
+  `AnyOffensiveMissileWeaponCanFire`, and `SelectSalvoTargetCommand.cs:39-51`
+  applies primary target plus `FireMode.Salvo` through vanilla player actions.
 
-`TISpaceShipState.ammo[weaponData]` may already be the best available runtime budget for shots that the current weapon can spend. Under this interpretation, there may be no additional `readyShots` state to recover.
+The source review did not find a separate allocator-safe loaded/chambered shot
+count.
 
-Evidence that would support this hypothesis:
+## Validity window
 
-- The UI displays a count that matches `ammo[weaponData]` at the same tactical-combat moment.
-- `WeaponCanFire(weaponData)` and cooldown/salvo gates explain all cases where `ammo[weaponData] > 0` but no shot is fired.
-- The count changes only when the game spends an actual shot through the observed fire path.
-- Multiple launchers or modules do not require a hidden per-launcher ready queue beyond the keyed ammo value.
+`ammoGateBudgetShots` is valid only when all of these are true for the same
+weapon/module and timing window:
 
-If this hypothesis is confirmed, the allocator should not invent a separate `readyShots` concept. It should document `ammo[weaponData]` as the observed vanilla shot budget and keep all gate/cooldown/salvo checks explicit.
+- ammo comes from `TISpaceShipState.ammo[weaponData]`;
+- the weapon is observed before the relevant `TryFire` attempt spends ammo;
+- `WeaponCanFire(weaponData)` is true;
+- `OnCooldown(currentTime)` is false;
+- the fire path has a target and passes vanilla on-target checks;
+- salvo state is treated as mode/cooldown behavior, not as a separate budget.
 
-## Hypothesis B: separate fireable-shot source
+If any of those inputs are missing, the budget remains unknown and diagnostics
+must emit an `ammoGateBudgetMissingReason`.
 
-There may be a separate runtime source for shots currently available to fire, distinct from the keyed ammo count. This source has not been confirmed.
+## Aggregation rule
 
-Evidence that would support this hypothesis:
+Fleet-level allocation may sum only explicitly sourced per-weapon
+`ammoGateBudgetShots` values. It must not derive a budget from projectile
+remaining counts, post-fire ammo, stale UI values, ship-level magazine capacity,
+or a count without the paired gate evidence.
 
-- A field or method changes independently from `ammo[weaponData]` and corresponds to launch readiness.
-- The UI or fire path displays/uses a ready count that can diverge from `ammo[weaponData]`.
-- `ammo[weaponData]` remains positive while a separate state explains why no launcher can spend a shot, beyond simple cooldown/salvo/target gates.
-- Multi-launcher behavior cannot be represented by the keyed ammo value plus known gates.
+The current shadow allocation remains diagnostics-first. It can run the Core
+allocator when it has an `ammoGateBudgetShots` value, but future controlled
+commands still need a verified selected-player command scope before any command
+application.
 
-Until such evidence is found, do not write requirements that assume a separate ready/loaded/chambered state model exists.
+## Command consequence
+
+Issue #6 is no longer blocked on finding a distinct shot-budget source. It
+remains blocked on selected-player command scope and command-application safety.
+The likely safe command basis is the vanilla command path: set a selected
+player ship's primary target and missile weapon mode through the same player
+action family used by `SelectSalvoTargetCommand`, while logging intent,
+`ammoGateBudgetShots`, skipped reasons, and observed launch/ammo deltas.
 
 ## Documentation rule
 
 Use these terms carefully:
 
-- Prefer: `observed ammo budget`, `fireable-shot evidence`, `allocator-safe shot budget`, `ammo/gate semantics`.
-- Avoid: `true readyShots`, `loaded count`, `chambered count`, unless the game actually exposes such a state.
+- Prefer: `ammoGateBudgetShots`, `ammo/gate budget`, `module-keyed ammo`,
+  `vanilla fire gates`.
+- Avoid: `readyShots`, `loaded count`, `chambered count`, unless a future source
+  actually exposes that distinct state.
 
-## Implementation rule
-
-A numeric allocator budget can be promoted only after one of these is documented:
-
-1. `ammo[weaponData]` is validated as the game-equivalent fireable budget for the relevant timing window.
-2. A distinct runtime source is found and validated.
-3. The allocator design is changed so it does not require a numeric ready-shot budget.
-
-Until then, diagnostics should record raw observed values and should label any derived shot budget as provisional.

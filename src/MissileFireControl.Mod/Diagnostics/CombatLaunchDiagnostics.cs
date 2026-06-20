@@ -317,22 +317,78 @@ namespace MissileFireControl.Mod.Diagnostics
                 return null;
             }
 
+            int ammoGateBudgetShots = TryFireAmmoGateBudgetShots(observation);
             return new ReadinessEvidenceSnapshot
             {
-                ReadyShots = -1,
-                ReadyShotEvidenceSource = "unknown",
-                ReadinessMissingReason = HasLiveGateEvidence(observation)
-                    ? "ammo-and-gate-only live weapon evidence"
-                    : "ammo-only live weapon evidence",
+                AmmoGateBudgetShots = ammoGateBudgetShots,
+                AmmoGateBudgetEvidenceSource = ammoGateBudgetShots >= 0
+                    ? "shipAmmoByWeaponData+TryFireCommonGates"
+                    : "unknown",
+                AmmoGateBudgetMissingReason = ammoGateBudgetShots >= 0
+                    ? "none"
+                    : MissingAmmoGateBudgetReason(observation),
                 AmmoEvidenceSource = observation.AmmoEvidenceSource,
                 LiveWeaponState = "preFireWeaponHasAmmo=" + observation.WeaponHasAmmo
                     + ";preFireWeaponCanFire=" + observation.WeaponCanFire
                     + ";preFireOnCooldown=" + observation.OnCooldown
                     + ";preFireSalvoShotsFired=" + observation.SalvoShotsFired
                     + ";preFireSalvoShots=" + observation.SalvoShots,
-                ReadyWeaponCount = -1,
-                UnknownReadinessWeaponCount = 1
+                AmmoGateWeaponCount = ammoGateBudgetShots >= 0 ? 1 : -1,
+                UnknownAmmoGateWeaponCount = ammoGateBudgetShots >= 0 ? 0 : 1
             };
+        }
+
+        private static int TryFireAmmoGateBudgetShots(TryFireObservation observation)
+        {
+            if (observation == null || observation.AmmoEvidenceSource != "shipAmmoByWeaponData")
+            {
+                return -1;
+            }
+
+            if (!IsTextTrue(observation.WeaponHasAmmo)
+                || !IsTextTrue(observation.WeaponCanFire)
+                || !IsTextFalse(observation.OnCooldown))
+            {
+                return -1;
+            }
+
+            int remaining;
+            if (!int.TryParse(observation.Remaining, NumberStyles.Integer, CultureInfo.InvariantCulture, out remaining))
+            {
+                return -1;
+            }
+
+            return remaining < 0 ? -1 : remaining;
+        }
+
+        private static string MissingAmmoGateBudgetReason(TryFireObservation observation)
+        {
+            if (observation == null)
+            {
+                return "missing live weapon correlation";
+            }
+
+            if (observation.AmmoEvidenceSource != "shipAmmoByWeaponData")
+            {
+                return "missing module-keyed ammo evidence";
+            }
+
+            if (!HasLiveGateEvidence(observation))
+            {
+                return "missing ammo/gate evidence";
+            }
+
+            return "ammo/gate evidence not currently fireable";
+        }
+
+        private static bool IsTextTrue(string value)
+        {
+            return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsTextFalse(string value)
+        {
+            return string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool HasLiveGateEvidence(TryFireObservation observation)

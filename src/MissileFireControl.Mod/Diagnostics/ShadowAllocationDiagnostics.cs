@@ -86,9 +86,9 @@ namespace MissileFireControl.Mod.Diagnostics
                 WriteTargetRecord("rejection", cycleId, rejection, "rejectionReason", rejection.Reason);
             }
 
-            if (result.Allocations.Count == 0 && result.Rejections.Count == 0 && ReadyShots(snapshot) < 0)
+            if (result.Allocations.Count == 0 && result.Rejections.Count == 0 && AmmoGateBudgetShots(snapshot) < 0)
             {
-                WriteSyntheticRejection(cycleId, snapshot, "missing readyShots");
+                WriteSyntheticRejection(cycleId, snapshot, "missing ammoGateBudgetShots");
             }
         }
 
@@ -108,14 +108,14 @@ namespace MissileFireControl.Mod.Diagnostics
                 LauncherShipId = snapshot.Inventory == null ? snapshot.Launcher.Id : snapshot.Inventory.LauncherShipId,
                 WeaponId = snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
                 MissileProfileId = snapshot.Missile.Id,
-                ReadyShots = Math.Max(0, ReadyShots(snapshot)),
+                AmmoGateBudgetShots = Math.Max(0, AmmoGateBudgetShots(snapshot)),
                 RemainingShots = snapshot.Inventory == null ? -1 : snapshot.Inventory.RemainingShots,
-                ReadyShotEvidenceSource = Evidence(snapshot, inventory => inventory.ReadyShotEvidenceSource, "unknown"),
-                ReadinessMissingReason = Evidence(snapshot, inventory => inventory.ReadinessMissingReason, "unknown"),
+                AmmoGateBudgetEvidenceSource = Evidence(snapshot, inventory => inventory.AmmoGateBudgetEvidenceSource, "unknown"),
+                AmmoGateBudgetMissingReason = Evidence(snapshot, inventory => inventory.AmmoGateBudgetMissingReason, "unknown"),
                 AmmoEvidenceSource = Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"),
                 LiveWeaponState = Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"),
-                ReadyWeaponCount = snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyWeaponCount,
-                UnknownReadinessWeaponCount = snapshot.Inventory == null ? 1 : snapshot.Inventory.UnknownReadinessWeaponCount
+                AmmoGateWeaponCount = snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount,
+                UnknownAmmoGateWeaponCount = snapshot.Inventory == null ? 1 : snapshot.Inventory.UnknownAmmoGateWeaponCount
             });
 
             return request;
@@ -158,9 +158,9 @@ namespace MissileFireControl.Mod.Diagnostics
                 AddMissing(missing, "targetVelocity");
             }
 
-            if (ReadyShots(snapshot) < 0)
+            if (AmmoGateBudgetShots(snapshot) < 0)
             {
-                AddMissing(missing, "readyShots");
+                AddMissing(missing, "ammoGateBudgetShots");
             }
 
             if (!HasConcreteMissile(snapshot.Missile))
@@ -187,15 +187,15 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "battle", BattleContext());
             AppendPair(builder, "friendlyLaunchers", HasConcreteIdentity(snapshot == null ? null : snapshot.Launcher, "launcher") ? "1" : "0");
             AppendPair(builder, "targetCount", snapshot == null || snapshot.Target == null ? "0" : "1");
-            AppendPair(builder, "totalReadyShots", ReadyShots(snapshot) < 0 ? "unknown" : ReadyShots(snapshot).ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "readyShotEvidenceSource", Evidence(snapshot, inventory => inventory.ReadyShotEvidenceSource, "unknown"));
-            AppendPair(builder, "readinessMissingReason", Evidence(snapshot, inventory => inventory.ReadinessMissingReason, "unknown"));
+            AppendPair(builder, "totalAmmoGateBudgetShots", AmmoGateBudgetShots(snapshot) < 0 ? "unknown" : AmmoGateBudgetShots(snapshot).ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoGateBudgetEvidenceSource, "unknown"));
+            AppendPair(builder, "ammoGateBudgetMissingReason", Evidence(snapshot, inventory => inventory.AmmoGateBudgetMissingReason, "unknown"));
             AppendPair(builder, "ammoEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"));
             AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
-            AppendPair(builder, "readyWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyWeaponCount));
-            AppendPair(builder, "unknownReadinessWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownReadinessWeaponCount));
+            AppendPair(builder, "ammoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount));
+            AppendPair(builder, "unknownAmmoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownAmmoGateWeaponCount));
             AppendPair(builder, "assignedShots", result == null ? "0" : result.AssignedShots.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "unassignedShots", result == null || ReadyShots(snapshot) < 0 ? "unknown" : result.UnassignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "unassignedShots", result == null || AmmoGateBudgetShots(snapshot) < 0 ? "unknown" : result.UnassignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
             Log.Info("[AllocationLog] " + builder);
         }
@@ -235,9 +235,9 @@ namespace MissileFireControl.Mod.Diagnostics
             WriteTargetRecord("rejection", cycleId, rejection, "rejectionReason", reason);
         }
 
-        private static int ReadyShots(ExtractedCombatSnapshot snapshot)
+        private static int AmmoGateBudgetShots(ExtractedCombatSnapshot snapshot)
         {
-            return snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyShots;
+            return snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateBudgetShots;
         }
 
         private static string Evidence(

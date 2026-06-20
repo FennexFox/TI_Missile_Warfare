@@ -6,13 +6,13 @@ This note records documentation assumptions that should remain provisional until
 
 ### 1. Shot-budget semantics
 
-Previous wording could imply that a distinct budget source must exist beyond `TISpaceShipState.ammo[weaponData]`. That is premature.
+Previous wording could imply that a distinct budget source must exist beyond `TISpaceShipState.ammo[weaponData]`. Issue #17 corrected that assumption.
 
-Current wording should preserve three possibilities:
+Current wording records the confirmed source-level result:
 
-- `ammo[weaponData]` plus known gates is the game-equivalent budget.
-- A distinct runtime source exists.
-- The design avoids a numeric fleet-level budget.
+- `ammo[weaponData]` plus vanilla fire gates is the game-equivalent per-weapon fire budget.
+- No distinct loaded/chambered source was found.
+- The mod should call the value `ammoGateBudgetShots`, not `readyShots`.
 
 Updated durable files:
 
@@ -35,9 +35,8 @@ Shadow allocation example numbers are now labeled as schema examples, not valida
 
 ### 5. Paired ammo/gate evidence wording
 
-The hook documentation now avoids both premature conclusions:
+The hook documentation now avoids the stale premature conclusion:
 
-- do not call paired ammo/gate evidence `readyShots` yet;
 - do not assume a distinct source must exist beyond `ammo[weaponData]` plus known gates.
 
 See [`diagnostics/hooks.md`](../diagnostics/hooks.md) and [`research/readiness-semantics.md`](../research/readiness-semantics.md).

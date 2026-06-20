@@ -63,40 +63,27 @@ No gameplay behavior should change in this phase.
 Current confirmed runtime hook findings are recorded in
 [`diagnostics/hooks.md`](../diagnostics/hooks.md).
 
-### Current readiness blocker
+### Current readiness decision
 
-Issue #15 confirmed that live `MissileWeapon.TryFire` ammo and gate/cooldown
-evidence can be correlated into `SnapshotLog` and `AllocationLog`, but the
-shot-budget semantics remain unresolved. See [`readiness-semantics.md`](readiness-semantics.md). The
-active runtime evidence is:
+Issue #17 resolved the shot-budget semantics to Path A. Source review confirms
+that the vanilla missile fire path spends module-keyed
+`TISpaceShipState.ammo[weaponData]` only after `TryFireCommon` passes cooldown,
+target, `WeaponCanFire(weaponData)`, and on-target gates. See
+[`readiness-semantics.md`](readiness-semantics.md).
 
-- `preFireRemaining` and `postFireRemaining` from
-  `TISpaceShipState.ammo[weaponData]`;
-- `WeaponHasAmmo`, `WeaponCanFire`, and `OnCooldown` gate state;
-- `preFireRemaining - postFireRemaining = 1` on successful launches.
+The mod should call the derived value `ammoGateBudgetShots`. Do not introduce
+`readyShots`, loaded, or chambered terminology unless a future source actually
+exposes a distinct state.
 
-That evidence proves magazine/ammo visibility and current-fire gate state. It
-does not by itself prove allocator-safe numeric `readyShots`. Do not label ammo
-or gate state as `readyShots` until runtime evidence shows either that
-`ammo[weaponData]` plus known fire gates is the game-equivalent shot budget, or
-that a distinct shot-budget source exists.
+Future reverse-engineering should focus on:
 
-Before controlled allocation depends on shot budgets, add a focused
-reverse-engineering pass to decide between the documented hypotheses: keyed ammo
-plus known gates as the game-equivalent shot budget, a distinct runtime source,
-or a design that avoids numeric fleet-level shot budgets. Search likely areas
-without assuming a separate loaded/chambered state model exists:
-
-- `MissileWeapon` and base `Weapon` fields/properties beyond the confirmed
-  `TryFire` path;
-- fire mode and salvo state classes;
-- carrier weapon collections and module state;
-- any queued ordnance or per-weapon firing state structures, if present;
-- decompiled call sites around `TryFireCommon`, `WeaponCanFire`,
-  `FireWeapon`, and `ChangeAmmoValue`.
-
-If no true count exists, revise the controlled-allocation design so it does not
-require numeric `readyShots`.
+- selected player ship/weapon command scope;
+- target velocity and relative velocity sources;
+- target point-defense weapon weights;
+- projectile/controller guidance target identity;
+- vanilla command application around `SelectSalvoTargetCommand`,
+  `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`, and
+  `SetWeaponModeAction`.
 
 ## Phase 2: snapshot extraction
 
@@ -123,17 +110,17 @@ Acceptance criteria:
 
 ## Phase 4: controlled command helper
 
-Only after recommendation quality is acceptable and readiness semantics are
-resolved:
+Only after recommendation quality is acceptable and selected-player command
+scope is verified:
 
 - Add a player-triggered button or hotkey.
 - Apply target assignments to selected ships only.
 - Keep an option to stay in recommendation-only mode.
 
-Do not start controlled allocation from numeric `readyShots` until the
-shot-budget semantics are resolved in [`readiness-semantics.md`](readiness-semantics.md). If the
-semantics remain unresolved, controlled allocation needs a different design that
-avoids pretending a fleet-level ready-shot budget exists.
+Do not start controlled allocation from a fictitious `readyShots` source. Use
+explicit `ammoGateBudgetShots` evidence and let vanilla combat enforce the final
+legal launch result while the mod logs command intent, skipped reasons, and
+observed results.
 
 ## Phase 5: launch discipline
 
