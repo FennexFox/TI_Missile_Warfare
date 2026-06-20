@@ -233,7 +233,11 @@ def split_csv_field(text: str | None) -> list[str]:
 
 def is_ammo_only_readiness_reason(text: str | None) -> bool:
     """Return whether a readiness missing reason is explicitly ammo-only evidence."""
-    return bool(text and "ammo-only" in text.lower())
+    if not text:
+        return False
+
+    lowered = text.lower()
+    return "ammo-only" in lowered or "ammo-and-gate-only" in lowered
 
 
 def top_count(counter: Counter[str]) -> tuple[str | None, int]:
