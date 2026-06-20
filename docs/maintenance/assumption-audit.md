@@ -14,12 +14,12 @@ Current wording should preserve three possibilities:
 - A distinct runtime source exists.
 - The design avoids a numeric fleet-level budget.
 
-Updated local files:
+Updated durable files:
 
-- `docs/readiness-semantics.md`
-- `docs/battle-snapshot-extractor.md`
-- `docs/reverse-engineering-plan.md`
-- `docs/mvp-issue-list.md`
+- [`research/readiness-semantics.md`](../research/readiness-semantics.md)
+- [`diagnostics/snapshot-and-allocation.md`](../diagnostics/snapshot-and-allocation.md)
+- [`research/reverse-engineering-plan.md`](../research/reverse-engineering-plan.md)
+- [`planning/mvp-roadmap.md`](../planning/mvp-roadmap.md)
 
 ### 2. Selection and command scope
 
@@ -33,6 +33,15 @@ Previous Issue #7 wording could imply that range and relative-velocity evidence 
 
 Shadow allocation example numbers are now labeled as schema examples, not validated recommendations.
 
+### 5. Paired ammo/gate evidence wording
+
+The hook documentation now avoids both premature conclusions:
+
+- do not call paired ammo/gate evidence `readyShots` yet;
+- do not assume a distinct source must exist beyond `ammo[weaponData]` plus known gates.
+
+See [`diagnostics/hooks.md`](../diagnostics/hooks.md) and [`research/readiness-semantics.md`](../research/readiness-semantics.md).
+
 ## Already sufficiently qualified
 
 - Launcher-selected identity is documented as not being proof of the final in-flight guidance identity.
@@ -40,4 +49,4 @@ Shadow allocation example numbers are now labeled as schema examples, not valida
 
 ## Remaining follow-up
 
-`docs/confirmed-hooks.md` still has wording that may sound too dismissive of paired ammo/gate evidence. It should be aligned later with `docs/readiness-semantics.md`: do not call the evidence `readyShots` yet, but do not assume a distinct source is required either.
+No known long-lived documentation assumption remains from this audit. Future assumption notes should be added here only if they remain useful after the current PR; temporary per-issue investigation notes belong under `dev-docs/plan/**` and may be deleted when the PR is complete.

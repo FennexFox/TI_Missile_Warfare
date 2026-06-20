@@ -1,4 +1,4 @@
-# MVP issue list
+# MVP roadmap
 
 ## Issue 1: Create UMM/Harmony scaffold
 
@@ -21,7 +21,7 @@ Acceptance criteria:
 - At least one log-only patch fires during tactical combat.
 - Log includes battle context and method name.
 
-Current confirmed hook notes: `docs/confirmed-hooks.md`.
+Current confirmed hook notes: [`diagnostics/hooks.md`](../diagnostics/hooks.md).
 
 ## Issue 3: Add battle snapshot extractor
 
@@ -34,7 +34,7 @@ Acceptance criteria:
 - Allocator-safe fireable shot evidence can be reported when proven.
 - Snapshot dump can be enabled/disabled from settings.
 
-Implementation notes: `docs/battle-snapshot-extractor.md`.
+Implementation notes: [`diagnostics/snapshot-and-allocation.md`](../diagnostics/snapshot-and-allocation.md).
 
 ## Issue 4: Recommendation-only salvo allocation
 
@@ -62,7 +62,7 @@ Goal: apply target assignments for selected friendly missile ships.
 
 Prerequisite: Issue #15 showed live ammo/gate evidence in snapshot/allocation
 diagnostics, but `readyShots` remains unresolved. Do not implement Issue 6 using
-a numeric shot budget until `docs/readiness-semantics.md` resolves whether
+a numeric shot budget until [`readiness-semantics.md`](../research/readiness-semantics.md) resolves whether
 `ammo[weaponData]` plus known fire gates is the game-equivalent shot budget,
 whether a distinct fireable-shot source exists, or whether the controlled-
 allocation design should avoid a fleet-level shot budget entirely.

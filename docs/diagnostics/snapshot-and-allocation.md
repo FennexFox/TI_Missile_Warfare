@@ -1,4 +1,4 @@
-# Battle snapshot extractor
+# Battle snapshot and allocation diagnostics
 
 Issue #3 adds an observation-only adapter that converts confirmed Terra Invicta
 combat launch objects into the game-independent Core snapshot model.
@@ -301,7 +301,7 @@ Issue #11 Phase 02 adds that evidence to successful `MissileWeapon.TryFire`
   allocator-safe `readyShots`.
 
 These fields do not populate `SnapshotLog readyShots`. `readyShots` remains
-unknown until `docs/readiness-semantics.md` resolves whether `ammo[weaponData]`
+unknown until [`readiness-semantics.md`](../research/readiness-semantics.md) resolves whether `ammo[weaponData]`
 plus known fire gates is itself the allocator-safe shot budget, or whether a
 distinct runtime source is required.
 
@@ -318,7 +318,7 @@ Fresh Phase 02 runtime validation confirmed the live weapon evidence path:
 
 This confirms that `TISpaceShipState.ammo[weaponData]` is visible from the
 live weapon postfix path and behaves as post-decrement ammo. It is not yet
-classified as allocator-safe fireable-shot evidence, but `docs/readiness-semantics.md`
+classified as allocator-safe fireable-shot evidence, but [`readiness-semantics.md`](../research/readiness-semantics.md)
 tracks the explicit hypothesis that this keyed ammo value may be the vanilla
 runtime shot budget when combined with known fire gates.
 

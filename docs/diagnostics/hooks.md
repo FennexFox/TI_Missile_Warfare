@@ -74,7 +74,7 @@ ammo by itself. `MissileWeapon.TryFire` owns the live weapon and `weaponData`;
 `TISpaceShipState.FireWeapon(module, targetedProjectile)` owns the module key and
 decrements ammo before triggering `ShipWeaponFired`. Existing postfix
 observations around those methods should be treated as post-fire remaining ammo
-evidence until validated against the readiness semantics in `docs/readiness-semantics.md`; they may or may not be allocator-safe shot-budget evidence.
+evidence until validated against the readiness semantics in [`readiness-semantics.md`](../research/readiness-semantics.md); they may or may not be allocator-safe shot-budget evidence.
 
 Issue #11 Phase 02 records that live weapon evidence on successful
 `MissileWeapon.TryFire` postfix rows with optional fields including

@@ -42,7 +42,7 @@ Find classes or structs representing:
 - Manual target commands.
 - Automatic weapon fire decisions.
 
-Record candidate class/method names in `docs/reverse-engineering-notes.local.md` and do not commit machine-specific paths.
+Record candidate class/method names in `docs/research/reverse-engineering-notes.local.md` and do not commit machine-specific paths.
 
 ## Phase 1: log-only patches
 
@@ -61,13 +61,13 @@ Add Harmony postfixes/prefixes that log:
 No gameplay behavior should change in this phase.
 
 Current confirmed runtime hook findings are recorded in
-`docs/confirmed-hooks.md`.
+[`diagnostics/hooks.md`](../diagnostics/hooks.md).
 
 ### Current readiness blocker
 
 Issue #15 confirmed that live `MissileWeapon.TryFire` ammo and gate/cooldown
 evidence can be correlated into `SnapshotLog` and `AllocationLog`, but the
-shot-budget semantics remain unresolved. See `docs/readiness-semantics.md`. The
+shot-budget semantics remain unresolved. See [`readiness-semantics.md`](readiness-semantics.md). The
 active runtime evidence is:
 
 - `preFireRemaining` and `postFireRemaining` from
@@ -131,7 +131,7 @@ resolved:
 - Keep an option to stay in recommendation-only mode.
 
 Do not start controlled allocation from numeric `readyShots` until the
-shot-budget semantics are resolved in `docs/readiness-semantics.md`. If the
+shot-budget semantics are resolved in [`readiness-semantics.md`](readiness-semantics.md). If the
 semantics remain unresolved, controlled allocation needs a different design that
 avoids pretending a fleet-level ready-shot budget exists.
 
