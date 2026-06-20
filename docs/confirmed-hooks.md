@@ -74,7 +74,7 @@ ammo by itself. `MissileWeapon.TryFire` owns the live weapon and `weaponData`;
 `TISpaceShipState.FireWeapon(module, targetedProjectile)` owns the module key and
 decrements ammo before triggering `ShipWeaponFired`. Existing postfix
 observations around those methods should be treated as post-fire remaining ammo,
-not ready/loaded/chambered shots.
+not allocator-safe `readyShots`.
 
 Issue #11 Phase 02 records that live weapon evidence on successful
 `MissileWeapon.TryFire` postfix rows with optional fields including
@@ -117,9 +117,8 @@ Static review of the confirmed decompiled path found that `TryFireCommon`
 checks cooldown, target presence, `WeaponCanFire(weaponData)`, salvo reset, and
 `OnTarget`, while `TISpaceShipState.FireWeapon(module, targetedProjectile)`
 decrements magazine ammo through `ChangeAmmoValue(module, -1)`. That source path
-does not expose a separate ready, loaded, or chambered missile count, so
-`SnapshotLog readyShots` remains unknown unless runtime evidence proves another
-source.
+does not expose a separate allocator-safe fireable-shot count, so `SnapshotLog
+readyShots` remains unknown unless runtime evidence proves another source.
 
 Fresh Phase 04 runtime validation on the active `Player.log` found 670
 successful `MissileWeapon.TryFire` rows. Every row had all seven `preFire*`
@@ -127,8 +126,8 @@ fields, `preFireAmmoEvidenceSource=shipAmmoByWeaponData`, numeric
 `preFireRemaining`, and numeric `postFireRemaining`. Every numeric pair had
 `preFireRemaining - postFireRemaining = 1`, consistent with pre/post observation
 of the `FireWeapon` ammo decrement. The same log had 670 `SnapshotLog` rows, and
-all 670 still reported `readyShots=unknown`; no true ready, loaded, or chambered
-source was recovered.
+all 670 still reported `readyShots=unknown`; no allocator-safe fireable-shot
+source beyond ammo/gate evidence was recovered.
 
 Issue #15 reuses that same-thread prefix evidence for the projectile-fire
 snapshot and shadow allocation diagnostics. When a `TISpaceCombatProjectileState`
@@ -143,8 +142,8 @@ path can now log:
 - `unknownReadinessWeaponCount`.
 
 The current source remains `readyShotEvidenceSource=unknown` because the
-correlated live evidence is ammo and gate/cooldown state, not a proven true
-ready, loaded, or chambered missile count. `preFireRemaining` continues to mean
+correlated live evidence is ammo and gate/cooldown state, not a proven
+allocator-safe fireable-shot count. `preFireRemaining` continues to mean
 pre-decrement ammo dictionary state. It must not be used as controlled
 allocation-ready `readyShots` without a separately documented source.
 

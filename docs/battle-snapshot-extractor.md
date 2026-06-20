@@ -102,14 +102,15 @@ assigned shots, PD score, target value, saturation and kill package sizes,
 launch-window score, score per shot, and the reason.
 
 Known limitations are explicit in `missingInputs` and the readiness evidence
-fields. `readyShots` remains unknown when the snapshot cannot see a true ready,
-loaded, or chambered source. The shadow path does not infer readiness from
+fields. `readyShots` remains unknown when the snapshot cannot see an
+allocator-safe fireable-shot source beyond ammo/gate evidence. The shadow path
+does not infer readiness from
 `remainingShots`, pre/post ammo evidence, or gate/cooldown state. Issue #15 wires
 the current live `MissileWeapon.TryFire` pre-fire ammo and gate evidence into
 `SnapshotLog` and allocation cycle records as metadata:
 
-- `readyShotEvidenceSource`: `unknown` until a true ready/loaded/chambered
-  count source is documented.
+- `readyShotEvidenceSource`: `unknown` until an allocator-safe fireable-shot
+  source beyond ammo/gate evidence is documented.
 - `readinessMissingReason`: why `readyShots` is still unknown, such as
   `ammo-and-gate-only live weapon evidence`, `ammo-only projectile snapshot
   evidence`, or `missing live weapon correlation`.
@@ -117,7 +118,8 @@ the current live `MissileWeapon.TryFire` pre-fire ammo and gate evidence into
   `shipAmmoByWeaponData` or `projectileSnapshotCount`.
 - `liveWeaponState`: compact live gate/cooldown state from the correlated
   `MissileWeapon.TryFire` prefix when available.
-- `readyWeaponCount`: unknown until true ready semantics are proven.
+- `readyWeaponCount`: unknown until allocator-safe fireable-shot semantics are
+  proven.
 - `unknownReadinessWeaponCount`: count of weapons whose readiness remains
   unknown for this snapshot.
 
@@ -168,8 +170,8 @@ pretending to evaluate whether combat allocation would have succeeded.
 
 Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow
 allocation diagnostics confirmed the shadow loop was observation-only and
-conservative when true ready shots were unavailable. That first smoke was run on
-2026-06-19 with the initial Issue #4 build:
+conservative when allocator-safe numeric `readyShots` were unavailable. That
+first smoke was run on 2026-06-19 with the initial Issue #4 build:
 
 - parser verdict: `OK`
 - diagnostics bootstrap: `patched=3`, `skipped=0`
@@ -271,8 +273,8 @@ found that the reliable runtime ammo value is `TISpaceShipState.ammo[weaponData]
 That value is keyed by `ModuleDataEntry`, and the projectile-state hook does not
 receive the firing module key. Any count found from the snapshot path should
 therefore be treated as magazine-like evidence until a live weapon/module
-observation confirms its semantics. Ready/loaded/chambered missile state appears
-to live on weapon/module runtime state and should not be inferred from
+observation confirms its semantics. No separate ready/loaded/chambered missile
+state model has been confirmed; do not infer allocator-safe `readyShots` from
 `remainingShots` without a documented source.
 
 Issue #11 Phase 01 recommends a separate live weapon diagnostic path around
@@ -294,10 +296,11 @@ Issue #11 Phase 02 adds that evidence to successful `MissileWeapon.TryFire`
   `intraSalvoCooldownS`: compact cooldown and salvo timing evidence.
 - `templateMagazine`, `magazineCapacityCurrent`, and `magazineCapacityMax`:
   capacity evidence from the projectile weapon template and launcher state, not
-  a ready/loaded/chambered count.
+  allocator-safe `readyShots`.
 
 These fields do not populate `SnapshotLog readyShots`. `readyShots` remains
-unknown until a pre-fire ready, loaded, or chambered source is documented.
+unknown until an allocator-safe fireable-shot source beyond ammo/gate evidence
+is documented.
 
 Fresh Phase 02 runtime validation confirmed the live weapon evidence path:
 
@@ -312,7 +315,7 @@ Fresh Phase 02 runtime validation confirmed the live weapon evidence path:
 
 This confirms that `TISpaceShipState.ammo[weaponData]` is visible from the
 live weapon postfix path and behaves as post-decrement ammo. It is still not
-ready/loaded/chambered shot evidence.
+allocator-safe fireable-shot evidence.
 
 The same runtime log showed `cooldownDuration=null`. Phase 03 traced this to
 `currentCooldownDuration_s` being a private field declared on the base `Weapon`
@@ -349,10 +352,10 @@ New optional successful-launch fields are:
   pre-fire gate/cooldown evidence captured before `TryFireCommon`.
 - `preFireSalvoShotsFired` and `preFireSalvoShots`: pre-fire salvo evidence.
 
-The static source review still found no dedicated ready, loaded, or chambered
-missile count in the confirmed `MissileWeapon.TryFire` / `TryFireCommon` path.
+The static source review still found no dedicated allocator-safe fireable-shot
+count in the confirmed `MissileWeapon.TryFire` / `TryFireCommon` path.
 `SnapshotLog readyShots` therefore remains `unknown` until runtime evidence
-proves a true ready/loaded/chambered source rather than magazine or gate state.
+proves a source beyond magazine/ammo and gate state.
 
 Fresh Phase 04 runtime smoke validation on the active `Player.log` confirmed the
 paired observation. This active-log smoke run supersedes the earlier
@@ -374,8 +377,8 @@ pre-smoke parser check that reported 4,798 `LaunchLog` rows and 675
 This relationship is consistent with observing the ship ammo dictionary before
 and after the `FireWeapon` magazine decrement. It proves useful pre-fire ammo
 state is visible from the live weapon hook, but `preFireRemaining` is still
-ammo-state evidence. It is not automatically a true ready, loaded, or chambered
-`readyShots` source.
+ammo-state evidence. It is not automatically an allocator-safe `readyShots`
+source.
 
 ## Issue #15 readiness evidence result
 
@@ -384,7 +387,7 @@ projectile-fire snapshot/allocation diagnostic path when those hooks execute on
 the same thread. The new snapshot and allocation cycle fields preserve the
 distinction between:
 
-- numeric `readyShots` from a future proven true ready/loaded/chambered source;
+- numeric `readyShots` from a future proven allocator-safe fireable-shot source;
 - ammo-only evidence from `TISpaceShipState.ammo[weaponData]`;
 - gate/cooldown evidence such as `WeaponHasAmmo`, `WeaponCanFire`, and
   `OnCooldown`;
@@ -393,9 +396,9 @@ distinction between:
 The current implementation deliberately removed the earlier optimistic
 projectile-snapshot ready-shot inference from names such as `loadedAmmo`,
 `loadedMissiles`, and `readyMissiles`. Current runtime evidence remains
-ammo/gate evidence, not true ready-shot evidence, so `SnapshotLog readyShots` and
-allocation `totalReadyShots` remain `unknown` until a true ready, loaded, or
-chambered count source is documented.
+ammo/gate evidence, not allocator-safe fireable-shot evidence, so `SnapshotLog
+readyShots` and allocation `totalReadyShots` remain `unknown` until a source
+beyond ammo/gate evidence is documented.
 
 That means the project is not ready to proceed to Issue #6 controlled allocation
 based on numeric ready-shot counts alone. It is ready to collect a fresh runtime

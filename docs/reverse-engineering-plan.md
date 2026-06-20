@@ -67,8 +67,8 @@ Current confirmed runtime hook findings are recorded in
 
 Issue #15 confirmed that live `MissileWeapon.TryFire` ammo and gate/cooldown
 evidence can be correlated into `SnapshotLog` and `AllocationLog`, but it did
-not find a true ready, loaded, or chambered missile count. The active runtime
-evidence is:
+not find an allocator-safe fireable-shot count beyond ammo/gate evidence. The
+active runtime evidence is:
 
 - `preFireRemaining` and `postFireRemaining` from
   `TISpaceShipState.ammo[weaponData]`;
@@ -80,14 +80,15 @@ does not prove allocator-safe numeric `readyShots`. Do not use ammo dictionary
 or gate state as `readyShots` without a separately documented runtime source.
 
 Before controlled allocation depends on shot budgets, add a focused
-reverse-engineering pass to prove or disprove a true ready/loaded/chambered
-source. Search likely areas:
+reverse-engineering pass to determine whether any allocator-safe fireable-shot
+source exists beyond ammo/gate evidence. Search likely areas without assuming a
+separate loaded/chambered state model exists:
 
 - `MissileWeapon` and base `Weapon` fields/properties beyond the confirmed
   `TryFire` path;
 - fire mode and salvo state classes;
 - carrier weapon collections and module state;
-- any loaded/chambered/queued ordnance structures;
+- any queued ordnance or per-weapon firing state structures, if present;
 - decompiled call sites around `TryFireCommon`, `WeaponCanFire`,
   `FireWeapon`, and `ChangeAmmoValue`.
 
@@ -126,9 +127,10 @@ resolved:
 - Apply target assignments to selected ships only.
 - Keep an option to stay in recommendation-only mode.
 
-Do not start controlled allocation from numeric `readyShots` until a true ready,
-loaded, or chambered shot-count source is documented. If readiness remains
-unknown, controlled allocation needs a different design that avoids pretending a
+Do not start controlled allocation from numeric `readyShots` until an
+allocator-safe fireable-shot source beyond ammo/gate evidence is documented. If
+readiness remains unknown, controlled allocation needs a different design that
+avoids pretending a
 fleet-level ready-shot budget exists.
 
 ## Phase 5: launch discipline
