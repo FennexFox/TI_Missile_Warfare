@@ -63,6 +63,37 @@ No gameplay behavior should change in this phase.
 Current confirmed runtime hook findings are recorded in
 `docs/confirmed-hooks.md`.
 
+### Current readiness blocker
+
+Issue #15 confirmed that live `MissileWeapon.TryFire` ammo and gate/cooldown
+evidence can be correlated into `SnapshotLog` and `AllocationLog`, but it did
+not find a true ready, loaded, or chambered missile count. The active runtime
+evidence is:
+
+- `preFireRemaining` and `postFireRemaining` from
+  `TISpaceShipState.ammo[weaponData]`;
+- `WeaponHasAmmo`, `WeaponCanFire`, and `OnCooldown` gate state;
+- `preFireRemaining - postFireRemaining = 1` on successful launches.
+
+That evidence proves magazine/ammo visibility and current-fire gate state. It
+does not prove allocator-safe numeric `readyShots`. Do not use ammo dictionary
+or gate state as `readyShots` without a separately documented runtime source.
+
+Before controlled allocation depends on shot budgets, add a focused
+reverse-engineering pass to prove or disprove a true ready/loaded/chambered
+source. Search likely areas:
+
+- `MissileWeapon` and base `Weapon` fields/properties beyond the confirmed
+  `TryFire` path;
+- fire mode and salvo state classes;
+- carrier weapon collections and module state;
+- any loaded/chambered/queued ordnance structures;
+- decompiled call sites around `TryFireCommon`, `WeaponCanFire`,
+  `FireWeapon`, and `ChangeAmmoValue`.
+
+If no true count exists, revise the controlled-allocation design so it does not
+require numeric `readyShots`.
+
 ## Phase 2: snapshot extraction
 
 Build adapter methods that convert game objects into Core snapshots:
@@ -88,11 +119,17 @@ Acceptance criteria:
 
 ## Phase 4: controlled command helper
 
-Only after recommendation quality is acceptable:
+Only after recommendation quality is acceptable and readiness semantics are
+resolved:
 
 - Add a player-triggered button or hotkey.
 - Apply target assignments to selected ships only.
 - Keep an option to stay in recommendation-only mode.
+
+Do not start controlled allocation from numeric `readyShots` until a true ready,
+loaded, or chambered shot-count source is documented. If readiness remains
+unknown, controlled allocation needs a different design that avoids pretending a
+fleet-level ready-shot budget exists.
 
 ## Phase 5: launch discipline
 

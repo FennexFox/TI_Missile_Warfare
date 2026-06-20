@@ -60,12 +60,25 @@ Acceptance criteria:
 
 Goal: apply target assignments for selected friendly missile ships.
 
+Prerequisite: Issue #15 showed live ammo/gate evidence in snapshot/allocation
+diagnostics, but `readyShots` remains unknown because no true ready, loaded, or
+chambered count source has been proven. Do not implement Issue 6 using numeric
+`readyShots` until a focused reverse-engineering pass either finds that source
+or revises the controlled-allocation design to avoid a fleet-level ready-shot
+budget.
+
 Acceptance criteria:
 
 - Only selected player ships are affected.
 - Existing manual control remains possible.
 - Recommendation-only mode prevents actual command changes.
 - Failures are logged without breaking combat.
+
+Readiness gate:
+
+- Prove a true ready/loaded/chambered shot source; or
+- document that no such source exists and update the Issue 6 design around
+  weaker per-weapon gate/ammo evidence without treating it as `readyShots`.
 
 ## Issue 7: Launch discipline prototype
 
