@@ -31,6 +31,8 @@ Add explicit velocity and PD evidence/default diagnostics without changing contr
 
 - Added target velocity presence tracking to extracted ship snapshots.
 - Added target and relative velocity evidence fields to snapshot and allocation logs.
+- Added target velocity capture from the live `MissileWeapon.TryFire` target (`IDamageable.velocityVector_kps`) and threaded it through the existing same-thread readiness handoff.
+- Added a same-target `positionAtTime(t + 1s) - positionAtTime(t)` derivative fallback, converted from combat scale units to kps.
 - Added explicit PD default model fields to snapshot and allocation logs.
 - Added parser counters and summary output for the new evidence fields.
 - Updated diagnostics schema documentation.
@@ -49,34 +51,13 @@ Add explicit velocity and PD evidence/default diagnostics without changing contr
 - `python tools\check_layout.py`: passed.
 - `python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py`: passed.
 - `python -m compileall tools`: passed.
-- `python tools\parse_player_log.py --require-launchlogs --require-snapshots`: passed against the currently deployed pre-change `Player.log`.
-- Fresh deployed runtime smoke on `Player.log` last written `2026-06-21 09:23:17` local time: passed.
+- `python tools\parse_player_log.py --require-launchlogs --require-snapshots`: passed.
 
-Fresh runtime smoke results:
-
-- diagnostics bootstrap remained `patched=3`, `skipped=0`.
-- `LaunchLog`: 4,363 entries, contiguous sequence range `1-4363`, no duplicates.
-- `SnapshotLog`: 745 entries.
-- `AllocationLog`: 1,490 entries: 745 `cycle`, 745 `allocation`.
-- `ammoGateBudgetShots`: 745/745 numeric snapshot/cycle evidence, total cycle budget 5,985 shots.
-- Target velocity fields emitted on snapshot and allocation logs, but target velocity evidence remains missing on 745/745 cycles with `targetVelocityMissingReason=targetVelocityMemberUnavailable`.
-- Relative velocity fields emitted on snapshot and allocation logs, but relative velocity remains missing on 745/745 cycles because target velocity is unavailable.
-- PD weight fields emitted on snapshot and allocation logs: 745/745 cycles `pdWeightEvidenceSource=defaultModel`, `pdWeightDefaulted=True`, `pdWeightDefaultReason=pdEvidenceUnavailable`, `pdWeightMissingReason=none`.
-- MissileWarfare issues: none.
-
-Interpretation: #19 default formalization is runtime-confirmed. #18 now reports a precise, actionable missing reason, but direct target velocity is still not recovered from the launcher-selected target object.
-
-Follow-up implementation after decompiled-source review:
-
-- Source checked: `../TI_RE_Workspace/graphify-out/slices/missile-fire-control-master-source/PavonisInteractive.TerraInvicta.Ship/MissileWeapon.cs`, `Weapon.cs`, `IDamageable.cs`, `PavonisInteractive.TerraInvicta.SpaceCombat/CombatShipController.cs`, and `PavonisInteractive.TerraInvicta/TISpaceCombatProjectileState.cs`.
-- Finding: vanilla missile targeting computes intercepts from `IDamageable.position`, `velocityVector`, and `accelerationVector`; the direct target is available from `Weapon.target` during `MissileWeapon.TryFire`, not from the projectile-state `Fire(...)` hook arguments.
-- Change: thread TryFire target velocity evidence through the existing readiness handoff so snapshot/allocation logs can report `tryFireTargetDamageableVelocity` or `tryFireTargetPositionAtTimeDelta`.
-- Fresh deployed runtime smoke on `Player.log` last written `2026-06-21 09:34:44` local time: passed.
-
-Follow-up runtime smoke results:
+Final runtime smoke on `Player.log` last written `2026-06-21 09:34:44` local time: passed.
 
 - diagnostics bootstrap remained `patched=3`, `skipped=0`.
 - `LaunchLog`: 6,701 entries, contiguous sequence range `1-6701`, no duplicates.
+- `MissileWeapon.TryFire`: 748 rows.
 - `SnapshotLog`: 748 entries.
 - `AllocationLog`: 1,496 entries: 748 `cycle`, 748 `allocation`.
 - `ammoGateBudgetShots`: 748/748 numeric snapshot/cycle evidence, total cycle budget 5,998 shots.
@@ -85,4 +66,14 @@ Follow-up runtime smoke results:
 - PD weight fields remained explicit defaults: 748/748 cycles `pdWeightEvidenceSource=defaultModel`, `pdWeightDefaulted=True`, `pdWeightDefaultReason=pdEvidenceUnavailable`, `pdWeightMissingReason=none`.
 - MissileWarfare issues: none.
 
-Interpretation: #18 target/relative velocity evidence is runtime-confirmed. #19 remains runtime-confirmed as explicit default-model reporting.
+Final interpretation: #18 target/relative velocity evidence is runtime-confirmed. #19 is runtime-confirmed as explicit default-model reporting; direct observed PD weapon weights remain out of scope.
+
+## Superseded Runtime Observation
+
+An earlier runtime smoke on `Player.log` last written `2026-06-21 09:23:17` local time validated that the new schema fields were emitted, but still reported `targetVelocityMissingReason=targetVelocityMemberUnavailable` on 745/745 cycles. That result was superseded by the decompiled-source review and TryFire-target evidence fix.
+
+## Source Review Notes
+
+- Source checked: `../TI_RE_Workspace/graphify-out/slices/missile-fire-control-master-source/PavonisInteractive.TerraInvicta.Ship/MissileWeapon.cs`, `Weapon.cs`, `IDamageable.cs`, `PavonisInteractive.TerraInvicta.SpaceCombat/CombatShipController.cs`, and `PavonisInteractive.TerraInvicta/TISpaceCombatProjectileState.cs`.
+- Finding: vanilla missile targeting computes intercepts from `IDamageable.position`, `velocityVector`, and `accelerationVector`; the direct target is available from `Weapon.target` during `MissileWeapon.TryFire`, not from the projectile-state `Fire(...)` hook arguments.
+- Change: thread TryFire target velocity evidence through the existing readiness handoff so snapshot/allocation logs can report `tryFireTargetDamageableVelocity` or `tryFireTargetPositionAtTimeDelta`.
