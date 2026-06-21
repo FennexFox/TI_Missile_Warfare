@@ -150,3 +150,27 @@ The current implementation deliberately removed the earlier optimistic projectil
 Current runtime evidence remains ammo/gate evidence, not allocator-safe fireable-shot evidence, so `SnapshotLog readyShots` and allocation `totalReadyShots` remain `unknown` until shot-budget semantics are validated.
 
 That means the project is not ready to proceed to Issue #6 controlled allocation based on numeric ready-shot counts alone. It is ready to collect fresh runtime smoke logs with Issue #15 fields and decide whether another runtime source can prove readiness semantics, whether `ammo[weaponData]` plus known gates is sufficient, or whether controlled allocation should avoid a numeric fleet-level budget.
+
+## Issue #18/#19 velocity and PD evidence result
+
+Issue #18/#19 added explicit target/relative velocity evidence fields and explicit point-defense default-model fields to snapshot and allocation diagnostics.
+
+Fresh runtime smoke on the active `Player.log`, last written `2026-06-21 09:23:17` local time, confirmed the new schema is emitted and the parser summarizes it:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 4,363, with contiguous sequence range `1-4363`
+- `MissileWeapon.TryFire` rows: 745
+- `SnapshotLog` entries: 745
+- `AllocationLog` entries: 1,490: 745 `cycle`, 745 `allocation`
+- `ammoGateBudgetShots`: 745/745 numeric snapshot/cycle evidence
+- total allocation-cycle ammo/gate budget: 5,985 shots
+- target velocity evidence: 0/745 cycles
+- `targetVelocityMissingReason=targetVelocityMemberUnavailable`: 745/745 cycles
+- relative velocity evidence: 0/745 cycles, blocked by missing target velocity
+- PD weight inputs: 0 observed, 745 defaulted, 0 unknown cycles
+- `pdWeightEvidenceSource=defaultModel`: 745/745 cycles
+- `pdWeightDefaultReason=pdEvidenceUnavailable`: 745/745 cycles
+- MissileWarfare issues: none
+
+Interpretation: the point-defense default model is now explicit and runtime-confirmed instead of opaque. Target velocity is still unavailable from the current launcher-selected target object, but it now fails with a precise missing reason rather than a generic all-cycles missing flag. Controlled allocation remains blocked until this velocity gap is accepted or a better target combat-state/member source is found.

@@ -48,5 +48,18 @@ Add explicit velocity and PD evidence/default diagnostics without changing contr
 - `python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py`: passed.
 - `python -m compileall tools`: passed.
 - `python tools\parse_player_log.py --require-launchlogs --require-snapshots`: passed against the currently deployed pre-change `Player.log`.
+- Fresh deployed runtime smoke on `Player.log` last written `2026-06-21 09:23:17` local time: passed.
 
-The parser smoke log predates these schema changes, so it correctly reports the new target/relative velocity evidence as absent and PD weight input state as unknown. A fresh deployed runtime smoke is still needed to verify live emission of the new fields.
+Fresh runtime smoke results:
+
+- diagnostics bootstrap remained `patched=3`, `skipped=0`.
+- `LaunchLog`: 4,363 entries, contiguous sequence range `1-4363`, no duplicates.
+- `SnapshotLog`: 745 entries.
+- `AllocationLog`: 1,490 entries: 745 `cycle`, 745 `allocation`.
+- `ammoGateBudgetShots`: 745/745 numeric snapshot/cycle evidence, total cycle budget 5,985 shots.
+- Target velocity fields emitted on snapshot and allocation logs, but target velocity evidence remains missing on 745/745 cycles with `targetVelocityMissingReason=targetVelocityMemberUnavailable`.
+- Relative velocity fields emitted on snapshot and allocation logs, but relative velocity remains missing on 745/745 cycles because target velocity is unavailable.
+- PD weight fields emitted on snapshot and allocation logs: 745/745 cycles `pdWeightEvidenceSource=defaultModel`, `pdWeightDefaulted=True`, `pdWeightDefaultReason=pdEvidenceUnavailable`, `pdWeightMissingReason=none`.
+- MissileWarfare issues: none.
+
+Interpretation: #19 default formalization is runtime-confirmed. #18 now reports a precise, actionable missing reason, but direct target velocity is still not recovered from the launcher-selected target object.
