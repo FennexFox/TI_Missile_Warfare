@@ -70,6 +70,11 @@ Guidelines:
 
 ## Pull request rules
 
+Before creating or updating a PR, inspect repository-local PR instructions and
+templates. At minimum, read `.github/pull_request_template.md` and this
+instruction file, then shape the title and body from those requirements before
+opening the PR. Do not open a generic PR first and retrofit the template later.
+
 Every PR should explain:
 
 - What changed.
@@ -86,6 +91,29 @@ For early PRs, prefer one of these labels in the summary:
 - `diagnostics-only`
 - `core-only`
 - `behavior-changing`
+
+Use the template sections directly when creating the PR body:
+
+- Summary
+- Change type
+- Scope
+- Non-goals
+- Live combat behavior
+- Implementation notes
+- Validation
+- Reverse-engineering notes
+- Risk
+- Rollback
+- Screenshots / logs
+
+Set checkbox states honestly from the work actually done. If runtime smoke,
+mod-load validation, or in-game validation was not performed, leave that
+checkbox unchecked and call out the remaining validation gap in the body.
+
+When a user requests a PR to a specific branch, use that branch as the PR base.
+Default new PRs to draft unless the user explicitly asks for ready-for-review.
+After creating or updating the PR, read back the PR title, base, head, draft
+state, and URL to confirm the final metadata.
 
 ## Validation expectations
 
