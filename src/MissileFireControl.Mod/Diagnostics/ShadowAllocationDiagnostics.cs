@@ -194,7 +194,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
             AppendPair(builder, "ammoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount));
             AppendPair(builder, "unknownAmmoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownAmmoGateWeaponCount));
-            AppendPair(builder, "targetVelocityKps", snapshot != null && snapshot.HasTargetVelocity && snapshot.Target != null ? Format(snapshot.Target.VelocityKps) : "unknown");
+            AppendPair(builder, "targetVelocityKps", snapshot != null && snapshot.HasTargetVelocity ? Format(snapshot.TargetVelocityKps) : "unknown");
             AppendPair(builder, "targetVelocityEvidenceSource", snapshot == null ? "unknown" : snapshot.TargetVelocityEvidenceSource ?? "unknown");
             AppendPair(builder, "targetVelocityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.TargetVelocityMissingReason ?? "unknown");
             AppendPair(builder, "relativeVelocityKps", snapshot != null && snapshot.HasRelativeVelocity ? Format(snapshot.RelativeVelocityKps) : "unknown");

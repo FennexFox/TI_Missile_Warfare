@@ -19,6 +19,7 @@ namespace MissileFireControl.Mod.Adapters
         public Vector3d ExpectedTargetPositionKm { get; set; }
         public bool HasExpectedTargetPosition { get; set; }
         public bool HasTargetVelocity { get; set; }
+        public Vector3d TargetVelocityKps { get; set; }
         public string TargetVelocityEvidenceSource { get; set; }
         public string TargetVelocityMissingReason { get; set; }
         public Vector3d RelativeVelocityKps { get; set; }
@@ -336,6 +337,7 @@ namespace MissileFireControl.Mod.Adapters
             }
 
             snapshot.HasTargetVelocity = true;
+            snapshot.TargetVelocityKps = snapshot.Target.VelocityKps;
             snapshot.TargetVelocityEvidenceSource = "targetCombatState";
             snapshot.TargetVelocityMissingReason = "none";
         }
@@ -371,6 +373,7 @@ namespace MissileFireControl.Mod.Adapters
             }
 
             snapshot.HasTargetVelocity = true;
+            snapshot.TargetVelocityKps = readinessEvidence.TargetVelocityKps;
             snapshot.TargetVelocityEvidenceSource = readinessEvidence.TargetVelocityEvidenceSource;
             snapshot.TargetVelocityMissingReason = "none";
         }
@@ -393,7 +396,7 @@ namespace MissileFireControl.Mod.Adapters
                 return;
             }
 
-            snapshot.RelativeVelocityKps = snapshot.Target.VelocityKps - snapshot.OriginVelocityKps;
+            snapshot.RelativeVelocityKps = snapshot.TargetVelocityKps - snapshot.OriginVelocityKps;
             snapshot.RelativeSpeedKps = snapshot.RelativeVelocityKps.Length();
             snapshot.HasRelativeVelocity = true;
             snapshot.RelativeVelocityEvidenceSource = "targetAndLauncherVelocity";

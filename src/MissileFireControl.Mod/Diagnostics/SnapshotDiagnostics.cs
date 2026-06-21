@@ -31,7 +31,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "targetTeam", snapshot.Target == null ? "unknown" : snapshot.Target.TeamId);
                 AppendPair(builder, "targetIdentitySource", snapshot.TargetIdentitySource ?? "none");
                 AppendPair(builder, "expectedTargetPosition", snapshot.HasExpectedTargetPosition ? Format(snapshot.ExpectedTargetPositionKm) : "unknown");
-                AppendPair(builder, "targetVelocityKps", snapshot.HasTargetVelocity && snapshot.Target != null ? Format(snapshot.Target.VelocityKps) : "unknown");
+                AppendPair(builder, "targetVelocityKps", snapshot.HasTargetVelocity ? Format(snapshot.TargetVelocityKps) : "unknown");
                 AppendPair(builder, "targetVelocityEvidenceSource", snapshot.TargetVelocityEvidenceSource ?? "unknown");
                 AppendPair(builder, "targetVelocityMissingReason", snapshot.TargetVelocityMissingReason ?? "unknown");
                 AppendPair(builder, "relativeVelocityKps", snapshot.HasRelativeVelocity ? Format(snapshot.RelativeVelocityKps) : "unknown");

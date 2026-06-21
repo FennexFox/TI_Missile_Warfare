@@ -42,8 +42,7 @@
 
 - `dotnet build TI_Missile_Fire_Control.sln`
 - `python -m py_compile tools\parse_player_log.py`
-- Text search for stale `readyShots` schema usage outside historical notes and
-  issue context.
+- `rg -n "ReadyShots|readyShots|TotalReadyShots|readyShot|ready-shot|ready shots" src tools -g '!docs/research/readiness-semantics.md' -g '!docs/research/reverse-engineering-plan.md' -g '!dev-docs/plan/issue_17/**'`
 
 ## Known Risks And Assumptions
 
@@ -54,4 +53,3 @@
 - Assumption: decompiled source in `../TI_RE_Workspace/decompiled_source` matches
   the runtime version targeted by the current diagnostic work closely enough for
   source-level semantics.
-

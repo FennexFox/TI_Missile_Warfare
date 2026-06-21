@@ -1,4 +1,4 @@
-{
+﻿{
   "directed": false,
   "multigraph": false,
   "graph": {},
@@ -2917,15 +2917,15 @@
       "id": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_writesyntheticrejection"
     },
     {
-      "label": ".ReadyShots()",
+      "label": ".AmmoGateBudgetShots()",
       "file_type": "code",
       "source_file": "src/MissileFireControl.Mod/Diagnostics/ShadowAllocationDiagnostics.cs",
       "source_location": "L238",
       "_origin": "ast",
       "community": 1,
       "community_name": "Shadow Allocation Diagnostics",
-      "norm_label": ".readyshots()",
-      "id": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "norm_label": ".ammogatebudgetshots()",
+      "id": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "label": ".Evidence()",
@@ -3846,7 +3846,7 @@
       "id": "selected_player_command_scope_concept"
     },
     {
-      "label": "Do Not Assume a Separate ReadyShots Model",
+      "label": "Do Not Assume Separate ammoGateBudgetShots Data",
       "file_type": "rationale",
       "source_file": "docs/research/readiness-semantics.md",
       "source_location": null,
@@ -3856,11 +3856,11 @@
       "contributor": null,
       "community": 16,
       "community_name": "Inventory Snapshot Models",
-      "norm_label": "do not assume a separate readyshots model",
+      "norm_label": "do not assume separate ammogatebudgetshots data",
       "id": "readiness_semantics_blocker_rationale"
     },
     {
-      "label": "Keep ReadyShots Unknown Until Proven Safe",
+      "label": "Keep ammoGateBudgetShots Unknown Until Proven Safe",
       "file_type": "rationale",
       "source_file": "docs/diagnostics/snapshot-and-allocation.md",
       "source_location": null,
@@ -3870,7 +3870,7 @@
       "contributor": null,
       "community": 5,
       "community_name": "Snapshot Diagnostics",
-      "norm_label": "keep readyshots unknown until proven safe",
+      "norm_label": "keep ammogatebudgetshots unknown until proven safe",
       "id": "snapshot_allocation_unknown_budget_rationale"
     },
     {
@@ -8451,7 +8451,7 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics",
-      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "relation": "method",
@@ -8611,7 +8611,7 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_logshadowcycle",
-      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "relation": "calls",
@@ -8698,7 +8698,7 @@
       "weight": 1.0,
       "context": "parameter_type",
       "confidence_score": 1.0,
-      "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots",
+      "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots",
       "target": "src_missilefirecontrol_mod_diagnostics_shadowallocationdiagnostics_cs_extractedcombatsnapshot"
     },
     {
@@ -8743,7 +8743,7 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_buildrequest",
-      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "relation": "references",
@@ -8820,7 +8820,7 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_missinginputs",
-      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "relation": "references",
@@ -8941,7 +8941,7 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_writecyclerecord",
-      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_readyshots"
+      "target": "diagnostics_shadowallocationdiagnostics_shadowallocationdiagnostics_ammogatebudgetshots"
     },
     {
       "relation": "calls",

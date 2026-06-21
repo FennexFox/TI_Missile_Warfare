@@ -60,13 +60,13 @@
 10. `TargetValueCalculator` - 7 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Keep ReadyShots Unknown Until Proven Safe` --rationale_for--> `ShadowAllocationDiagnostics`  [INFERRED]
+- `Keep ammoGateBudgetShots Unknown Until Proven Safe` --rationale_for--> `ShadowAllocationDiagnostics`  [INFERRED]
   docs/diagnostics/snapshot-and-allocation.md → src/MissileFireControl.Mod/Diagnostics/ShadowAllocationDiagnostics.cs
-- `Keep ReadyShots Unknown Until Proven Safe` --rationale_for--> `SnapshotDiagnostics`  [INFERRED]
+- `Keep ammoGateBudgetShots Unknown Until Proven Safe` --rationale_for--> `SnapshotDiagnostics`  [INFERRED]
   docs/diagnostics/snapshot-and-allocation.md → src/MissileFireControl.Mod/Diagnostics/SnapshotDiagnostics.cs
-- `Do Not Assume a Separate ReadyShots Model` --rationale_for--> `MissileInventorySnapshot`  [INFERRED]
+- `Do Not Assume Separate ammoGateBudgetShots Data` --rationale_for--> `MissileInventorySnapshot`  [INFERRED]
   docs/research/readiness-semantics.md → src/MissileFireControl.Core/Models/MissileInventorySnapshot.cs
-- `Do Not Assume a Separate ReadyShots Model` --rationale_for--> `WeaponSnapshot`  [INFERRED]
+- `Do Not Assume Separate ammoGateBudgetShots Data` --rationale_for--> `WeaponSnapshot`  [INFERRED]
   docs/research/readiness-semantics.md → src/MissileFireControl.Core/Models/WeaponSnapshot.cs
 - `Issue 17 Context` --references--> `Confirmed Combat Launch Hooks`  [EXTRACTED]
   dev-docs/plan/issue_17/00-context.md → docs/diagnostics/hooks.md
@@ -98,7 +98,7 @@ Nodes (19): Allocator-Safe Shot Budget, Ammo-as-Fireable-Budget Hypothesis, Cont
 
 ### Community 5 - "Snapshot Diagnostics"
 Cohesion: 0.17
-Nodes (9): MissileFireControl.Mod.Diagnostics, SnapshotDiagnostics, Keep ReadyShots Unknown Until Proven Safe, ExtractedCombatSnapshot, Func, MissileInventorySnapshot, ReadinessEvidenceSnapshot, StringBuilder (+1 more)
+Nodes (9): MissileFireControl.Mod.Diagnostics, SnapshotDiagnostics, Keep ammoGateBudgetShots Unknown Until Proven Safe, ExtractedCombatSnapshot, Func, MissileInventorySnapshot, ReadinessEvidenceSnapshot, StringBuilder (+1 more)
 
 ### Community 6 - "Salvo Allocation Core"
 Cohesion: 0.13
@@ -142,7 +142,7 @@ Nodes (5): double, MissileFireControl.Mod, ModSettings, bool, ModEntry
 
 ### Community 16 - "Inventory Snapshot Models"
 Cohesion: 0.29
-Nodes (5): MissileFireControl.Core.Models, MissileInventorySnapshot, MissileFireControl.Core.Models, WeaponSnapshot, Do Not Assume a Separate ReadyShots Model
+Nodes (5): MissileFireControl.Core.Models, MissileInventorySnapshot, MissileFireControl.Core.Models, WeaponSnapshot, Do Not Assume Separate ammoGateBudgetShots Data
 
 ### Community 17 - "Vector Math Model"
 Cohesion: 0.48
@@ -166,7 +166,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `ShadowAllocationDiagnostics` connect `Shadow Allocation Diagnostics` to `Snapshot Diagnostics`?**
   _High betweenness centrality (0.034) - this node is a cross-community bridge._
-- **Why does `Keep ReadyShots Unknown Until Proven Safe` connect `Snapshot Diagnostics` to `Shadow Allocation Diagnostics`?**
+- **Why does `Keep ammoGateBudgetShots Unknown Until Proven Safe` connect `Snapshot Diagnostics` to `Shadow Allocation Diagnostics`?**
   _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **What connects `MissileFireControl.Core.Allocation`, `AllocationRequest`, `MissileFireControl.Core.Allocation` to the rest of the system?**
   _125 weakly-connected nodes found - possible documentation gaps or missing edges._

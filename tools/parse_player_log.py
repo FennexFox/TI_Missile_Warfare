@@ -262,8 +262,11 @@ def is_ammo_only_budget_reason(text: str | None) -> bool:
     if not text:
         return False
 
-    lowered = text.lower()
-    return "ammo-only" in lowered or "ammo-and-gate-only" in lowered
+    return text.strip().lower() in {
+        "ammo-only projectile snapshot evidence",
+        "missing live weapon correlation",
+        "missing module-keyed ammo evidence",
+    }
 
 
 def top_count(counter: Counter[str]) -> tuple[str | None, int]:
