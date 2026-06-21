@@ -64,8 +64,9 @@
 
 - Documentation updates completed.
 - Static validation completed.
-- Phase-plan helper validation was attempted, but the helper treats
-  `00-context.md` as a phase file and has no exclude option.
+- Live-log parser and fitting validation completed.
+- Phase-plan helper was updated to ignore optional `00-*` support documents
+  when discovering phase files.
 
 ## Decision log
 
@@ -81,5 +82,7 @@
 - `python -m compileall tools`: passed.
 - `python tools/parse_player_log.py tools/fixtures/shadow_allocation_synthetic.txt --require-launchlogs --require-snapshots`: passed.
 - `python tools/fit_shadow_allocation.py --input tools/fixtures --output artifacts/shadow-fitting/issue_27_synthetic`: passed; verdict remains `Not ready` because the fixture is synthetic.
-- `phase_plan_helper.py validate --plan-dir dev-docs/plan/issue_27`: not
-  applicable without moving or rewriting the user-provided `00-context.md`.
+- `python tools/parse_player_log.py --require-launchlogs --require-snapshots`: passed on the active `Player.log`; 730/730 cycles had observed target PD evidence and 0/730 had `pdWeightsDefaulted`.
+- `python tools/fit_shadow_allocation.py --input "$env:USERPROFILE\AppData\LocalLow\Pavonis Interactive\TerraInvicta\Player.log" --output artifacts\shadow-fitting\issue_27_live`: passed; verdict `Conditionally ready` because only one real log was analyzed.
+- `phase_plan_helper.py validate --plan-dir dev-docs/plan/issue_27`: passed after
+  updating the helper to ignore optional `00-*` support documents.

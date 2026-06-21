@@ -279,6 +279,41 @@ defense-mode weapons. If the target object, template list, or defense-mode
 field is unavailable, the diagnostics keep the explicit default model and
 record the missing reason.
 
-No fresh runtime smoke has been recorded in this document yet. Until a local
-combat log confirms observed Issue #27 fields, #6 full readiness remains gated
-by PD evidence validation rather than by code availability alone.
+Fresh runtime smoke on the active `Player.log`, last written
+`2026-06-21 18:43:34` local time, confirmed the target weapon-template PD
+evidence path:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 4,564, with contiguous sequence range `1-4564`
+- `MissileWeapon.TryFire` rows: 730
+- `SnapshotLog` entries: 730
+- `AllocationLog` entries: 1,460: 730 `cycle`, 448 `allocation`, 282 `rejection`
+- `ammoGateBudgetShots`: 730/730 numeric snapshot/cycle evidence
+- total allocation-cycle ammo/gate budget: 5,922 shots
+- target velocity evidence: 730/730 cycles
+- relative velocity evidence: 730/730 cycles
+- PD weight inputs: 730 observed, 0 defaulted, 0 unknown cycles
+- `pdWeightEvidenceSource=observedTargetWeaponTemplates`: 730/730 cycles
+- `pdWeightDefaultReason=none`: 730/730 cycles
+- `pdWeightMissingReason=none`: 730/730 cycles
+- critical missing fields: `pdWeightsDefaulted` 0/730, and all other critical
+  allocation inputs 0/730
+- parser suspicious patterns: none
+- MissileWarfare issues: none
+
+Fitting this one live log directly through
+`tools/fit_shadow_allocation.py` produced:
+
+- readiness verdict: `Conditionally ready`
+- reason: only one real selected combat log was analyzed
+- plausible: 328
+- partial saturation: 120
+- ambiguous: 282
+- severe classifications: 0
+- evidence limitations: none
+
+Interpretation: Issue #27 recovered observed target PD capability evidence for
+this combat log. Full #6 baseline readiness is no longer blocked by all-cycle
+PD defaulting in this sample, but still requires multiple real selected logs
+under the existing Issue #24 readiness rule.
