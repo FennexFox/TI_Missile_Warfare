@@ -4,7 +4,7 @@ This roadmap records durable issue-sized work. Temporary per-PR plans belong und
 
 ## Current milestone state
 
-The project has enough diagnostics to observe missile launches and shadow allocation inputs, but it is not ready for controlled command application.
+The project has enough diagnostics to observe missile launches and shadow allocation inputs, and Issue #21 verifies the selected-player command scope for later dry-run command-intent logging. It is still not ready for live controlled command application.
 
 Current blocker:
 
@@ -13,10 +13,15 @@ Current blocker:
   game-equivalent per-weapon fire budget. The mod names this explicit value
   `ammoGateBudgetShots`; no distinct loaded/chambered source was found. See
   [`readiness-semantics.md`](../research/readiness-semantics.md).
+- Issue #21 resolved selected-player command scope for the next dry-run phase:
+  the safe scope is the tactical command panel's single selected ship or
+  group-selected ship list. It is not the broader left-hand player-side
+  combatant list. See
+  [`selected-command-scope.md`](../research/selected-command-scope.md).
 
 Current missing or provisional inputs:
 
-- selected-player command scope;
+- dry-run command-intent logging for the verified selected-player scope;
 - target point-defense weapon weights;
 - in-flight projectile/controller guidance target identity.
 
@@ -93,13 +98,14 @@ Acceptance criteria:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending selected-player command scope validation and
+Status: blocked pending dry-run command-intent logging and live
 command-application safety work.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
-validated the per-weapon `ammoGateBudgetShots` semantics, but controlled command
-application still needs a verified selected-player command path and must let
-vanilla combat enforce the final legal launch result.
+validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
+the selected-player command path for later dry-run logging, but controlled
+command application still must let vanilla combat enforce the final legal launch
+result.
 
 Future #6 design should log selected player ship identity, visible weapon/module
 identity, `ammoGateBudgetShots` and its evidence source, the allocator
@@ -107,11 +113,15 @@ recommendation that motivated the command, command intent and target,
 skipped/failure reason, and observed ammo delta or launch evidence when
 available.
 
-Additional gate: selection scope must be based on a verified player-selection or player-command hook. Until then, command application remains disabled.
+Additional gate: vanilla salvo target command granularity is ship-level and all
+salvo-capable weapons on that ship, not one visible missile module. Later #22
+dry-run logs must make that broader granularity explicit before #23 considers a
+minimal live smoke.
 
 Acceptance criteria once unblocked:
 
-- Selection scope is based on a verified player-selection or player-command hook.
+- Selection scope is based on the verified single selected ship or
+  group-selected ship command-panel path.
 - Existing manual control remains possible after the selected-ship command path is verified.
 - Recommendation-only mode prevents command changes.
 - Failures are logged without breaking combat.
@@ -131,7 +141,10 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Verify selected-player command scope before any command application.
+1. Implement #22 dry-run command-intent logging from the verified selected ship
+   and group-selected ship scopes.
 2. Locate target velocity and point-defense weapon data sources.
-3. Design Issue #6 around the vanilla selected ship/weapon command path and explicit `ammoGateBudgetShots` diagnostics.
-4. Only then revisit controlled allocation and launch discipline behavior.
+3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+   documented vanilla salvo command granularity.
+4. Only then revisit #23 live command safety, controlled allocation, and launch
+   discipline behavior.

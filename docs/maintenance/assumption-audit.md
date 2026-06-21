@@ -20,10 +20,13 @@ Updated durable files:
 - [`diagnostics/snapshot-and-allocation.md`](../diagnostics/snapshot-and-allocation.md)
 - [`research/reverse-engineering-plan.md`](../research/reverse-engineering-plan.md)
 - [`planning/mvp-roadmap.md`](../planning/mvp-roadmap.md)
+- [`research/selected-command-scope.md`](../research/selected-command-scope.md)
 
 ### 2. Selection and command scope
 
-Previous Issue #6 wording could imply that selected-ship command scope was already verified. It is now conditional on a verified player-selection or command path.
+Previous Issue #6 wording could imply that selected-ship command scope was already verified. Issue #21 now verifies the selected-player command scope for later dry-run logging: use the tactical command panel's single selected ship or group-selected ship list, not the broader left-hand player-side combatant list.
+
+Remaining constraint: vanilla salvo target commands operate at ship/all-salvo-capable-weapons granularity, not one visible missile module. Later dry-run and live-safety work must log and account for that.
 
 ### 3. Scoring inputs
 

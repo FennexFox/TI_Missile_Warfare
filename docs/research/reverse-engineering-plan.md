@@ -75,13 +75,20 @@ The mod should call the derived value `ammoGateBudgetShots`. Do not introduce
 `readyShots`, loaded, or chambered terminology unless a future source actually
 exposes a distinct state.
 
+Issue #21 verifies selected-player command scope for later dry-run command
+intent logging. The selected command scope is the tactical command panel's
+single selected ship or group-selected ship list, not the broader left-hand
+player-side combatant list. Vanilla salvo target commands operate at
+ship/all-salvo-capable-weapons granularity rather than one visible module. See
+[`selected-command-scope.md`](selected-command-scope.md).
+
 Future reverse-engineering should focus on:
 
-- selected player ship/weapon command scope;
+- dry-run command-intent logging from the verified selected-player scope;
 - target velocity and relative velocity sources;
 - target point-defense weapon weights;
 - projectile/controller guidance target identity;
-- vanilla command application around `SelectSalvoTargetCommand`,
+- later live command safety around `SelectSalvoTargetCommand`,
   `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`, and
   `SetWeaponModeAction`.
 
@@ -110,8 +117,8 @@ Acceptance criteria:
 
 ## Phase 4: controlled command helper
 
-Only after recommendation quality is acceptable and selected-player command
-scope is verified:
+Only after recommendation quality is acceptable and dry-run command-intent logs
+confirm the verified selected-player scope:
 
 - Add a player-triggered button or hotkey.
 - Apply target assignments to selected ships only.

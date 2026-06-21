@@ -197,3 +197,76 @@ or:
 ```text
 Issue #21 did not verify a safe selected-player command scope; #22/#23 should remain blocked pending the documented gap.
 ```
+
+## Goal
+
+Provide the issue-specific source context and acceptance boundary for verifying selected-player command scope for #6.
+
+## Scope
+
+- Define the #21 source-review and documentation boundary.
+- Preserve the distinction between selected combat objects, player-controllable faction ownership, friendly/allied relation, and command recipients.
+- List the source classes, acceptance criteria, validation expectations, and follow-up branch split.
+
+## Non-goals
+
+- Do not implement #22 dry-run command intent logging.
+- Do not implement #23 live command smoke.
+- Do not implement #6 controlled allocation.
+- Do not mutate target assignment, weapon mode, ammo, cooldown, projectile state, selected state, AI behavior, or manual control.
+
+## Affected files
+
+- `dev-docs/plan/issue_21/00-context.md`
+- `dev-docs/plan/issue_21/00-master-plan.md`
+- `dev-docs/plan/issue_21/01-source-review.md`
+- `dev-docs/plan/issue_21/02-docs-validation.md`
+- `docs/research/selected-command-scope.md`
+- `docs/research/reverse-engineering-plan.md`
+- `docs/planning/mvp-roadmap.md`
+- `docs/README.md`
+- `docs/maintenance/assumption-audit.md`
+
+## Implementation steps
+
+1. Use this context as the issue-specific source of truth.
+2. Review the decompiled source paths named above.
+3. Document selected-player command scope and vanilla salvo granularity.
+4. Update durable docs and run validation.
+
+## Acceptance criteria
+
+- The branch answers whether #6 can proceed to #22 dry-run command-intent logging.
+- Selected-player scope is not conflated with friendly/allied or broad fleet-side scope.
+- Vanilla target and weapon granularity are documented.
+
+## Validation commands
+
+- `python C:/Users/techn/.codex/skills/phased-issue-implementation/scripts/phase_plan_helper.py validate --plan-dir dev-docs/plan/issue_21`
+- `python tools/check_layout.py`
+- `python -m ruff check tools/check_layout.py tools/package_local.py tools/parse_player_log.py`
+- `python -m compileall tools`
+- `dotnet build TI_Missile_Fire_Control.sln`
+- `git diff --check`
+
+## Manual smoke tests
+
+Manual tactical-combat smoke is not required if source review proves selected-player command scope. Runtime diagnostics-only validation is required only if source review is ambiguous.
+
+## Rollback risks
+
+Docs-only. Rollback risk is limited to removing issue-context and documentation updates.
+
+## Progress
+
+- Context updated for Issue #21 scope and acceptance boundaries.
+- Source review completed without requiring runtime instrumentation.
+
+## Decision log
+
+- Preserve `00-context.md` as the context document referenced by the user and issue plan.
+- Keep #21 documentation-only because the decompiled source proves command-recipient scope.
+
+## Outcomes / Retrospective
+
+This context file supported a source-review-only completion path for #21. Durable conclusions are recorded in `docs/research/selected-command-scope.md`.
