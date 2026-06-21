@@ -371,7 +371,7 @@ launcher-selected priority target was visible to the current hook, so the shadow
 allocator made no allocation. This is safe skip evidence, not allocation-quality
 evidence and not parser failure. No repeated severe fitting pattern was found.
 
-#6 readiness interpretation:
+## Issue `#6` readiness interpretation:
 
 - Evidence quality: the four-log sweep is stronger than the earlier single-log
   sample. Under the current fitting wrapper rules it is ready for the #6
