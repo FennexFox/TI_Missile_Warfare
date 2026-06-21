@@ -22,8 +22,14 @@ Current blocker:
 Current missing or provisional inputs:
 
 - dry-run command-intent logging for the verified selected-player scope;
-- multiple-real-log fitting evidence with Issue #27 observed target
-  point-defense evidence;
+- evidence-sufficiency reporting now classifies the Issue #30 four-log fitting
+  sweep as baseline-ready with named limitations, not controlled-command ready;
+- Issue #27 observed target point-defense evidence is presence-only until
+  Issue #29 upgrades it from defense-mode template presence into a richer
+  capability model;
+- vanilla salvo target command granularity is ship-level across all
+  salvo-capable weapons on the ship, so per-visible-module command assumptions
+  remain unsafe;
 - in-flight projectile/controller guidance target identity.
 
 ## Completed diagnostic foundation
@@ -122,8 +128,13 @@ Implementation notes:
   safe skip evidence when no launcher-selected priority target is visible. It is
   not allocation-quality evidence and not proof that vanilla had no missile
   target.
+- Issue #28's sufficiency report keeps the fitting baseline ready while naming
+  limitations: current target PD evidence is `presenceOnly`, target-identity
+  no-op evidence is `provisional`, observed launch/ammo deltas are
+  `provisional`, and controlled live command readiness is `Not ready`.
 - #6 readiness now separates three remaining concerns: evidence quality
-  (#28/#29), command safety (#22/#23), and allocator design choices (#6).
+  (#29 after #28's gate), command safety (#22/#23), and allocator design choices
+  (#6).
 
 ## Blocked controlled features
 

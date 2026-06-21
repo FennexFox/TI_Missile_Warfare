@@ -385,3 +385,35 @@ evidence and not parser failure. No repeated severe fitting pattern was found.
   saturation classifications and no severe bad classifications, but ambiguous
   rejection rows still need to be treated as conservative fitting evidence, not
   tuning permission.
+
+## Issue #28 evidence sufficiency gate
+
+Issue #28 adds an explicit sufficiency layer above the parser verdict and the
+Issue #24/#30 fitting baseline. Rerunning the four-log sweep with the Issue #28
+reporting surface preserved the fitting result:
+
+- parser verdicts: all `OK`
+- fitting readiness verdict: `Ready for #6 baseline`
+- evidence sufficiency verdict: `Baseline-ready with named limitations`
+- controlled live command readiness: `Not ready`
+- `ammoGateBudgetShots`: `ready`, 1,981/1,981 cycles numeric
+- target identity: `provisional`, because 54 no-op cycles lacked
+  launcher-selected target identity and allocated no shots
+- target velocity: `ready`, 1,981/1,981 cycles observed
+- relative velocity: `ready`, 1,981/1,981 cycles observed
+- missile profile data: `ready`, 1,981/1,981 cycles present
+- observed target PD evidence: `presenceOnly`, because
+  `observedTargetWeaponTemplates` proves defense-mode template presence but not
+  calibrated vanilla interception capability
+- selected-player command scope: `ready` for command design from Issue #21
+  source review, but not exercised by offline fitting
+- vanilla command granularity: `commandUnsafe`, because vanilla salvo target
+  commands operate at ship level across all salvo-capable weapons
+- dry-run command intent logging: `commandUnsafe`, because selected-scope
+  command intent is not yet logged
+- observed launch/ammo delta evidence: `provisional`, useful observation
+  evidence but not controlled-command result evidence
+
+This means parser `OK`, empty allocator-critical `missingInputs`, and
+`Ready for #6 baseline` are no longer sufficient wording for controlled #6
+readiness. They support a baseline for design and diagnostics only.

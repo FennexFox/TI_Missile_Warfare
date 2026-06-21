@@ -103,6 +103,25 @@ class FittingLogReport:
 
 
 @dataclass
+class EvidenceSufficiencyInput:
+    name: str
+    status: str
+    scope: str
+    summary: str
+    limitations: list[str] = field(default_factory=list)
+    evidence: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass
+class EvidenceSufficiencyReport:
+    verdict: str
+    verdict_reasons: list[str]
+    controlled_command_readiness: str
+    command_blockers: list[str]
+    inputs: list[EvidenceSufficiencyInput]
+
+
+@dataclass
 class AggregateReport:
     input: str
     output: str
@@ -115,6 +134,7 @@ class AggregateReport:
     limitation_counts: dict[str, int]
     readiness_verdict: str
     readiness_reasons: list[str]
+    evidence_sufficiency: EvidenceSufficiencyReport
     logs: list[FittingLogReport]
 
 
@@ -466,6 +486,366 @@ def readiness_verdict(logs: list[FittingLogReport]) -> tuple[str, list[str]]:
     return "Ready for #6 baseline", reasons
 
 
+def evidence_sufficiency_report(logs: list[FittingLogReport]) -> EvidenceSufficiencyReport:
+    """Build Issue #28 evidence sufficiency gates separate from fitting readiness."""
+    evidence_logs = [log for log in logs if log.has_required_evidence]
+    real_evidence_logs = [log for log in evidence_logs if not log.synthetic_fixture]
+    scoped_logs = real_evidence_logs or evidence_logs
+    parser_failures = [log for log in logs if log.parser_verdict != "OK"]
+
+    total_cycles = sum(allocation_summary_value(log, "shadow_cycles") for log in scoped_logs)
+    missing_inputs = aggregate_allocation_counter(scoped_logs, "missing_input_counts")
+    classification_counts = Counter()
+    limitation_counts = Counter()
+    for log in scoped_logs:
+        classification_counts.update(log.classification_counts)
+        limitation_counts.update(log.limitation_counts)
+
+    inputs = [
+        ammo_gate_budget_status(scoped_logs, total_cycles, missing_inputs),
+        target_identity_status(scoped_logs, total_cycles, missing_inputs, classification_counts),
+        target_velocity_status(scoped_logs, total_cycles),
+        relative_velocity_status(scoped_logs, total_cycles),
+        missile_profile_status(total_cycles, missing_inputs),
+        target_pd_status(scoped_logs, total_cycles, limitation_counts),
+        EvidenceSufficiencyInput(
+            name="selected-player command scope",
+            status="ready",
+            scope="command design",
+            summary=(
+                "Issue #21 verifies the tactical command panel's single selected "
+                "ship or group-selected ship list as the later command scope."
+            ),
+            limitations=["not exercised by the offline fitting wrapper"],
+        ),
+        EvidenceSufficiencyInput(
+            name="vanilla command granularity",
+            status="commandUnsafe",
+            scope="controlled command mapping",
+            summary=(
+                "Vanilla salvo target commands operate at ship level and affect "
+                "all salvo-capable weapons on that ship."
+            ),
+            limitations=[
+                "allocator-to-command mapping must not assume per-visible-module salvo control"
+            ],
+        ),
+        EvidenceSufficiencyInput(
+            name="dry-run command intent logging",
+            status="commandUnsafe",
+            scope="controlled command mapping",
+            summary=(
+                "Current selected-log fitting is observation-only and does not log "
+                "a selected-scope command intent."
+            ),
+            limitations=["required before live controlled command application"],
+        ),
+        observed_launch_delta_status(scoped_logs),
+    ]
+
+    command_blockers = [
+        input_status.summary
+        for input_status in inputs
+        if input_status.status == "commandUnsafe"
+    ]
+
+    verdict_reasons: list[str] = []
+    if parser_failures:
+        verdict_reasons.append(f"{len(parser_failures)} selected log(s) failed parser validation")
+    if not real_evidence_logs:
+        verdict_reasons.append("no real selected combat log has required fitting evidence")
+    if any(input_status.status in {"unknown", "defaulted"} for input_status in inputs[:6]):
+        verdict_reasons.append("one or more allocator evidence inputs are unknown or defaulted")
+    if any(input_status.status in {"presenceOnly", "provisional"} for input_status in inputs[:6]):
+        verdict_reasons.append("one or more allocator evidence inputs have named fidelity limits")
+    if command_blockers:
+        verdict_reasons.append("controlled command application has separate command-safety blockers")
+
+    if parser_failures or not real_evidence_logs or any(
+        input_status.status in {"unknown", "defaulted"} for input_status in inputs[:6]
+    ):
+        verdict = "Not baseline-ready"
+    elif any(input_status.status in {"presenceOnly", "provisional"} for input_status in inputs):
+        verdict = "Baseline-ready with named limitations"
+    else:
+        verdict = "Ready"
+
+    if not verdict_reasons:
+        verdict_reasons.append("all scoped allocator evidence inputs are ready")
+
+    return EvidenceSufficiencyReport(
+        verdict=verdict,
+        verdict_reasons=verdict_reasons,
+        controlled_command_readiness="Not ready",
+        command_blockers=command_blockers,
+        inputs=inputs,
+    )
+
+
+def allocation_summary(log: FittingLogReport) -> dict[str, object]:
+    """Return the parser allocation summary dictionary for a fitting log."""
+    summary = log.parser_summary.get("allocation_summary", {})
+    return summary if isinstance(summary, dict) else {}
+
+
+def allocation_summary_value(log: FittingLogReport, key: str) -> int:
+    """Return an integer allocation-summary field."""
+    value = allocation_summary(log).get(key, 0)
+    return value if isinstance(value, int) else 0
+
+
+def aggregate_allocation_counter(logs: list[FittingLogReport], key: str) -> Counter[str]:
+    """Aggregate a parser allocation-summary count dictionary."""
+    counter: Counter[str] = Counter()
+    for log in logs:
+        values = allocation_summary(log).get(key, {})
+        if isinstance(values, dict):
+            counter.update({str(name): int(count) for name, count in values.items()})
+    return counter
+
+
+def ammo_gate_budget_status(
+    logs: list[FittingLogReport],
+    total_cycles: int,
+    missing_inputs: Counter[str],
+) -> EvidenceSufficiencyInput:
+    """Classify ammo/gate budget sufficiency."""
+    numeric_cycles = sum(
+        allocation_summary_value(log, "ammo_gate_budget_shots_numeric_cycles") for log in logs
+    )
+    source_counts = aggregate_allocation_counter(logs, "ammo_gate_budget_evidence_source_counts")
+    missing = missing_inputs.get("ammoGateBudgetShots", 0)
+    if total_cycles <= 0:
+        status = "unknown"
+    elif missing == 0 and numeric_cycles == total_cycles:
+        status = "ready"
+    elif numeric_cycles > 0:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = []
+    if missing:
+        limitations.append(f"{missing}/{total_cycles} cycles report missing ammoGateBudgetShots")
+
+    return EvidenceSufficiencyInput(
+        name="ammoGateBudgetShots",
+        status=status,
+        scope="fitting baseline",
+        summary=f"{numeric_cycles}/{total_cycles} cycles have numeric ammo/gate budget evidence.",
+        limitations=limitations,
+        evidence={"sources": dict(sorted(source_counts.items()))},
+    )
+
+
+def target_identity_status(
+    logs: list[FittingLogReport],
+    total_cycles: int,
+    missing_inputs: Counter[str],
+    classification_counts: Counter[str],
+) -> EvidenceSufficiencyInput:
+    """Classify launcher-selected target identity sufficiency."""
+    del logs
+    missing = missing_inputs.get("targetIdentity", 0)
+    command_noops = classification_counts.get("command-safety no-op", 0)
+    if total_cycles <= 0:
+        status = "unknown"
+    elif missing == 0:
+        status = "ready"
+    elif missing == command_noops:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = []
+    if command_noops:
+        limitations.append(
+            f"{command_noops} no-op rows lacked launcher-selected target identity and allocated no shots"
+        )
+    if missing and missing != command_noops:
+        limitations.append(f"{missing}/{total_cycles} cycles lacked target identity")
+
+    return EvidenceSufficiencyInput(
+        name="target identity",
+        status=status,
+        scope="fitting baseline",
+        summary=f"{total_cycles - missing}/{total_cycles} cycles have launcher-selected target identity.",
+        limitations=limitations,
+        evidence={"command_safety_no_ops": command_noops},
+    )
+
+
+def target_velocity_status(
+    logs: list[FittingLogReport],
+    total_cycles: int,
+) -> EvidenceSufficiencyInput:
+    """Classify target velocity evidence sufficiency."""
+    evidence_cycles = sum(allocation_summary_value(log, "target_velocity_evidence_cycles") for log in logs)
+    source_counts = aggregate_allocation_counter(logs, "target_velocity_evidence_source_counts")
+    return velocity_input_status(
+        "target velocity",
+        evidence_cycles,
+        total_cycles,
+        source_counts,
+    )
+
+
+def relative_velocity_status(
+    logs: list[FittingLogReport],
+    total_cycles: int,
+) -> EvidenceSufficiencyInput:
+    """Classify relative velocity evidence sufficiency."""
+    evidence_cycles = sum(allocation_summary_value(log, "relative_velocity_evidence_cycles") for log in logs)
+    source_counts = aggregate_allocation_counter(logs, "relative_velocity_evidence_source_counts")
+    return velocity_input_status(
+        "relative velocity",
+        evidence_cycles,
+        total_cycles,
+        source_counts,
+    )
+
+
+def velocity_input_status(
+    name: str,
+    evidence_cycles: int,
+    total_cycles: int,
+    source_counts: Counter[str],
+) -> EvidenceSufficiencyInput:
+    """Classify one velocity-family input."""
+    if total_cycles <= 0:
+        status = "unknown"
+    elif evidence_cycles == total_cycles:
+        status = "ready"
+    elif evidence_cycles > 0:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = []
+    if evidence_cycles != total_cycles:
+        limitations.append(f"{total_cycles - evidence_cycles}/{total_cycles} cycles lack {name}")
+
+    return EvidenceSufficiencyInput(
+        name=name,
+        status=status,
+        scope="fitting baseline",
+        summary=f"{evidence_cycles}/{total_cycles} cycles have {name} evidence.",
+        limitations=limitations,
+        evidence={"sources": dict(sorted(source_counts.items()))},
+    )
+
+
+def missile_profile_status(
+    total_cycles: int,
+    missing_inputs: Counter[str],
+) -> EvidenceSufficiencyInput:
+    """Classify missile profile data sufficiency."""
+    missing = missing_inputs.get("missileProfileData", 0)
+    if total_cycles <= 0:
+        status = "unknown"
+    elif missing == 0:
+        status = "ready"
+    elif missing < total_cycles:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = []
+    if missing:
+        limitations.append(f"{missing}/{total_cycles} cycles report missing missileProfileData")
+
+    return EvidenceSufficiencyInput(
+        name="missile profile data",
+        status=status,
+        scope="fitting baseline",
+        summary=f"{total_cycles - missing}/{total_cycles} cycles have missile profile data.",
+        limitations=limitations,
+    )
+
+
+def target_pd_status(
+    logs: list[FittingLogReport],
+    total_cycles: int,
+    limitation_counts: Counter[str],
+) -> EvidenceSufficiencyInput:
+    """Classify target point-defense evidence sufficiency."""
+    source_counts = aggregate_allocation_counter(logs, "pd_weight_evidence_source_counts")
+    observed = sum(allocation_summary_value(log, "pd_weight_observed_cycles") for log in logs)
+    defaulted = sum(allocation_summary_value(log, "pd_weight_defaulted_cycles") for log in logs)
+    unknown = sum(allocation_summary_value(log, "pd_weight_unknown_cycles") for log in logs)
+    defaulted_decision_limits = limitation_counts.get("PD evidence defaulted", 0)
+
+    if total_cycles <= 0:
+        status = "unknown"
+    elif defaulted_decision_limits:
+        status = "defaulted"
+    elif source_counts.get("observedTargetWeaponTemplates", 0):
+        status = "presenceOnly"
+    elif observed:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = []
+    if source_counts.get("observedTargetWeaponTemplates", 0):
+        limitations.append(
+            "observed target weapon templates prove defense-mode presence, not calibrated PD capability"
+        )
+    if defaulted_decision_limits:
+        limitations.append(
+            f"{defaulted_decision_limits} allocation/rejection decisions used default-model PD evidence"
+        )
+    elif defaulted:
+        limitations.append(
+            f"{defaulted}/{total_cycles} cycles used default-model PD only on non-allocation decisions"
+        )
+    if unknown:
+        limitations.append(f"{unknown}/{total_cycles} cycles had unknown PD evidence")
+
+    return EvidenceSufficiencyInput(
+        name="observed target PD evidence",
+        status=status,
+        scope="fitting baseline",
+        summary=(
+            f"{observed}/{total_cycles} observed cycles, {defaulted} defaulted cycles, "
+            f"{unknown} unknown cycles."
+        ),
+        limitations=limitations,
+        evidence={"sources": dict(sorted(source_counts.items()))},
+    )
+
+
+def observed_launch_delta_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyInput:
+    """Classify observed launch/ammo delta evidence for command validation."""
+    try_fire_rows = sum(int(log.parser_summary.get("missile_try_fire_count", 0)) for log in logs)
+    numeric_pairs = sum(
+        int(log.parser_summary.get("missile_try_fire_pre_post_ammo_numeric_count", 0))
+        for log in logs
+    )
+    if try_fire_rows <= 0:
+        status = "unknown"
+    elif numeric_pairs == try_fire_rows:
+        status = "provisional"
+    elif numeric_pairs:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations = [
+        "launch/ammo deltas are observation evidence, not controlled-command result evidence"
+    ]
+    if numeric_pairs != try_fire_rows:
+        limitations.append(f"{try_fire_rows - numeric_pairs}/{try_fire_rows} try-fire rows lack numeric deltas")
+
+    return EvidenceSufficiencyInput(
+        name="observed launch/ammo delta evidence",
+        status=status,
+        scope="post-command validation design",
+        summary=f"{numeric_pairs}/{try_fire_rows} MissileWeapon.TryFire rows have numeric pre/post ammo pairs.",
+        limitations=limitations,
+    )
+
+
 def aggregate_report(input_path: Path, output_path: Path, logs: list[FittingLogReport]) -> AggregateReport:
     """Build aggregate report data."""
     classification_counts = Counter()
@@ -477,6 +857,7 @@ def aggregate_report(input_path: Path, output_path: Path, logs: list[FittingLogR
         classification_counts.setdefault(classification, 0)
 
     verdict, reasons = readiness_verdict(logs)
+    sufficiency = evidence_sufficiency_report(logs)
     return AggregateReport(
         input=str(input_path),
         output=str(output_path),
@@ -491,6 +872,7 @@ def aggregate_report(input_path: Path, output_path: Path, logs: list[FittingLogR
         limitation_counts=dict(sorted(limitation_counts.items())),
         readiness_verdict=verdict,
         readiness_reasons=reasons,
+        evidence_sufficiency=sufficiency,
         logs=logs,
     )
 
@@ -575,6 +957,43 @@ def format_markdown_report(report: AggregateReport) -> str:
     lines.extend(
         [
             "",
+            "## Evidence sufficiency gate",
+            "",
+            f"- verdict: **{report.evidence_sufficiency.verdict}**",
+            f"- controlled live command readiness: "
+            f"**{report.evidence_sufficiency.controlled_command_readiness}**",
+        ]
+    )
+    for reason in report.evidence_sufficiency.verdict_reasons:
+        lines.append(f"- reason: {reason}")
+    if report.evidence_sufficiency.command_blockers:
+        for blocker in report.evidence_sufficiency.command_blockers:
+            lines.append(f"- command blocker: {blocker}")
+    else:
+        lines.append("- command blocker: none")
+
+    lines.extend(
+        [
+            "",
+            "| input | status | scope | summary | limitations |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for input_status in report.evidence_sufficiency.inputs:
+        limitations = "; ".join(input_status.limitations) if input_status.limitations else "none"
+        lines.append(
+            "| {name} | {status} | {scope} | {summary} | {limitations} |".format(
+                name=markdown_cell(input_status.name),
+                status=input_status.status,
+                scope=markdown_cell(input_status.scope),
+                summary=markdown_cell(input_status.summary),
+                limitations=markdown_cell(limitations),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
             "## Classification counts",
             "",
         ]
@@ -645,14 +1064,26 @@ def format_markdown_report(report: AggregateReport) -> str:
             "## Interpretation rules",
             "",
             "- Synthetic fixtures validate the wrapper only; they are not fitting evidence.",
+            "- Evidence sufficiency statuses are separate from parser health and the",
+            "  fitting baseline verdict. Empty `missingInputs` can still leave model",
+            "  fidelity limits such as presence-only PD evidence.",
+            "- Rows scoped to `fitting baseline` describe allocator-consumable",
+            "  evidence for offline diagnostics; controlled-command sufficiency is",
+            "  represented separately by command-readiness rows and blockers.",
             "- `command-safety no-op` means no allocation was made because no concrete",
             "  launcher-selected target identity was visible; it is safe skip evidence,",
             "  not allocation-quality evidence.",
+            "- `presenceOnly` PD evidence means target defense-mode weapon templates",
+            "  were observed, but calibrated vanilla interception pressure, cooldown,",
+            "  ammo, arc, range geometry, and support behavior are not yet proven.",
             "- PD-defaulted evidence on allocation/rejection decisions can support at",
             "  most `Conditionally ready`.",
             "- Full `Ready for #6 baseline` requires multiple real selected logs with",
             "  required evidence, at least one plausible decision, no severe",
             "  classifications, and no PD-defaulted allocation/rejection evidence.",
+            "- Controlled live command readiness remains separate from the fitting",
+            "  baseline and requires command-intent, command-mapping, and live-safety",
+            "  gates before Issue #6 can apply commands.",
         ]
     )
     return "\n".join(lines) + "\n"

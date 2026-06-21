@@ -273,6 +273,37 @@ not counted as an allocation evidence limit because no target was allocated.
 PD-defaulted allocation/rejection evidence can support at most a conditional #6
 baseline recommendation; it cannot establish full readiness.
 
+Issue #28 adds a separate evidence-sufficiency gate to the fitting report. This
+gate is intentionally distinct from parser health, required-evidence presence,
+empty `missingInputs`, and the fitting-wrapper `Ready for #6 baseline` verdict.
+It reports these per-input statuses:
+
+- `ready`: source-labeled evidence is sufficient for the scoped claim.
+- `provisional`: usable for cautious baseline diagnostics, with a named limit.
+- `presenceOnly`: proves existence or presence, not capability magnitude or
+  live state.
+- `defaulted`: a fallback/default model affected allocation or rejection
+  evidence.
+- `unknown`: absent or not interpretable from the selected logs.
+- `commandUnsafe`: unsafe for controlled command application even when parser
+  and fitting evidence are healthy.
+
+Current `observedTargetWeaponTemplates` point-defense evidence is
+`presenceOnly`. It proves visible target weapon templates with
+`defenseMode=true`; it does not prove calibrated vanilla defensive pressure,
+cooldown/readiness, ammo, arc, range geometry, support behavior, or exact
+interception capability. `defaultModel` or `pdWeightDefaulted=True` remains a
+named limitation whenever it qualifies allocation or rejection evidence.
+
+The same report also carries controlled live command readiness separately from
+fitting readiness. Current reports should remain `Not ready` for controlled
+live commands until command-intent logging, vanilla command granularity mapping,
+and live-command safety gates pass.
+
+Rows scoped as `fitting baseline` describe allocator-consumable evidence for
+offline diagnostics. They do not prove that the same evidence is sufficient for
+controlled command application.
+
 A tiny synthetic fixture exists at
 `tools/fixtures/shadow_allocation_synthetic.txt` for wrapper smoke validation.
 It is not real combat evidence and must not be used for the Issue #24 fitting
