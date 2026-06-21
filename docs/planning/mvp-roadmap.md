@@ -24,6 +24,8 @@ Current missing or provisional inputs:
 - dry-run command-intent logging for the verified selected-player scope;
 - target point-defense weapon weights;
 - in-flight projectile/controller guidance target identity.
+- selected-log fitting evidence from real local combat logs for the Issue #24
+  wrapper.
 
 ## Completed diagnostic foundation
 
@@ -91,6 +93,26 @@ Acceptance criteria:
 - Player can trigger recommendation generation on demand.
 - Output is readable in UMM log or an in-game panel.
 - The UI clearly says recommendation-only.
+
+### Issue 24: Shadow allocation log-only fitting pass
+
+Goal: replay selected local combat logs through parser/fitting tooling before
+using the allocator as a #6 baseline.
+
+Status: tooling available; real selected-log fitting evidence still local.
+
+Implementation notes:
+
+- Default selected logs: `artifacts/combat-logs/selected/`.
+- Default generated fitting report: `artifacts/shadow-fitting/latest/`.
+- Wrapper command:
+  `python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest`.
+- One real selected combat log can support a `Conditionally ready` #6 baseline
+  when required evidence is present and no impossible or obviously unsafe
+  allocation behavior is classified, provided the report also includes at
+  least one plausible allocation or no-op decision.
+- Any PD-defaulted evidence blocks full readiness but does not block a
+  conditional baseline.
 
 ## Blocked controlled features
 

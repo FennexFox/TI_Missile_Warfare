@@ -216,6 +216,44 @@ many launch-window rejects`, or `allocation report limited by missing runtime
 inputs` are tuning hints from observed diagnostic fields. They are not proof of
 combat outcome quality.
 
+## Shadow fitting wrapper
+
+Issue #24 adds an offline wrapper for replaying selected combat logs through the
+parser and classifying shadow allocation decisions without launching Terra
+Invicta:
+
+```powershell
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
+```
+
+Both default paths are under `artifacts/`, which is ignored. Real selected
+combat logs should stay local and should not be committed. The wrapper accepts
+`.log` and `.txt` files, writes one per-log JSON summary, writes
+`summary.json`, and writes `shadow-fitting-report.md`.
+
+The fitting report classifies allocation, rejection, and no-op rows into
+conservative buckets:
+
+- `plausible`
+- `overkill`
+- `underkill`
+- `late/out-of-window`
+- `target-value mismatch`
+- `PD-risk mismatch`
+- `partial saturation`
+- `missing-evidence-limited`
+- `impossible`
+- `ambiguous`
+
+PD default-model evidence is reported as an evidence limitation. Any
+PD-defaulted evidence can support at most a conditional #6 baseline
+recommendation; it cannot establish full readiness.
+
+A tiny synthetic fixture exists at
+`tools/fixtures/shadow_allocation_synthetic.txt` for wrapper smoke validation.
+It is not real combat evidence and must not be used for the Issue #24 fitting
+verdict.
+
 ## Validation commands
 
 Static validation:
@@ -223,7 +261,8 @@ Static validation:
 ```powershell
 dotnet build TI_Missile_Fire_Control.sln
 python tools\check_layout.py
-python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py
+python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py
+python -m compileall tools
 python tools\parse_player_log.py --require-launchlogs
 ```
 
@@ -231,6 +270,12 @@ Runtime validation after deploying and enabling battle snapshot diagnostics:
 
 ```powershell
 python tools\parse_player_log.py --require-launchlogs --require-snapshots
+```
+
+Offline fitting validation after copying selected local logs:
+
+```powershell
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
 ```
 
 Expected runtime result:
