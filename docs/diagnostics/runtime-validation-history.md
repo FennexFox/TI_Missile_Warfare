@@ -222,3 +222,38 @@ shadow allocation loop:
   no-op/skip decisions, but does not assign targets, issue commands, change
   fire mode, suppress launches, alter AI behavior, or mutate manual player
   control.
+
+## Issue #24 log-only fitting pass
+
+Issue #24 adds an offline fitting wrapper for selected combat logs:
+
+```powershell
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
+```
+
+The selected-log input and generated fitting outputs are intentionally under
+ignored `artifacts/` paths. Real selected combat logs remain local. The wrapper
+produces per-log JSON, aggregate `summary.json`, and
+`shadow-fitting-report.md`, then classifies observed shadow allocation decisions
+as plausible, bad, ambiguous, or evidence-limited without changing runtime
+combat behavior.
+
+Initial tooling validation used only
+`tools/fixtures/shadow_allocation_synthetic.txt`. That fixture confirms the
+wrapper/parser workflow but is not real combat evidence and does not count as
+the Issue #24 fitting result.
+
+Current Issue #24 readiness rule for #6:
+
+- One real selected combat log with `LaunchLog`, `SnapshotLog`, and
+  `AllocationLog` evidence can support `Conditionally ready` if the fitting
+  report shows no impossible or obviously unsafe allocation behavior.
+- Full `Ready for #6 baseline` requires more than one real log or more varied
+  combat scenarios.
+- PD-default-only logs can support at most `Conditionally ready`; observed
+  target point-defense weapon recovery is still required before full readiness.
+- Any heuristic or scoring change must be justified by repeated,
+  evidence-supported bad classifications in selected real logs.
+
+No #24 wrapper path applies targeting commands, launch commands, fire-mode
+changes, projectile changes, AI behavior changes, or player-control mutations.
