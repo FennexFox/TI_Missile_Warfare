@@ -240,6 +240,7 @@ conservative buckets:
 - `late/out-of-window`
 - `target-value mismatch`
 - `PD-risk mismatch`
+- `partial saturation`
 - `missing-evidence-limited`
 - `impossible`
 - `ambiguous`

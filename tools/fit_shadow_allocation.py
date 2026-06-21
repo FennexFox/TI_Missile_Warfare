@@ -32,6 +32,7 @@ CLASSIFICATIONS = (
     "late/out-of-window",
     "target-value mismatch",
     "PD-risk mismatch",
+    "partial saturation",
     "missing-evidence-limited",
     "impossible",
     "ambiguous",
@@ -292,7 +293,7 @@ def classify_single_record(
         if saturation is not None and 0 < assigned < saturation:
             return "underkill", ["assigned shots are below saturation size"]
         if kill is not None and saturation is not None and saturation <= assigned < kill:
-            return "underkill", ["partial saturation is below kill package size"]
+            return "partial saturation", ["assigned shots form saturation but not kill package"]
         if kill is not None and assigned >= kill and launch_window_score is not None:
             if launch_window_score >= 0.35:
                 return "plausible", ["kill package with acceptable launch-window score"]
