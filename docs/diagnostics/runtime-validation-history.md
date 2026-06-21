@@ -317,3 +317,67 @@ Interpretation: Issue #27 recovered observed target PD capability evidence for
 this combat log. Full #6 baseline readiness is no longer blocked by all-cycle
 PD defaulting in this sample, but still requires multiple real selected logs
 under the existing Issue #24 readiness rule.
+
+## Issue #30 four-log pre-#6 readiness sweep
+
+Issue #30 reran the offline fitting wrapper across the four available current
+Terra Invicta `Player*.log` combat logs:
+
+```powershell
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\issue_30_four_logs --output artifacts\shadow-fitting\issue_30_four_logs
+```
+
+The first broad pass over the Terra Invicta log directory also matched
+non-combat `.txt`/mod log files, so the final sweep used a scoped ignored
+artifact folder containing only the four `Player*.log` files.
+
+Aggregate result:
+
+- logs analyzed: 4
+- logs with required evidence: 4
+- real selected logs with required evidence: 4
+- parser failures: 0
+- readiness verdict: `Conditionally ready`
+- readiness reason: PD inputs are default-model evidence in one evidence-limited
+  slice, so full readiness remains blocked
+- plausible: 993
+- partial saturation: 349
+- ambiguous: 585
+- missing-evidence-limited: 54
+- severe classifications: 0 (`overkill`, `underkill`, `target-value mismatch`,
+  `PD-risk mismatch`, and `impossible` were all zero)
+
+Per-log summary:
+
+- `Player-prev.log`: parser `OK`; 259 shadow cycles; 195 plausible, 8 partial
+  saturation, 2 ambiguous, 54 missing-evidence-limited; 205 cycles used
+  `observedTargetWeaponTemplates`; 54 no-op cycles lacked `targetIdentity` and
+  defaulted PD evidence.
+- `Player-prev1.log`: parser `OK`; 555 shadow cycles; 162 plausible, 143
+  partial saturation, 250 ambiguous; all cycles had observed target PD evidence
+  and zero critical missing fields.
+- `Player-prev2.log`: parser `OK`; 730 shadow cycles; 328 plausible, 120
+  partial saturation, 282 ambiguous; all cycles had observed target PD evidence
+  and zero critical missing fields.
+- `Player.log`: parser `OK`; 437 shadow cycles; 308 plausible, 78 partial
+  saturation, 51 ambiguous; all cycles had observed target PD evidence and zero
+  critical missing fields.
+
+The repeated evidence-limited pattern is the 54 `Player-prev.log` no-op cycles
+where `targetIdentity` was unavailable. This is now tracked separately as
+Issue #32, because Issue #30 required any repeated severe or evidence-limited
+pattern to become a named pre-#6 follow-up. No repeated severe fitting pattern
+was found.
+
+#6 readiness interpretation:
+
+- Evidence quality: the four-log sweep is stronger than the earlier single-log
+  sample, but full readiness is still blocked by the intermittent
+  `targetIdentity` no-op evidence gap in Issue #32 and by the broader evidence
+  sufficiency gates in Issue #28/#29.
+- Command safety: Issue #30 did not exercise live commands. #6 remains blocked
+  on dry-run command-intent logging and the live command safety gate.
+- Allocator design choices: the sweep found many plausible and partial
+  saturation classifications and no severe bad classifications, but ambiguous
+  rejection rows still need to be treated as conservative fitting evidence, not
+  tuning permission.

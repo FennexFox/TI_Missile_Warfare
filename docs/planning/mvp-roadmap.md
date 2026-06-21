@@ -98,7 +98,9 @@ Acceptance criteria:
 Goal: replay selected local combat logs through parser/fitting tooling before
 using the allocator as a #6 baseline.
 
-Status: tooling available; real selected-log fitting evidence still local.
+Status: tooling available; Issue #30 completed a four-real-log pre-#6 sweep
+with local ignored artifacts and a durable summary in
+`docs/diagnostics/runtime-validation-history.md`.
 
 Implementation notes:
 
@@ -112,6 +114,13 @@ Implementation notes:
   least one plausible allocation or no-op decision.
 - Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
+- Issue #30's four-log sweep found 993 plausible, 349 partial saturation, 585
+  ambiguous, 54 missing-evidence-limited, and zero severe classifications across
+  four parser-OK real logs.
+- The repeated evidence-limited pattern from that sweep is tracked as Issue
+  #32: intermittent missing `targetIdentity` no-op evidence before #6.
+- #6 readiness now separates three remaining concerns: evidence quality
+  (#28/#29/#32), command safety (#22/#23), and allocator design choices (#6).
 
 ## Blocked controlled features
 
@@ -162,11 +171,15 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Implement #22 dry-run command-intent logging from the verified selected ship
+1. Classify the Issue #30 follow-ups before treating #6 as fully ready:
+   evidence sufficiency gates (#28), PD capability modeling (#29), and
+   intermittent missing `targetIdentity` no-op evidence (#32).
+2. Implement #22 dry-run command-intent logging from the verified selected ship
    and group-selected ship scopes.
-2. Run fresh selected-log fitting with Issue #27 PD evidence enabled and record
-   whether multiple real logs remain free of PD-default limitations.
-3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+3. Re-run selected-log fitting after those evidence-quality follow-ups and
+   record whether multiple real logs remain free of defaulted or evidence-limited
+   classifications.
+4. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-4. Only then revisit #23 live command safety, controlled allocation, and launch
+5. Only then revisit #23 live command safety, controlled allocation, and launch
    discipline behavior.
