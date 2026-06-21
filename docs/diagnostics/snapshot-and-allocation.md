@@ -103,7 +103,7 @@ Snapshot diagnostics use a separate marker so existing launch diagnostics remain
 unchanged:
 
 ```text
-[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" pdEvidenceQuality="defaultModel" pdCapabilityEvidenceSource="none" pdCapabilityWeaponCount="0" pdCapabilityRangeKm="0" pdCapabilityCooldownSeconds="0" pdCapabilityMissingReason="none" pdCapabilityLimitations="targetPdEvidenceUnavailable" missing="targetIdentity"
+[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" pdEvidenceQuality="defaultModel" pdCapabilityEvidenceSource="none" pdCapabilityWeaponCount="0" pdCapabilityRangeKm="0" pdCapabilityCooldownSeconds="0" pdCapabilityObservedFields="none" pdCapabilityMissingReason="none" pdCapabilityLimitations="targetPdEvidenceUnavailable" missing="targetIdentity"
 ```
 
 The `missing` field records which fields were not visible from the hook rather
@@ -193,15 +193,20 @@ renaming or recalibrating the legacy `pdWeight` count. The new fields are:
   `EffectiveRangeAgainstProjectiles_km()` / targeting-range style fields.
 - `pdCapabilityCooldownSeconds`: average observed cooldown from template
   cooldown fields when visible.
+- `pdCapabilityObservedFields`: comma-separated static template field
+  categories that justify `observedTemplateCapability`, such as `range`,
+  `cooldown`, `ammoCapacity`, `range,cooldown`, or `none`.
 - `pdCapabilityMissingReason`: why capability evidence is absent.
 - `pdCapabilityLimitations`: comma-separated limits such as
   `templateCapabilityOnly`, `noLiveReadiness`, `noGeometry`, and
   `noArcCoverage`.
 
-`observedTemplateCapability` means static template fields such as range or
-cooldown were observed. It is stronger than defense-mode presence, but it is
-still not live readiness, ammo, arc coverage, target/projectile geometry, or a
-calibrated vanilla point-defense simulator.
+`observedTemplateCapability` means static template fields such as range,
+cooldown, or ammo-capacity-like fields were observed. It is stronger than
+defense-mode presence, but it is still provisional. Ammo-capacity-like template
+fields are not live ammo/readiness, and the current schema is still not arc
+coverage, target/projectile geometry, or a calibrated vanilla point-defense
+simulator.
 
 `targetVelocity` is reported when target velocity cannot be read from runtime
 target evidence. The preferred evidence path is the live `MissileWeapon.target`
@@ -249,7 +254,7 @@ evidence source counts, missing reason counts, no-op/skip reason counts, and
 cycle status counts. PD input reporting separates observed, defaulted, and
 unknown cycles, then prints the evidence source, default reason, missing
 reason, capability quality, capability source, capability missing reason, and
-capability limitation breakdowns.
+capability observed-field, and capability limitation breakdowns.
 
 Parser warnings such as `all shadow cycles missing ammoGateBudgetShots`, `too
 many launch-window rejects`, or `allocation report limited by missing runtime
@@ -317,8 +322,12 @@ Legacy `observedTargetWeaponTemplates` point-defense evidence with no
 `pdEvidenceQuality=observedTemplateCapability` is `provisional`: it proves
 static template capability fields were visible, but not live readiness, ammo,
 arc coverage, range geometry, support behavior applicability, or exact
-interception capability. `defaultModel` or `pdWeightDefaulted=True` remains a
-named limitation whenever it qualifies allocation or rejection evidence.
+interception capability. `pdCapabilityObservedFields` names which template field
+categories justified that label. `geometryAwareCapability` is reserved for
+future source-backed work and is not automatically `ready`; until separately
+validated, richer-than-presence PD capability remains `provisional`.
+`defaultModel` or `pdWeightDefaulted=True` remains a named limitation whenever
+it qualifies allocation or rejection evidence.
 
 The same report also carries controlled live command readiness separately from
 fitting readiness. Current reports should remain `Not ready` for controlled

@@ -435,6 +435,7 @@ The runtime schema now emits additive fields:
 - `pdCapabilityWeaponCount`
 - `pdCapabilityRangeKm`
 - `pdCapabilityCooldownSeconds`
+- `pdCapabilityObservedFields`
 - `pdCapabilityMissingReason`
 - `pdCapabilityLimitations`
 
@@ -446,6 +447,13 @@ The fitting report interprets those fields conservatively:
 - `pdEvidenceQuality=observedTemplateCapability` becomes `provisional`, with
   limitations naming template-only evidence, no live readiness, no geometry,
   and no arc coverage;
+- `pdCapabilityObservedFields` records which static template field categories
+  justified the capability label, such as `range`, `cooldown`, or
+  `ammoCapacity`;
+- ammo-capacity-like template fields are not live ammo/readiness evidence;
+- future `geometryAwareCapability` evidence remains `provisional` by default
+  until a separate source-backed readiness gate and real-log validation prove a
+  stronger claim;
 - `pdEvidenceQuality=defaultModel` remains defaulted fallback evidence.
 
 Static validation used `tools/fixtures/shadow_allocation_synthetic.txt` to

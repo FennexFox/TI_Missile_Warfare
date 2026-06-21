@@ -40,6 +40,7 @@ namespace MissileFireControl.Mod.Adapters
         public int PdCapabilityWeaponCount { get; set; } = -1;
         public double PdCapabilityRangeKm { get; set; }
         public double PdCapabilityCooldownSeconds { get; set; }
+        public string PdCapabilityObservedFields { get; set; }
         public string PdCapabilityMissingReason { get; set; }
         public string PdCapabilityLimitations { get; set; }
         public Vector3d OriginPositionKm { get; set; }
@@ -449,6 +450,7 @@ namespace MissileFireControl.Mod.Adapters
             snapshot.PdCapabilityWeaponCount = evidence.PointDefenseWeapons.Count;
             snapshot.PdCapabilityRangeKm = evidence.MaxCapabilityRangeKm;
             snapshot.PdCapabilityCooldownSeconds = evidence.AverageCapabilityCooldownSeconds;
+            snapshot.PdCapabilityObservedFields = evidence.ObservedFields;
             snapshot.PdCapabilityMissingReason = evidence.HasTemplateCapability ? "none" : "templateCapabilityFieldsUnavailable";
             snapshot.PdCapabilityLimitations = evidence.HasTemplateCapability
                 ? "templateCapabilityOnly,noLiveReadiness,noGeometry,noArcCoverage"
@@ -472,6 +474,7 @@ namespace MissileFireControl.Mod.Adapters
             snapshot.PdCapabilityWeaponCount = 0;
             snapshot.PdCapabilityRangeKm = 0.0;
             snapshot.PdCapabilityCooldownSeconds = 0.0;
+            snapshot.PdCapabilityObservedFields = "none";
             snapshot.PdCapabilityMissingReason = snapshot.PdWeightMissingReason;
             snapshot.PdCapabilityLimitations = "targetPdEvidenceUnavailable";
         }
@@ -518,11 +521,7 @@ namespace MissileFireControl.Mod.Adapters
                 int magazine = ReadPositiveInt(template, "magazine", "Magazine");
 
                 evidence.PointDefenseWeight += 1.0;
-                evidence.AddCapability(supportRange, cooldownSeconds);
-                if (salvoShots > 0 || magazine > 0)
-                {
-                    evidence.HasTemplateCapability = true;
-                }
+                evidence.AddCapability(supportRange, cooldownSeconds, salvoShots > 0 || magazine > 0);
 
                 evidence.PointDefenseWeapons.Add(new WeaponSnapshot
                 {
@@ -796,6 +795,30 @@ namespace MissileFireControl.Mod.Adapters
             public double PointDefenseWeight { get; set; }
             public bool HasTemplateCapability { get; set; }
             public double MaxCapabilityRangeKm { get; private set; }
+            public string ObservedFields
+            {
+                get
+                {
+                    List<string> fields = new List<string>();
+                    if (_hasRange)
+                    {
+                        fields.Add("range");
+                    }
+
+                    if (_hasCooldown)
+                    {
+                        fields.Add("cooldown");
+                    }
+
+                    if (_hasAmmoCapacity)
+                    {
+                        fields.Add("ammoCapacity");
+                    }
+
+                    return fields.Count == 0 ? "none" : string.Join(",", fields.ToArray());
+                }
+            }
+
             public double AverageCapabilityCooldownSeconds
             {
                 get
@@ -808,12 +831,16 @@ namespace MissileFireControl.Mod.Adapters
 
             private double _cooldownSumSeconds;
             private int _cooldownCount;
+            private bool _hasRange;
+            private bool _hasCooldown;
+            private bool _hasAmmoCapacity;
 
-            public void AddCapability(double rangeKm, double cooldownSeconds)
+            public void AddCapability(double rangeKm, double cooldownSeconds, bool hasAmmoCapacity)
             {
                 if (rangeKm > 0.0)
                 {
                     HasTemplateCapability = true;
+                    _hasRange = true;
                     if (rangeKm > MaxCapabilityRangeKm)
                     {
                         MaxCapabilityRangeKm = rangeKm;
@@ -823,8 +850,15 @@ namespace MissileFireControl.Mod.Adapters
                 if (cooldownSeconds > 0.0)
                 {
                     HasTemplateCapability = true;
+                    _hasCooldown = true;
                     _cooldownSumSeconds += cooldownSeconds;
                     _cooldownCount++;
+                }
+
+                if (hasAmmoCapacity)
+                {
+                    HasTemplateCapability = true;
+                    _hasAmmoCapacity = true;
                 }
             }
         }

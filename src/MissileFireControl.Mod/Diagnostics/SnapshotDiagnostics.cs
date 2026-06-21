@@ -61,6 +61,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "pdCapabilityWeaponCount", FormatCount(snapshot.PdCapabilityWeaponCount));
                 AppendPair(builder, "pdCapabilityRangeKm", Format(snapshot.PdCapabilityRangeKm));
                 AppendPair(builder, "pdCapabilityCooldownSeconds", Format(snapshot.PdCapabilityCooldownSeconds));
+                AppendPair(builder, "pdCapabilityObservedFields", snapshot.PdCapabilityObservedFields ?? "none");
                 AppendPair(builder, "pdCapabilityMissingReason", snapshot.PdCapabilityMissingReason ?? "unknown");
                 AppendPair(builder, "pdCapabilityLimitations", snapshot.PdCapabilityLimitations ?? "unknown");
                 AppendPair(builder, "originPosition", snapshot.HasOriginPosition ? Format(snapshot.OriginPositionKm) : "unknown");

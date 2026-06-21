@@ -215,6 +215,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "pdCapabilityWeaponCount", snapshot == null ? "unknown" : FormatCount(snapshot.PdCapabilityWeaponCount));
             AppendPair(builder, "pdCapabilityRangeKm", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityRangeKm));
             AppendPair(builder, "pdCapabilityCooldownSeconds", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityCooldownSeconds));
+            AppendPair(builder, "pdCapabilityObservedFields", snapshot == null ? "unknown" : snapshot.PdCapabilityObservedFields ?? "none");
             AppendPair(builder, "pdCapabilityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityMissingReason ?? "unknown");
             AppendPair(builder, "pdCapabilityLimitations", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityLimitations ?? "unknown");
             AppendPair(builder, "assignedShots", result == null ? "0" : result.AssignedShots.ToString(CultureInfo.InvariantCulture));
@@ -249,6 +250,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "pdCapabilityWeaponCount", snapshot == null ? "unknown" : FormatCount(snapshot.PdCapabilityWeaponCount));
             AppendPair(builder, "pdCapabilityRangeKm", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityRangeKm));
             AppendPair(builder, "pdCapabilityCooldownSeconds", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityCooldownSeconds));
+            AppendPair(builder, "pdCapabilityObservedFields", snapshot == null ? "unknown" : snapshot.PdCapabilityObservedFields ?? "none");
             AppendPair(builder, "pdCapabilityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityMissingReason ?? "unknown");
             AppendPair(builder, "pdCapabilityLimitations", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityLimitations ?? "unknown");
             AppendPair(builder, "target", allocation == null ? "unknown" : allocation.TargetName);

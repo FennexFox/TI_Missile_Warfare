@@ -23,17 +23,19 @@
 
 ## Implementation steps
 
-- Added `pdEvidenceQuality`, `pdCapabilityEvidenceSource`, count, range, cooldown, missing-reason, and limitation fields to `ExtractedCombatSnapshot`.
+- Added `pdEvidenceQuality`, `pdCapabilityEvidenceSource`, count, range, cooldown, observed-field, missing-reason, and limitation fields to `ExtractedCombatSnapshot`.
 - Preserved `pdWeight`, `pdWeightEvidenceSource`, `pdWeightDefaulted`, `pdWeightDefaultReason`, and `pdWeightMissingReason`.
 - Classified defaulted evidence as `defaultModel`.
 - Classified defense-mode templates with no capability fields as `observedPresenceOnly`.
 - Classified defense-mode templates with static range/cooldown/ammo-capacity style fields as `observedTemplateCapability`.
 - Emitted new fields from SnapshotLog and AllocationLog cycle/allocation/rejection/no-op records.
+- Follow-up: added `pdCapabilityObservedFields` so `observedTemplateCapability` names whether range, cooldown, or ammo-capacity-like template evidence was visible.
 
 ## Acceptance criteria
 
 - Existing PD fallback/default fields remain emitted.
 - New logs can distinguish presence-only from template capability.
+- New logs expose which static template categories justify template capability.
 - `pdWeight` remains count-style and is not silently recalibrated.
 
 ## Validation commands
@@ -56,6 +58,7 @@
 ## Decision log
 
 - Static template capability is named `observedTemplateCapability`, not ready or calibrated.
+- Ammo-capacity-like template fields may support `observedTemplateCapability`, but only as template evidence, not live ammo/readiness.
 - Live readiness and geometry labels are reserved for future source-backed evidence.
 
 ## Outcomes / Retrospective

@@ -87,6 +87,7 @@ class CycleContext:
     pd_weight_evidence_source: str
     pd_evidence_quality: str
     pd_capability_evidence_source: str
+    pd_capability_observed_fields: str
     status: str
 
 
@@ -198,6 +199,9 @@ def scan_allocation_records(path: Path) -> tuple[dict[str, CycleContext], list[d
                     pd_evidence_quality=str(pairs.get("pdEvidenceQuality", "unknown")),
                     pd_capability_evidence_source=str(
                         pairs.get("pdCapabilityEvidenceSource", "unknown")
+                    ),
+                    pd_capability_observed_fields=str(
+                        pairs.get("pdCapabilityObservedFields", "unknown")
                     ),
                     status=str(pairs.get("status", "unknown")),
                 )
@@ -778,6 +782,7 @@ def target_pd_status(
     source_counts = aggregate_allocation_counter(logs, "pd_weight_evidence_source_counts")
     quality_counts = aggregate_allocation_counter(logs, "pd_evidence_quality_counts")
     capability_source_counts = aggregate_allocation_counter(logs, "pd_capability_evidence_source_counts")
+    capability_observed_field_counts = aggregate_allocation_counter(logs, "pd_capability_observed_field_counts")
     capability_missing_reason_counts = aggregate_allocation_counter(logs, "pd_capability_missing_reason_counts")
     capability_limitation_counts = aggregate_allocation_counter(logs, "pd_capability_limitation_counts")
     observed = sum(allocation_summary_value(log, "pd_weight_observed_cycles") for log in logs)
@@ -790,7 +795,7 @@ def target_pd_status(
     elif defaulted_decision_limits:
         status = "defaulted"
     elif quality_counts.get("geometryAwareCapability", 0):
-        status = "ready"
+        status = "provisional"
     elif quality_counts.get("observedLiveCapability", 0):
         status = "provisional"
     elif quality_counts.get("observedTemplateCapability", 0):
@@ -811,6 +816,10 @@ def target_pd_status(
         )
     if quality_counts.get("observedLiveCapability", 0):
         limitations.append("live defensive weapon state is observed, but geometry/arc coverage is not fully proven")
+    if quality_counts.get("geometryAwareCapability", 0):
+        limitations.append(
+            "geometry-aware PD evidence is present, but calibrated interception readiness still requires source-backed validation and real-log confirmation"
+        )
     if quality_counts.get("observedPresenceOnly", 0) or (
         not quality_counts and source_counts.get("observedTargetWeaponTemplates", 0)
     ):
@@ -843,6 +852,7 @@ def target_pd_status(
             "sources": dict(sorted(source_counts.items())),
             "quality": dict(sorted(quality_counts.items())),
             "capability_sources": dict(sorted(capability_source_counts.items())),
+            "capability_observed_fields": dict(sorted(capability_observed_field_counts.items())),
             "capability_missing_reasons": dict(sorted(capability_missing_reason_counts.items())),
         },
     )

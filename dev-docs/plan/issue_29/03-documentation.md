@@ -25,6 +25,7 @@
 
 - Documented new `pdEvidenceQuality` and `pdCapability*` fields.
 - Documented that `observedTemplateCapability` is provisional, not calibrated.
+- Follow-up: documented `pdCapabilityObservedFields`, ammo-capacity-like template evidence limits, and the rule that `geometryAwareCapability` is not automatically ready.
 - Updated roadmap blockers/recommended next work to reflect issue #29 completion.
 - Recorded validation and the synthetic fixture result.
 
@@ -32,6 +33,8 @@
 
 - Durable docs say old logs remain `presenceOnly`.
 - Durable docs say template capability is stronger than presence-only but still lacks live readiness, ammo, geometry, and arc coverage.
+- Durable docs say observed-field categories justify the template capability label, and ammo-capacity-like template evidence is not live ammo/readiness.
+- Durable docs say future geometry-aware evidence remains provisional without a separate source-backed readiness gate.
 - Plan files contain completed outcomes and validation state.
 
 ## Validation commands
@@ -53,6 +56,7 @@
 ## Decision log
 
 - The docs do not claim fresh real runtime `observedTemplateCapability` coverage until new Terra Invicta logs are collected.
+- Follow-up decision: `pdCapabilityObservedFields` is the explicit guardrail for template capability provenance.
 
 ## Outcomes / Retrospective
 

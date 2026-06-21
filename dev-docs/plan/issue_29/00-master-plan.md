@@ -10,8 +10,9 @@
 
 - Preserve legacy `pdWeight*` fields and their count-style semantics.
 - Add additive PD capability fields from the current target weapon-template observation path.
-- Treat visible template range/cooldown/ammo-capacity style fields as `observedTemplateCapability`.
+- Treat visible template range/cooldown/ammo-capacity style fields as `observedTemplateCapability`, and expose the exact observed categories through `pdCapabilityObservedFields`.
 - Keep live defensive readiness, ammo, arc coverage, and target/projectile geometry out of the quality claim until a future hook proves them.
+- Keep future geometry-aware evidence provisional by default until a separate source-backed readiness gate and real-log validation justify a stronger status.
 - Keep legacy logs parseable: missing new fields must not fail parser or fitting reports.
 
 ## Phase Order
@@ -45,5 +46,7 @@
 
 - Current hook observes target templates, not live defensive weapon objects for target PD readiness.
 - Static template capability is stronger than presence-only, but still provisional.
+- Ammo-capacity-like template fields are not live ammo/readiness evidence.
+- `geometryAwareCapability` is a reserved future label and must not imply `ready` by string alone.
 - The allocator still consumes legacy `pdWeight`; issue #29 does not tune scoring.
 - Fresh real runtime logs are needed before claiming real-log `observedTemplateCapability` coverage.

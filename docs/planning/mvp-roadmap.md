@@ -26,8 +26,9 @@ Current missing or provisional inputs:
   sweep as baseline-ready with named limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
   defense-mode presence to provisional static template capability when range,
-  cooldown, or similar template fields are visible; live readiness, ammo,
-  geometry, and arc coverage remain unproven;
+  cooldown, ammo-capacity-like, or similar template fields are visible;
+  `pdCapabilityObservedFields` names the observed categories, and live
+  readiness, live ammo, geometry, and arc coverage remain unproven;
 - vanilla salvo target command granularity is ship-level across all
   salvo-capable weapons on the ship, so per-visible-module command assumptions
   remain unsafe;
@@ -134,7 +135,8 @@ Implementation notes:
   `presenceOnly` for legacy template-presence logs and `provisional` only when
   Issue #29 static capability fields are present; target-identity no-op
   evidence is `provisional`, observed launch/ammo deltas are `provisional`,
-  and controlled live command readiness is `Not ready`.
+  future geometry-aware PD evidence is also `provisional` until separately
+  validated, and controlled live command readiness is `Not ready`.
 - #6 readiness now separates three remaining concerns: evidence quality
   (#29 after #28's gate), command safety (#22/#23), and allocator design choices
   (#6).
