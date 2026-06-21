@@ -260,3 +260,25 @@ Current Issue #24 readiness rule for #6:
 
 No #24 wrapper path applies targeting commands, launch commands, fire-mode
 changes, projectile changes, AI behavior changes, or player-control mutations.
+
+## Issue #27 target point-defense evidence implementation
+
+Issue #27 adds a runtime extraction path for observed target point-defense
+capability. Decompiled-source review identified `TISpaceShipState` weapon
+template lists and `TIShipWeaponTemplate.defenseMode` as the conservative
+diagnostic signal. Vanilla defensive fire is represented by `DefenseFireMode`,
+which is available for defense-mode weapons and uses projectile-defense range
+members such as `EffectiveRangeAgainstProjectiles_km()`.
+
+The mod now attempts to read the visible target ship's weapon templates from
+the existing projectile-fire snapshot target object. When templates and their
+`defenseMode` fields are visible, it emits
+`pdWeightEvidenceSource=observedTargetWeaponTemplates`,
+`pdWeightDefaulted=False`, and uses an observed count-style `pdWeight` for
+defense-mode weapons. If the target object, template list, or defense-mode
+field is unavailable, the diagnostics keep the explicit default model and
+record the missing reason.
+
+No fresh runtime smoke has been recorded in this document yet. Until a local
+combat log confirms observed Issue #27 fields, #6 full readiness remains gated
+by PD evidence validation rather than by code availability alone.

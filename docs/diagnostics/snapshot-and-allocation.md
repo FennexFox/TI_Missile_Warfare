@@ -158,9 +158,18 @@ post-fire ammo evidence, or capacity values.
 
 ## Other known missing inputs
 
-`pdWeightsDefaulted` remains a limitation marker when the current snapshot does
-not recover detailed target point-defense weapon weights from the runtime ship
-state. The cycle also reports `pdWeightEvidenceSource`, `pdWeightDefaulted`,
+`pdWeightsDefaulted` remains a limitation marker only when the current snapshot
+cannot recover target point-defense weapon evidence from the runtime ship state.
+Issue #27 adds a conservative observed source:
+`pdWeightEvidenceSource=observedTargetWeaponTemplates`. That source reflects
+visible target weapon templates whose `defenseMode` flag is true. The current
+scalar `pdWeight` is an observed count-style capability signal, not a calibrated
+vanilla point-defense simulator. When target weapon templates or their
+`defenseMode` members are not visible, diagnostics keep
+`pdWeightEvidenceSource=defaultModel`, `pdWeightDefaulted=True`, and a specific
+`pdWeightMissingReason` such as `targetObjectUnavailable`,
+`targetWeaponTemplatesUnavailable`, or `targetWeaponDefenseModeUnavailable`.
+The cycle also reports `pdWeightEvidenceSource`, `pdWeightDefaulted`,
 `pdWeightDefaultReason`, and `pdWeightMissingReason` so a formal default model
 is distinguishable from observed PD evidence and unknown PD evidence.
 
