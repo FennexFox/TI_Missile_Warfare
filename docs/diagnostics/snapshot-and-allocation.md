@@ -95,7 +95,7 @@ Snapshot diagnostics use a separate marker so existing launch diagnostics remain
 unchanged:
 
 ```text
-[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." missing="targetIdentity"
+[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" missing="targetIdentity"
 ```
 
 The `missing` field records which fields were not visible from the hook rather
@@ -115,7 +115,7 @@ They are not validated combat recommendations unless the corresponding runtime
 inputs are present and documented.
 
 ```text
-[AllocationLog] recordType="cycle" cycleId="1" status="evaluated" sourceHook="TISpaceCombatProjectileState.Fire(missile)" battle="..." friendlyLaunchers="1" targetCount="1" totalAmmoGateBudgetShots="6" ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" assignedShots="4" unassignedShots="2" missingInputs="targetVelocity,pdWeightsDefaulted"
+[AllocationLog] recordType="cycle" cycleId="1" status="evaluated" sourceHook="TISpaceCombatProjectileState.Fire(missile)" battle="..." friendlyLaunchers="1" targetCount="1" totalAmmoGateBudgetShots="6" ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" assignedShots="4" unassignedShots="2" missingInputs="pdWeightsDefaulted"
 [AllocationLog] recordType="allocation" cycleId="1" targetId="..." target="..." assignedShots="4" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.72" scorePerShot="3.42" reason="kill package"
 [AllocationLog] recordType="rejection" cycleId="1" targetId="..." target="..." assignedShots="0" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.12" scorePerShot="0" rejectionReason="outside estimated launch window"
 ```
@@ -155,11 +155,19 @@ post-fire ammo evidence, or capacity values.
 
 ## Other known missing inputs
 
-`pdWeightsDefaulted` is reported because the current snapshot does not recover
-detailed target point-defense weapon weights from the runtime ship state.
+`pdWeightsDefaulted` remains a limitation marker when the current snapshot does
+not recover detailed target point-defense weapon weights from the runtime ship
+state. The cycle also reports `pdWeightEvidenceSource`, `pdWeightDefaulted`,
+`pdWeightDefaultReason`, and `pdWeightMissingReason` so a formal default model
+is distinguishable from observed PD evidence and unknown PD evidence.
 
-`targetVelocity` is reported when the target is unavailable or the snapshot only
-has the default zero vector.
+`targetVelocity` is reported when target velocity cannot be read from the
+target combat state. When available, `targetVelocityKps` is paired with
+`targetVelocityEvidenceSource="targetCombatState"` and
+`targetVelocityMissingReason="none"`. The diagnostics derive
+`relativeVelocityKps` and `relativeSpeedKps` only when both target velocity and
+launcher/origin velocity are present; otherwise the relative-velocity missing
+reason names the unavailable source.
 
 `missileProfileData` is reported when the missile identity or profile cannot be
 safely formed.
@@ -186,6 +194,11 @@ allocator-critical fields:
 - `targetVelocity`
 - `missileProfileData`
 - `pdWeightsDefaulted`
+
+The parser also reports target-velocity and relative-velocity coverage,
+evidence source counts, and missing reason counts. PD input reporting separates
+observed, defaulted, and unknown cycles, then prints the evidence source,
+default reason, and missing reason breakdowns.
 
 Parser warnings such as `all shadow cycles missing ammoGateBudgetShots`, `too
 many launch-window rejects`, or `allocation report limited by missing runtime
@@ -215,4 +228,3 @@ Expected runtime result:
 - LaunchLog entries remain present and contiguous;
 - SnapshotLog entries are present;
 - MissileWarfare issues remain empty.
-

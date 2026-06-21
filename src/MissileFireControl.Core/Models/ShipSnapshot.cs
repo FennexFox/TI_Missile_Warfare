@@ -17,6 +17,7 @@ namespace MissileFireControl.Core.Models
         public HullClass HullClass { get; set; }
         public Vector3d PositionKm { get; set; }
         public Vector3d VelocityKps { get; set; }
+        public bool HasVelocityEvidence { get; set; }
         public double FrontArmorScore { get; set; }
         public double SideArmorScore { get; set; }
         public double RearArmorScore { get; set; }

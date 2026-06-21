@@ -18,6 +18,19 @@ namespace MissileFireControl.Mod.Adapters
         public MissileInventorySnapshot Inventory { get; set; }
         public Vector3d ExpectedTargetPositionKm { get; set; }
         public bool HasExpectedTargetPosition { get; set; }
+        public bool HasTargetVelocity { get; set; }
+        public string TargetVelocityEvidenceSource { get; set; }
+        public string TargetVelocityMissingReason { get; set; }
+        public Vector3d RelativeVelocityKps { get; set; }
+        public double RelativeSpeedKps { get; set; }
+        public bool HasRelativeVelocity { get; set; }
+        public string RelativeVelocityEvidenceSource { get; set; }
+        public string RelativeVelocityMissingReason { get; set; }
+        public double PdWeight { get; set; }
+        public string PdWeightEvidenceSource { get; set; }
+        public bool PdWeightDefaulted { get; set; }
+        public string PdWeightDefaultReason { get; set; }
+        public string PdWeightMissingReason { get; set; }
         public Vector3d OriginPositionKm { get; set; }
         public bool HasOriginPosition { get; set; }
         public Vector3d OriginVelocityKps { get; set; }
@@ -65,14 +78,24 @@ namespace MissileFireControl.Mod.Adapters
                 OriginVelocityKps = GameObjectReader.ReadVector(originVelocity)
             };
 
+            if (snapshot.Launcher != null && snapshot.HasOriginVelocity)
+            {
+                snapshot.Launcher.VelocityKps = snapshot.OriginVelocityKps;
+                snapshot.Launcher.HasVelocityEvidence = true;
+            }
+
             snapshot.Inventory = ExtractInventory(launcher, missileTemplate, snapshot.Launcher, snapshot.Missile, readinessEvidence);
             AddWeapon(snapshot.Launcher, missileTemplate, snapshot.Inventory);
+            AddTargetVelocityEvidence(snapshot);
+            AddRelativeVelocityEvidence(snapshot);
+            AddPdWeightEvidence(snapshot);
             AddMissingFields(snapshot);
             return snapshot;
         }
 
         private static ShipSnapshot ExtractShip(object ship, string fallback)
         {
+            bool hasVelocity = GameObjectReader.HasVector(ship, "velocityVector_kps", "velocity_kps", "VelocityKps", "velocity");
             ShipSnapshot snapshot = new ShipSnapshot
             {
                 Id = GameObjectReader.StableId(ship, fallback),
@@ -81,6 +104,7 @@ namespace MissileFireControl.Mod.Adapters
                 HullClass = HullClass.Unknown,
                 PositionKm = GameObjectReader.ReadVector(ship, "position", "Position", "centerOfMass", "CenterOfMass"),
                 VelocityKps = GameObjectReader.ReadVector(ship, "velocityVector_kps", "velocity_kps", "VelocityKps", "velocity"),
+                HasVelocityEvidence = hasVelocity,
                 RemainingHullFraction = GameObjectReader.ReadDouble(ship, 1.0, "remainingHullFraction", "RemainingHullFraction"),
                 IsDisabled = GameObjectReader.ReadBool(ship, false, "isDisabled", "IsDisabled", "disabled", "Disabled"),
                 StrategicPriority = 1.0
@@ -259,6 +283,71 @@ namespace MissileFireControl.Mod.Adapters
             return isMissile ? WeaponRole.Missile : WeaponRole.Unknown;
         }
 
+        private static void AddTargetVelocityEvidence(ExtractedCombatSnapshot snapshot)
+        {
+            if (snapshot.Target == null)
+            {
+                snapshot.HasTargetVelocity = false;
+                snapshot.TargetVelocityEvidenceSource = "unknown";
+                snapshot.TargetVelocityMissingReason = "targetObjectUnavailable";
+                return;
+            }
+
+            if (!HasConcreteIdentity(snapshot.Target, "target"))
+            {
+                snapshot.HasTargetVelocity = false;
+                snapshot.TargetVelocityEvidenceSource = "unknown";
+                snapshot.TargetVelocityMissingReason = "targetIdentityUnavailable";
+                return;
+            }
+
+            if (!snapshot.Target.HasVelocityEvidence)
+            {
+                snapshot.HasTargetVelocity = false;
+                snapshot.TargetVelocityEvidenceSource = "unknown";
+                snapshot.TargetVelocityMissingReason = "targetVelocityMemberUnavailable";
+                return;
+            }
+
+            snapshot.HasTargetVelocity = true;
+            snapshot.TargetVelocityEvidenceSource = "targetCombatState";
+            snapshot.TargetVelocityMissingReason = "none";
+        }
+
+        private static void AddRelativeVelocityEvidence(ExtractedCombatSnapshot snapshot)
+        {
+            if (!snapshot.HasTargetVelocity)
+            {
+                snapshot.HasRelativeVelocity = false;
+                snapshot.RelativeVelocityEvidenceSource = "unknown";
+                snapshot.RelativeVelocityMissingReason = snapshot.TargetVelocityMissingReason;
+                return;
+            }
+
+            if (!snapshot.HasOriginVelocity)
+            {
+                snapshot.HasRelativeVelocity = false;
+                snapshot.RelativeVelocityEvidenceSource = "unknown";
+                snapshot.RelativeVelocityMissingReason = "launcherVelocityUnavailable";
+                return;
+            }
+
+            snapshot.RelativeVelocityKps = snapshot.Target.VelocityKps - snapshot.OriginVelocityKps;
+            snapshot.RelativeSpeedKps = snapshot.RelativeVelocityKps.Length();
+            snapshot.HasRelativeVelocity = true;
+            snapshot.RelativeVelocityEvidenceSource = "targetAndLauncherVelocity";
+            snapshot.RelativeVelocityMissingReason = "none";
+        }
+
+        private static void AddPdWeightEvidence(ExtractedCombatSnapshot snapshot)
+        {
+            snapshot.PdWeight = 0.0;
+            snapshot.PdWeightEvidenceSource = "defaultModel";
+            snapshot.PdWeightDefaulted = true;
+            snapshot.PdWeightDefaultReason = "pdEvidenceUnavailable";
+            snapshot.PdWeightMissingReason = "none";
+        }
+
         private static int FirstKnownCount(object first, object second, object third, params string[] memberNames)
         {
             int count = GameObjectReader.ReadCount(first, memberNames);
@@ -301,6 +390,11 @@ namespace MissileFireControl.Mod.Adapters
             if (!snapshot.HasExpectedTargetPosition)
             {
                 snapshot.MissingFields.Add("expectedTargetPosition");
+            }
+
+            if (!snapshot.HasTargetVelocity)
+            {
+                snapshot.MissingFields.Add("targetVelocity");
             }
 
             if (snapshot.Inventory == null || snapshot.Inventory.AmmoGateBudgetShots < 0)

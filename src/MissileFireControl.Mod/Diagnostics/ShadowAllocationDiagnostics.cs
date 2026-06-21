@@ -153,7 +153,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AddMissing(missing, "targetIdentity");
             }
 
-            if (snapshot.Target == null || IsZero(snapshot.Target.VelocityKps))
+            if (!snapshot.HasTargetVelocity)
             {
                 AddMissing(missing, "targetVelocity");
             }
@@ -194,6 +194,18 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
             AppendPair(builder, "ammoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount));
             AppendPair(builder, "unknownAmmoGateWeaponCount", FormatCount(snapshot == null || snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownAmmoGateWeaponCount));
+            AppendPair(builder, "targetVelocityKps", snapshot != null && snapshot.HasTargetVelocity && snapshot.Target != null ? Format(snapshot.Target.VelocityKps) : "unknown");
+            AppendPair(builder, "targetVelocityEvidenceSource", snapshot == null ? "unknown" : snapshot.TargetVelocityEvidenceSource ?? "unknown");
+            AppendPair(builder, "targetVelocityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.TargetVelocityMissingReason ?? "unknown");
+            AppendPair(builder, "relativeVelocityKps", snapshot != null && snapshot.HasRelativeVelocity ? Format(snapshot.RelativeVelocityKps) : "unknown");
+            AppendPair(builder, "relativeSpeedKps", snapshot != null && snapshot.HasRelativeVelocity ? Format(snapshot.RelativeSpeedKps) : "unknown");
+            AppendPair(builder, "relativeVelocityEvidenceSource", snapshot == null ? "unknown" : snapshot.RelativeVelocityEvidenceSource ?? "unknown");
+            AppendPair(builder, "relativeVelocityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.RelativeVelocityMissingReason ?? "unknown");
+            AppendPair(builder, "pdWeight", snapshot == null ? "unknown" : Format(snapshot.PdWeight));
+            AppendPair(builder, "pdWeightEvidenceSource", snapshot == null ? "unknown" : snapshot.PdWeightEvidenceSource ?? "unknown");
+            AppendPair(builder, "pdWeightDefaulted", snapshot == null ? "unknown" : snapshot.PdWeightDefaulted ? "True" : "False");
+            AppendPair(builder, "pdWeightDefaultReason", snapshot == null ? "unknown" : snapshot.PdWeightDefaultReason ?? "none");
+            AppendPair(builder, "pdWeightMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdWeightMissingReason ?? "unknown");
             AppendPair(builder, "assignedShots", result == null ? "0" : result.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "unassignedShots", result == null || AmmoGateBudgetShots(snapshot) < 0 ? "unknown" : result.UnassignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
@@ -276,11 +288,6 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return !ship.Id.StartsWith(fallbackPrefix + ":", StringComparison.Ordinal);
-        }
-
-        private static bool IsZero(Vector3d vector)
-        {
-            return Math.Abs(vector.X) < 1e-9 && Math.Abs(vector.Y) < 1e-9 && Math.Abs(vector.Z) < 1e-9;
         }
 
         private static void AddRange(List<string> values, IEnumerable<string> additions)
@@ -412,6 +419,11 @@ namespace MissileFireControl.Mod.Diagnostics
         private static string Format(double value)
         {
             return value.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private static string Format(Vector3d vector)
+        {
+            return GameObjectReader.FormatVector(vector);
         }
 
         private static string FormatCount(int value)
