@@ -89,6 +89,14 @@ If no concrete launcher-selected identity is visible, `targetId`, `target`, and
 `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and
 `missing=targetIdentity` remains valid.
 
+This missing field means the current hook could not observe a launcher-selected
+priority target. It does not prove vanilla combat had no target. Decompiled
+source review shows `SelectSalvoTargetCommand` sets `combatPrimaryTarget`
+through `SetCombatPrimaryTargetAction`, `ClearTargetCommand` is valid only when
+that primary target exists, and `MissileWeapon.TryFire` still fires through a
+live `base.target` object. Fighting without a player-set priority target is
+therefore compatible with `targetIdentitySource=none` in this diagnostic schema.
+
 ## SnapshotLog schema
 
 Snapshot diagnostics use a separate marker so existing launch diagnostics remain
@@ -250,13 +258,20 @@ conservative buckets:
 - `target-value mismatch`
 - `PD-risk mismatch`
 - `partial saturation`
+- `command-safety no-op`
 - `missing-evidence-limited`
 - `impossible`
 - `ambiguous`
 
-PD default-model evidence is reported as an evidence limitation. Any
-PD-defaulted evidence can support at most a conditional #6 baseline
-recommendation; it cannot establish full readiness.
+`command-safety no-op` means no allocation was made because no concrete
+launcher-selected target identity was visible. It is safe skip evidence, not
+allocation-quality evidence and not proof that vanilla had no missile target.
+
+PD default-model evidence is reported as an evidence limitation when it qualifies
+an allocation/rejection decision. PD defaulting on `command-safety no-op` rows is
+not counted as an allocation evidence limit because no target was allocated.
+PD-defaulted allocation/rejection evidence can support at most a conditional #6
+baseline recommendation; it cannot establish full readiness.
 
 A tiny synthetic fixture exists at
 `tools/fixtures/shadow_allocation_synthetic.txt` for wrapper smoke validation.

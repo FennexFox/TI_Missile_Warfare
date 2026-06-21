@@ -114,13 +114,16 @@ Implementation notes:
   least one plausible allocation or no-op decision.
 - Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
-- Issue #30's four-log sweep found 993 plausible, 349 partial saturation, 585
-  ambiguous, 54 missing-evidence-limited, and zero severe classifications across
-  four parser-OK real logs.
-- The repeated evidence-limited pattern from that sweep is tracked as Issue
-  #32: intermittent missing `targetIdentity` no-op evidence before #6.
+- Issue #30's four-log sweep, after Issue #32 classification, found 993
+  plausible, 349 partial saturation, 585 ambiguous, 54 command-safety no-op, 0
+  missing-evidence-limited, and zero severe classifications across four
+  parser-OK real logs.
+- Issue #32 classifies intermittent missing `targetIdentity` no-op evidence as
+  safe skip evidence when no launcher-selected priority target is visible. It is
+  not allocation-quality evidence and not proof that vanilla had no missile
+  target.
 - #6 readiness now separates three remaining concerns: evidence quality
-  (#28/#29/#32), command safety (#22/#23), and allocator design choices (#6).
+  (#28/#29), command safety (#22/#23), and allocator design choices (#6).
 
 ## Blocked controlled features
 
@@ -171,9 +174,9 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Classify the Issue #30 follow-ups before treating #6 as fully ready:
-   evidence sufficiency gates (#28), PD capability modeling (#29), and
-   intermittent missing `targetIdentity` no-op evidence (#32).
+1. Classify the remaining Issue #30 follow-ups before treating #6 as controlled
+   command-ready: evidence sufficiency gates (#28) and PD capability modeling
+   (#29).
 2. Implement #22 dry-run command-intent logging from the verified selected ship
    and group-selected ship scopes.
 3. Re-run selected-log fitting after those evidence-quality follow-ups and

@@ -337,22 +337,24 @@ Aggregate result:
 - logs with required evidence: 4
 - real selected logs with required evidence: 4
 - parser failures: 0
-- readiness verdict: `Conditionally ready`
-- readiness reason: PD inputs are default-model evidence in one evidence-limited
-  slice, so full readiness remains blocked
+- readiness verdict after Issue #32 classification: `Ready for #6 baseline`
+- readiness reason: multiple real selected logs have required evidence and no
+  bad classifications
 - plausible: 993
 - partial saturation: 349
 - ambiguous: 585
-- missing-evidence-limited: 54
+- command-safety no-op: 54
+- missing-evidence-limited: 0
 - severe classifications: 0 (`overkill`, `underkill`, `target-value mismatch`,
   `PD-risk mismatch`, and `impossible` were all zero)
+- evidence limitations: none
 
 Per-log summary:
 
 - `Player-prev.log`: parser `OK`; 259 shadow cycles; 195 plausible, 8 partial
-  saturation, 2 ambiguous, 54 missing-evidence-limited; 205 cycles used
-  `observedTargetWeaponTemplates`; 54 no-op cycles lacked `targetIdentity` and
-  defaulted PD evidence.
+  saturation, 2 ambiguous, 54 command-safety no-op; 205 cycles used
+  `observedTargetWeaponTemplates`; 54 no-op cycles lacked a launcher-selected
+  `targetIdentity` and made no allocation.
 - `Player-prev1.log`: parser `OK`; 555 shadow cycles; 162 plausible, 143
   partial saturation, 250 ambiguous; all cycles had observed target PD evidence
   and zero critical missing fields.
@@ -363,18 +365,20 @@ Per-log summary:
   saturation, 51 ambiguous; all cycles had observed target PD evidence and zero
   critical missing fields.
 
-The repeated evidence-limited pattern is the 54 `Player-prev.log` no-op cycles
-where `targetIdentity` was unavailable. This is now tracked separately as
-Issue #32, because Issue #30 required any repeated severe or evidence-limited
-pattern to become a named pre-#6 follow-up. No repeated severe fitting pattern
-was found.
+Issue #32 classified the repeated 54 `Player-prev.log` no-op cycles where
+`targetIdentity` was unavailable as `command-safety no-op`: no concrete
+launcher-selected priority target was visible to the current hook, so the shadow
+allocator made no allocation. This is safe skip evidence, not allocation-quality
+evidence and not parser failure. No repeated severe fitting pattern was found.
 
 #6 readiness interpretation:
 
 - Evidence quality: the four-log sweep is stronger than the earlier single-log
-  sample, but full readiness is still blocked by the intermittent
-  `targetIdentity` no-op evidence gap in Issue #32 and by the broader evidence
-  sufficiency gates in Issue #28/#29.
+  sample. Under the current fitting wrapper rules it is ready for the #6
+  baseline because all real logs parse, severe classifications are zero, and no
+  allocation/rejection decision depends on PD-defaulted evidence. The broader
+  evidence sufficiency gates in Issue #28/#29 still decide whether this baseline
+  is enough for controlled command design.
 - Command safety: Issue #30 did not exercise live commands. #6 remains blocked
   on dry-run command-intent logging and the live command safety gate.
 - Allocator design choices: the sweep found many plausible and partial

@@ -33,6 +33,7 @@ CLASSIFICATIONS = (
     "target-value mismatch",
     "PD-risk mismatch",
     "partial saturation",
+    "command-safety no-op",
     "missing-evidence-limited",
     "impossible",
     "ambiguous",
@@ -232,7 +233,12 @@ def classify_records(
             allocated_values_by_cycle.get(cycle_id, []),
             missing_inputs,
         )
-        limitations = record_limitations(pd_defaulted, missing_inputs, cycle)
+        limitations = record_limitations(
+            pd_defaulted,
+            missing_inputs,
+            cycle,
+            classification,
+        )
 
         classified.append(
             AllocationRecord(
@@ -281,11 +287,10 @@ def classify_single_record(
     if cycle.total_ammo_gate_budget_shots is None and record_type == "allocation":
         return "impossible", ["allocation row exists without numeric ammo/gate budget"]
 
-    if hard_missing_inputs:
-        notes.append("required non-PD evidence is missing: " + ", ".join(hard_missing_inputs))
-        return "missing-evidence-limited", notes
-
     if record_type == "allocation":
+        if hard_missing_inputs:
+            notes.append("required non-PD evidence is missing: " + ", ".join(hard_missing_inputs))
+            return "missing-evidence-limited", notes
         if assigned is None or assigned <= 0:
             return "impossible", ["allocation row assigned no shots"]
         if kill is not None and assigned > kill:
@@ -300,6 +305,9 @@ def classify_single_record(
         return "ambiguous", ["allocation lacks enough numeric context for stronger fitting"]
 
     if record_type == "rejection":
+        if hard_missing_inputs:
+            notes.append("required non-PD evidence is missing: " + ", ".join(hard_missing_inputs))
+            return "missing-evidence-limited", notes
         if any(marker in lowered_reason for marker in WINDOW_REASON_MARKERS):
             return "late/out-of-window", ["rejection reason is launch-window limited"]
         if (
@@ -315,6 +323,10 @@ def classify_single_record(
         return "ambiguous", ["rejection is not directly classifiable from log evidence"]
 
     if record_type == "noOp":
+        if hard_missing_inputs == ["targetIdentity"] and "missing" in lowered_reason:
+            return "command-safety no-op", [
+                "no allocation because no concrete launcher-selected target identity was visible"
+            ]
         if cycle.total_ammo_gate_budget_shots == 0 or "no ammo/gate budget" in lowered_reason:
             return "plausible", ["no-op matches zero ammo/gate budget evidence"]
         if hard_missing_inputs or "missing" in lowered_reason:
@@ -328,10 +340,14 @@ def record_limitations(
     pd_defaulted: str,
     missing_inputs: list[str],
     cycle: CycleContext | None,
+    classification: str,
 ) -> list[str]:
     """Return evidence limitations that qualify a classification."""
     limitations: list[str] = []
-    if pd_defaulted == "true" or "pdWeightsDefaulted" in missing_inputs:
+    if (
+        classification != "command-safety no-op"
+        and (pd_defaulted == "true" or "pdWeightsDefaulted" in missing_inputs)
+    ):
         limitations.append("PD evidence defaulted")
 
     if cycle is None:
@@ -629,10 +645,14 @@ def format_markdown_report(report: AggregateReport) -> str:
             "## Interpretation rules",
             "",
             "- Synthetic fixtures validate the wrapper only; they are not fitting evidence.",
-            "- Any PD-defaulted evidence can support at most `Conditionally ready`.",
+            "- `command-safety no-op` means no allocation was made because no concrete",
+            "  launcher-selected target identity was visible; it is safe skip evidence,",
+            "  not allocation-quality evidence.",
+            "- PD-defaulted evidence on allocation/rejection decisions can support at",
+            "  most `Conditionally ready`.",
             "- Full `Ready for #6 baseline` requires multiple real selected logs with",
             "  required evidence, at least one plausible decision, no severe",
-            "  classifications, and no PD-defaulted evidence.",
+            "  classifications, and no PD-defaulted allocation/rejection evidence.",
         ]
     )
     return "\n".join(lines) + "\n"
