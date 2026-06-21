@@ -18,20 +18,38 @@ This branch/PR should answer one question:
 
 If that question cannot be answered from source review or diagnostics-only evidence, #21 should close with a documented blocker rather than falling forward into #22 or #23.
 
+## Scope distinctions Codex must preserve
+
+Do not collapse these into one vague "selected friendly ship" concept:
+
+- tactical-combat UI selection or focus;
+- explicit multi-selected ship/combatant list;
+- current human player's controllable faction/team/ownership;
+- friendly or allied relation to the player;
+- the actual command-recipient object/list passed to vanilla actions.
+
+For #21, finding a selected combat object is not enough. Finding a friendly or allied combat object is not enough. The plan must ask Codex to prove, or explicitly fail to prove, that the command-recipient scope is both selected and player-controllable, and that unselected player ships plus friendly/AI ships are excluded.
+
 ## Why #21 is the right standalone unit
 
 Issue #17 resolved the shot-budget semantics to Path A: `TISpaceShipState.ammo[weaponData]` plus vanilla fire gates is the game-equivalent per-weapon fire budget for the observed fire decision. The mod names this explicit derived value `ammoGateBudgetShots`; it is not a separate loaded/chambered/ready-shot source.
 
 After #17, the remaining controlled-allocation blocker is not shot budgeting. It is command scope and command safety. #21 is the first half of that blocker: selected-player scope must be verified before any dry-run or live command path can be trusted.
 
+### Prior evidence boundary
+
+Prior #17 documentation already reviewed parts of `SelectSalvoTargetCommand` for shot-budget semantics and vanilla command consequences. Do not treat that as sufficient proof of selected-player scope. #21 must independently trace the selection/controller source that feeds the command/action path, the ownership/faction filter, and the actual command recipient list.
+
 ## Current repo state observed for this plan
 
 - Repo id: `ti-missile-warfare`
-- Branch observed while preparing this context: `issue_21_22_23`
-- Local head observed: `4b583392b8286db510e08043d0e00c123bc57dd9`
-- Worktree was clean before initial plan files were generated.
+- Branch observed while preparing this context: `issue_21`
+- Local head observed: `8199e1a447d08c01661e8f34ffda0f0f540a9201`
+- Worktree contained this updated context file when the document was refreshed.
 
-If continuing with #21-only work, prefer renaming/recreating the local branch to an issue-21-specific branch before implementation, for example `issue_21` or `issue_21_selected_scope`.
+## Source and documentation location
+
+Decompiled source of Terra Invicta is in `../TI_RE_Workspace`. You can refer to the graph slice in `../TI_RE_Workspace/graphify-out/slices/missile-fire-control-master` for a visual overview of the most relevant classes and methods to review for #21. Do not include decompiled source in this repo.
 
 ## Existing local surfaces that matter
 
@@ -68,6 +86,8 @@ If #21 adds selection diagnostics, either:
 
 Do not add #22 dry-run record categories in this branch.
 
+Prefer keeping #21 selection evidence outside `[AllocationLog]` unless parser support is strictly necessary. A dedicated diagnostics prefix such as `[SelectionScopeLog]` or `[CommandScopeLog]` is safer than reusing future command-application buckets. Do not emit `applied`, `skipped`, `failed`, or command-intent allocation records for #21.
+
 ## Primary source-review targets
 
 Prioritize the command/action and selection flow around:
@@ -78,22 +98,35 @@ Prioritize the command/action and selection flow around:
 - `SetWeaponModeAction`
 - tactical combat selection/controller classes that feed those commands/actions
 
+Also trace both upstream and downstream of those classes:
+
+- upstream UI/controller state that records focus versus multi-selection;
+- ownership/faction/team checks that distinguish player-controllable ships from friendly or AI ships;
+- the exact recipient object/list passed into the command/action constructor or execution path;
+- whether the action applies at ship level, fleet/selection level, weapon group level, or visible weapon/module level.
+
 ## Questions #21 must answer
 
-- Which runtime object/list represents explicitly selected player-controlled ships?
-- How is player ownership/faction distinguished from AI ships?
+- Which runtime object/list represents explicitly selected combat ships, and is it UI focus, multi-selection, or the actual command-recipient list?
+- Which field/method proves current human player ownership, faction, team, or command authority, distinct from friendly/allied relation?
 - How are unselected player ships excluded?
+- How are friendly/allied AI ships excluded?
 - Can visible missile weapon/module identity be tied to the selected ship?
-- What target identity is passed to the vanilla command/action path?
+- What command granularity does vanilla use: ship, fleet/selection, all offensive missile weapons, weapon group, or a specific visible weapon/module?
+- If vanilla command granularity is broader than #6's intended per-weapon allocation, is that a blocker or a design constraint for #22/#23?
+- What target object/type/identity is passed to the vanilla command/action path?
+- Can that target identity be connected to the existing snapshot/projectile target identity well enough for later dry-run intent logging?
 - Is the command/action path usable later for #22 dry-run intent logging and #23 minimal live smoke?
 
 ## Acceptance criteria for this branch/PR
 
 - Source review identifies the vanilla selected-player command/action path or records why it is not usable.
-- Selected friendly ship identity can be distinguished from AI ships and unselected player ships.
+- Selected combat UI state, player command authority, friendly/allied relation, and actual command-recipient scope are not conflated.
+- Selected player ship identity can be distinguished from AI ships, friendly/allied AI ships, and unselected player ships.
 - Visible missile weapon/module identity can be tied to the selected ship where available.
-- Target identity passed to the vanilla command path is understood enough for a later dry-run/apply phase.
-- Durable docs state whether #6 can proceed to #22 dry-run command-intent logging.
+- Vanilla command granularity is documented: ship, fleet/selection, weapon group, all offensive missile weapons, or specific visible weapon/module.
+- Target object/type/identity passed to the vanilla command path is understood enough for a later dry-run/apply phase.
+- Durable docs state whether #6 can proceed to #22 dry-run command-intent logging, or whether command granularity/selection scope remains a blocker.
 - Durable docs cite inspected classes/methods.
 
 ## Manual validation policy
@@ -101,6 +134,8 @@ Prioritize the command/action and selection flow around:
 Manual tactical-combat smoke is not automatically required for #21.
 
 Source-review-only completion is acceptable if the decompiled source clearly proves selected-player scope, ownership filtering, unselected-player exclusion, and command/action input identity.
+
+Source-review-only completion should still document negative evidence and rejected interpretations, especially if a discovered selection list is only UI focus, only friendly ships, or not the actual command-recipient list.
 
 Manual diagnostics-only validation is required if any of those are ambiguous. In that case, validate:
 
@@ -112,9 +147,12 @@ Manual diagnostics-only validation is required if any of those are ambiguous. In
 6. Confirm AI ships are excluded.
 7. Confirm weapon/module identity is attached when visible.
 8. Confirm target identity is visible enough for a later dry-run/apply phase.
-9. Confirm no target, fire mode, launch, ammo, cooldown, projectile, AI, or manual-control behavior changes occur.
+9. Confirm no-selection, single-selection, multi-selection, unselected-friendly-present, AI/enemy-present, and non-missile-selected cases if practical.
+10. Confirm no target, fire mode, launch, ammo, cooldown, projectile, AI, or manual-control behavior changes occur.
 
 ## Non-goals
+
+Before finishing #21, inspect the diff for accidental command-application APIs, target assignment, fire-mode mutation, launch suppression, ammo mutation, AI behavior changes, or manual-control mutation.
 
 - Do not implement #22 dry-run command intent logging.
 - Do not implement #23 live command smoke.
@@ -129,6 +167,17 @@ Manual diagnostics-only validation is required if any of those are ambiguous. In
 - `docs/research/reverse-engineering-plan.md`
 - `docs/diagnostics/hooks.md` if new patch points are added
 - `docs/diagnostics/runtime-validation-history.md` only if runtime smoke evidence is collected
+
+## Validation expectations
+
+If #21 remains documentation/source-review only, validation may be limited to diff inspection and durable-doc consistency. If code or parser changes are added, run the normal local checks where feasible:
+
+- `dotnet build TI_Missile_Fire_Control.sln`
+- `python tools/check_layout.py`
+- `python -m ruff check tools/check_layout.py tools/package_local.py tools/parse_player_log.py`
+- `python tools/parse_player_log.py --require-launchlogs` if parser behavior or runtime log interpretation changed
+
+Do not stage or commit unrelated work. The current `00-context.md` may already be staged in the local checkout; preserve user-authored/staged context instead of folding it into unrelated implementation changes.
 
 ## Follow-up branch split
 
