@@ -118,15 +118,18 @@ inputs are present and documented.
 [AllocationLog] recordType="cycle" cycleId="1" status="evaluated" sourceHook="TISpaceCombatProjectileState.Fire(missile)" battle="..." friendlyLaunchers="1" targetCount="1" totalAmmoGateBudgetShots="6" ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" assignedShots="4" unassignedShots="2" missingInputs="pdWeightsDefaulted"
 [AllocationLog] recordType="allocation" cycleId="1" targetId="..." target="..." assignedShots="4" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.72" scorePerShot="3.42" reason="kill package"
 [AllocationLog] recordType="rejection" cycleId="1" targetId="..." target="..." assignedShots="0" pdScore="0" targetValue="19" saturationSize="1" killSize="4" launchWindowScore="0.12" scorePerShot="0" rejectionReason="outside estimated launch window"
+[AllocationLog] recordType="noOp" cycleId="2" targetId="..." target="..." assignedShots="0" pdScore="unknown" targetValue="unknown" saturationSize="unknown" killSize="unknown" launchWindowScore="unknown" scorePerShot="unknown" noOpReason="no ammo/gate budget shots"
 ```
 
 Cycle records include battle context, source hook, cycle id, friendly launcher
 count, target count, total ammo/gate budget shots, assigned shots, unassigned
 shots, and missing inputs.
 
-Allocation and rejection records include target identity, assigned shots, PD
-score, target value, saturation and kill package sizes, launch-window score,
-score per shot, and reason.
+Allocation, rejection, and no-op records include target identity when
+available, assigned shots, PD score, target value, saturation and kill package
+sizes, launch-window score, score per shot, and reason fields. No-op records
+use `noOpReason` when the shadow cycle cannot or should not recommend an
+allocation, such as missing required inputs or zero ammo/gate budget.
 
 ## Ammo/gate budget fields
 
@@ -183,10 +186,11 @@ safely formed.
 `tools/parse_player_log.py` summarizes `[AllocationLog]` rows into a compact
 battle-level allocation report for before/after tuning comparisons.
 
-The parser separates current shadow cycles, allocations, and rejections from
-future controlled-apply records. Future record types such as applied decisions,
-skipped decisions, and failed command applications are bucketed when they
-appear, but current logs are expected to show zero controlled-apply counts.
+The parser separates current shadow cycles, allocations, rejections, and no-op
+records from future controlled-apply records. Future record types such as
+applied decisions, skipped decisions, and failed command applications are
+bucketed when they appear, but current logs are expected to show zero
+controlled-apply counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather
@@ -202,9 +206,10 @@ allocator-critical fields:
 - `pdWeightsDefaulted`
 
 The parser also reports target-velocity and relative-velocity coverage,
-evidence source counts, and missing reason counts. PD input reporting separates
-observed, defaulted, and unknown cycles, then prints the evidence source,
-default reason, and missing reason breakdowns.
+evidence source counts, missing reason counts, no-op/skip reason counts, and
+cycle status counts. PD input reporting separates observed, defaulted, and
+unknown cycles, then prints the evidence source, default reason, and missing
+reason breakdowns.
 
 Parser warnings such as `all shadow cycles missing ammoGateBudgetShots`, `too
 many launch-window rejects`, or `allocation report limited by missing runtime

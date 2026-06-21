@@ -66,13 +66,13 @@ namespace MissileFireControl.Mod.Diagnostics
 
             if (!canAllocate)
             {
-                WriteSyntheticRejection(cycleId, snapshot, "missing required allocation inputs");
+                WriteNoOp(cycleId, snapshot, "missing required allocation inputs");
                 return;
             }
 
             if (result == null)
             {
-                WriteSyntheticRejection(cycleId, snapshot, "allocation result unavailable");
+                WriteNoOp(cycleId, snapshot, "allocation result unavailable");
                 return;
             }
 
@@ -86,9 +86,9 @@ namespace MissileFireControl.Mod.Diagnostics
                 WriteTargetRecord("rejection", cycleId, rejection, "rejectionReason", rejection.Reason);
             }
 
-            if (result.Allocations.Count == 0 && result.Rejections.Count == 0 && AmmoGateBudgetShots(snapshot) < 0)
+            if (result.Allocations.Count == 0 && result.Rejections.Count == 0)
             {
-                WriteSyntheticRejection(cycleId, snapshot, "missing ammoGateBudgetShots");
+                WriteNoOp(cycleId, snapshot, NoOpReason(snapshot));
             }
         }
 
@@ -235,16 +235,32 @@ namespace MissileFireControl.Mod.Diagnostics
             Log.Info("[AllocationLog] " + builder);
         }
 
-        private static void WriteSyntheticRejection(int cycleId, ExtractedCombatSnapshot snapshot, string reason)
+        private static void WriteNoOp(int cycleId, ExtractedCombatSnapshot snapshot, string reason)
         {
-            TargetAllocation rejection = new TargetAllocation
+            TargetAllocation noOp = new TargetAllocation
             {
                 TargetId = snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.Id,
                 TargetName = snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.DisplayName,
                 AssignedShots = 0,
                 Reason = reason
             };
-            WriteTargetRecord("rejection", cycleId, rejection, "rejectionReason", reason);
+            WriteTargetRecord("noOp", cycleId, noOp, "noOpReason", reason);
+        }
+
+        private static string NoOpReason(ExtractedCombatSnapshot snapshot)
+        {
+            int ammoGateBudgetShots = AmmoGateBudgetShots(snapshot);
+            if (ammoGateBudgetShots < 0)
+            {
+                return "missing ammoGateBudgetShots";
+            }
+
+            if (ammoGateBudgetShots == 0)
+            {
+                return "no ammo/gate budget shots";
+            }
+
+            return "no allocation decision emitted";
         }
 
         private static int AmmoGateBudgetShots(ExtractedCombatSnapshot snapshot)

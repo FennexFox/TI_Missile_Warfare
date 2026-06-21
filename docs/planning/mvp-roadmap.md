@@ -17,7 +17,6 @@ Current blocker:
 Current missing or provisional inputs:
 
 - selected-player command scope;
-- target velocity / relative velocity evidence;
 - target point-defense weapon weights;
 - in-flight projectile/controller guidance target identity.
 
@@ -67,12 +66,13 @@ Implementation notes: [`diagnostics/snapshot-and-allocation.md`](../diagnostics/
 
 Goal: produce target/shots recommendations without applying commands.
 
-Status: implemented as shadow diagnostics, but output remains limited by missing runtime inputs.
+Status: complete as observation-only shadow diagnostics.
 
 Completion evidence:
 
-- Shadow allocation logs cycle/allocation/rejection records without changing commands.
-- Parser summaries distinguish evaluated cycles, missing inputs, rejections, and future controlled-apply records.
+- Shadow allocation logs cycle/allocation/rejection/no-op records without changing commands.
+- Parser summaries distinguish evaluated cycles, skipped cycles, missing inputs, allocations, rejections, no-op/skip reasons, and future controlled-apply records.
+- Post-PR #20 runtime smoke validated numeric `ammoGateBudgetShots`, target velocity, and relative velocity evidence in shadow allocation logs.
 - Numeric sample rows are schema examples unless all required runtime inputs are present and documented.
 
 ### Issue 5: Add debug UI or hotkey
