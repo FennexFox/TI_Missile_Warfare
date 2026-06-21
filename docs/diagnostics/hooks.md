@@ -67,14 +67,12 @@ actual in-flight missile guidance target. The live `MissileWeapon.target` /
 projectile/controller target identity, but using it would require a separate
 observation point.
 
-Ready-shot source discovery found that reliable ship ammo state is keyed as
+Ammo/gate budget source discovery found that reliable ship ammo state is keyed as
 `TISpaceShipState.ammo[ModuleDataEntry]`. The projectile-state fire hook does
 not receive the firing `ModuleDataEntry`, so it cannot safely resolve per-weapon
 ammo by itself. `MissileWeapon.TryFire` owns the live weapon and `weaponData`;
 `TISpaceShipState.FireWeapon(module, targetedProjectile)` owns the module key and
-decrements ammo before triggering `ShipWeaponFired`. Existing postfix
-observations around those methods should be treated as post-fire remaining ammo,
-not ready/loaded/chambered shots.
+decrements ammo before triggering `ShipWeaponFired`.
 
 Issue #11 Phase 02 records that live weapon evidence on successful
 `MissileWeapon.TryFire` postfix rows with optional fields including
@@ -82,8 +80,8 @@ Issue #11 Phase 02 records that live weapon evidence on successful
 `postFireWeaponCanFire`, `postFireOnCooldown`, cooldown/salvo fields, and
 magazine capacity fields. `ammoEvidenceSource=shipAmmoByWeaponData` means the
 diagnostic indexed `TISpaceShipState.ammo` by the live weapon's `weaponData`.
-Because this is postfix evidence after `FireWeapon`, it is not a source for
-`SnapshotLog readyShots`.
+Because this is postfix evidence after `FireWeapon`, it is not the source for
+the pre-fire `ammoGateBudgetShots` value.
 
 Fresh Phase 02 runtime validation found 649 successful `MissileWeapon.TryFire`
 rows with `ammoEvidenceSource=shipAmmoByWeaponData` and populated
@@ -116,10 +114,11 @@ skip, suppress, or alter the original `TryFire` method.
 Static review of the confirmed decompiled path found that `TryFireCommon`
 checks cooldown, target presence, `WeaponCanFire(weaponData)`, salvo reset, and
 `OnTarget`, while `TISpaceShipState.FireWeapon(module, targetedProjectile)`
-decrements magazine ammo through `ChangeAmmoValue(module, -1)`. That source path
-does not expose a separate ready, loaded, or chambered missile count, so
-`SnapshotLog readyShots` remains unknown unless runtime evidence proves another
-source.
+decrements magazine ammo through `ChangeAmmoValue(module, -1)`. Issue #17
+therefore validates `ammo[weaponData]` plus those gates as the per-weapon
+game-equivalent fire budget. The diagnostics schema names this value
+`ammoGateBudgetShots`; the source path does not expose a separate loaded or
+chambered count.
 
 Fresh Phase 04 runtime validation on the active `Player.log` found 670
 successful `MissileWeapon.TryFire` rows. Every row had all seven `preFire*`
@@ -127,8 +126,27 @@ fields, `preFireAmmoEvidenceSource=shipAmmoByWeaponData`, numeric
 `preFireRemaining`, and numeric `postFireRemaining`. Every numeric pair had
 `preFireRemaining - postFireRemaining = 1`, consistent with pre/post observation
 of the `FireWeapon` ammo decrement. The same log had 670 `SnapshotLog` rows, and
-all 670 still reported `readyShots=unknown`; no true ready, loaded, or chambered
-source was recovered.
+all 670 used the older unresolved-budget schema. Issue #17 later resolved the
+source semantics from decompiled evidence rather than this deployed log.
+
+Issue #15 reuses that same-thread prefix evidence for the projectile-fire
+snapshot and shadow allocation diagnostics. When a `TISpaceCombatProjectileState`
+missile fire hook runs inside a successful `MissileWeapon.TryFire`, the snapshot
+path can now log:
+
+- `ammoGateBudgetShots`;
+- `ammoGateBudgetEvidenceSource`;
+- `ammoGateBudgetMissingReason`;
+- `ammoEvidenceSource`;
+- `liveWeaponState`;
+- `ammoGateWeaponCount`;
+- `unknownAmmoGateWeaponCount`.
+
+After Issue #17, the current source can populate
+`ammoGateBudgetEvidenceSource=shipAmmoByWeaponData+TryFireCommonGates` when the
+same-thread prefix has module-keyed pre-fire ammo and valid live gates.
+`preFireRemaining` continues to mean pre-decrement ammo dictionary state; it is
+only promoted to `ammoGateBudgetShots` when paired with those gates.
 
 ## Caveats
 

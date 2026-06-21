@@ -36,7 +36,7 @@ KNOWN_ALLOCATION_RECORD_TYPES = (
     | FAILED_ALLOCATION_RECORD_TYPES
 )
 CRITICAL_ALLOCATION_INPUTS = (
-    "readyShots",
+    "ammoGateBudgetShots",
     "targetIdentity",
     "targetVelocity",
     "missileProfileData",
@@ -74,9 +74,9 @@ class AllocationBattleSummary:
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
-    ready_shots_numeric_cycles: int = 0
-    ready_shots_unknown_cycles: int = 0
-    total_ready_shots: int | None = None
+    ammo_gate_budget_shots_numeric_cycles: int = 0
+    ammo_gate_budget_shots_unknown_cycles: int = 0
+    total_ammo_gate_budget_shots: int | None = None
     assigned_shots: int = 0
     assigned_shots_numeric_cycles: int = 0
     assigned_shots_unknown_cycles: int = 0
@@ -93,6 +93,23 @@ class AllocationBattleSummary:
     launch_window_score: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     score_per_shot: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     missing_input_counts: dict[str, int] = field(default_factory=dict)
+    ammo_gate_budget_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    ammo_gate_budget_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    ammo_only_budget_cycles: int = 0
+    missing_ammo_gate_budget_evidence_cycles: int = 0
+    target_velocity_evidence_cycles: int = 0
+    relative_velocity_evidence_cycles: int = 0
+    target_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    target_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    relative_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    relative_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    pd_weight_observed_cycles: int = 0
+    pd_weight_defaulted_cycles: int = 0
+    pd_weight_unknown_cycles: int = 0
+    pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
+    pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     suspicious_patterns: list[str] = field(default_factory=list)
 
 
@@ -129,9 +146,20 @@ class LogSummary:
     snapshot_log_count: int = 0
     snapshot_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
-    snapshot_ready_shots_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ammo_gate_budget_shots_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ammo_gate_budget_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ammo_gate_budget_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_live_weapon_state_counts: dict[str, int] = field(default_factory=dict)
     snapshot_known_target_count: int = 0
     snapshot_target_identity_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_target_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_relative_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_relative_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
     first_snapshot_line: int | None = None
@@ -140,6 +168,16 @@ class LogSummary:
     allocation_record_type_counts: dict[str, int] = field(default_factory=dict)
     allocation_status_counts: dict[str, int] = field(default_factory=dict)
     allocation_missing_input_counts: dict[str, int] = field(default_factory=dict)
+    allocation_ammo_gate_budget_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_ammo_gate_budget_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_ammo_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_target_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_target_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_relative_velocity_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_relative_velocity_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
     allocation_summary: AllocationBattleSummary = field(default_factory=AllocationBattleSummary)
@@ -219,6 +257,18 @@ def split_csv_field(text: str | None) -> list[str]:
     return [value.strip() for value in text.split(",") if value.strip()]
 
 
+def is_ammo_only_budget_reason(text: str | None) -> bool:
+    """Return whether an ammo/gate budget missing reason is explicitly ammo-only evidence."""
+    if not text:
+        return False
+
+    return text.strip().lower() in {
+        "ammo-only projectile snapshot evidence",
+        "missing live weapon correlation",
+        "missing module-keyed ammo evidence",
+    }
+
+
 def top_count(counter: Counter[str]) -> tuple[str | None, int]:
     """Return a deterministic top key and count."""
     if not counter:
@@ -233,7 +283,7 @@ def build_allocation_battle_summary(
     rejection_reason_counts: Counter[str],
     cycle_missing_input_counts: Counter[str],
     cycle_target_counts: list[int],
-    ready_shot_values: list[int | None],
+    ammo_gate_budget_values: list[int | None],
     assigned_shot_values: list[int | None],
     unassigned_shot_values: list[int | None],
     kill_size_values: list[float],
@@ -244,6 +294,19 @@ def build_allocation_battle_summary(
     allocation_overkill_count: int,
     cycle_allocated_target_values: dict[str, list[float]],
     cycle_rejected_target_values: dict[str, list[float]],
+    cycle_ammo_gate_budget_evidence_source_counts: Counter[str],
+    cycle_ammo_gate_budget_missing_reason_counts: Counter[str],
+    cycle_ammo_evidence_source_counts: Counter[str],
+    cycle_ammo_only_budget_count: int,
+    cycle_missing_ammo_gate_budget_evidence_count: int,
+    cycle_target_velocity_evidence_source_counts: Counter[str],
+    cycle_target_velocity_missing_reason_counts: Counter[str],
+    cycle_relative_velocity_evidence_source_counts: Counter[str],
+    cycle_relative_velocity_missing_reason_counts: Counter[str],
+    cycle_pd_weight_evidence_source_counts: Counter[str],
+    cycle_pd_weight_default_reason_counts: Counter[str],
+    cycle_pd_weight_missing_reason_counts: Counter[str],
+    cycle_pd_weight_defaulted_counts: Counter[str],
 ) -> AllocationBattleSummary:
     """Build a compact battle-level allocation summary from parsed records."""
     summary = AllocationBattleSummary()
@@ -263,10 +326,10 @@ def build_allocation_battle_summary(
     summary.max_target_count_observed = max(cycle_target_counts) if cycle_target_counts else None
     summary.target_observations = sum(cycle_target_counts)
 
-    numeric_ready_shots = [value for value in ready_shot_values if value is not None]
-    summary.ready_shots_numeric_cycles = len(numeric_ready_shots)
-    summary.ready_shots_unknown_cycles = len(ready_shot_values) - len(numeric_ready_shots)
-    summary.total_ready_shots = sum(numeric_ready_shots) if summary.ready_shots_unknown_cycles == 0 else None
+    numeric_ammo_gate_budget_shots = [value for value in ammo_gate_budget_values if value is not None]
+    summary.ammo_gate_budget_shots_numeric_cycles = len(numeric_ammo_gate_budget_shots)
+    summary.ammo_gate_budget_shots_unknown_cycles = len(ammo_gate_budget_values) - len(numeric_ammo_gate_budget_shots)
+    summary.total_ammo_gate_budget_shots = sum(numeric_ammo_gate_budget_shots) if summary.ammo_gate_budget_shots_unknown_cycles == 0 else None
 
     numeric_assigned_shots = [value for value in assigned_shot_values if value is not None]
     summary.assigned_shots_numeric_cycles = len(numeric_assigned_shots)
@@ -289,6 +352,27 @@ def build_allocation_battle_summary(
     summary.launch_window_score = summarize_numeric(launch_window_score_values)
     summary.score_per_shot = summarize_numeric(score_per_shot_values)
     summary.missing_input_counts = {field_name: cycle_missing_input_counts.get(field_name, 0) for field_name in CRITICAL_ALLOCATION_INPUTS}
+    summary.ammo_gate_budget_evidence_source_counts = dict(sorted(cycle_ammo_gate_budget_evidence_source_counts.items()))
+    summary.ammo_gate_budget_missing_reason_counts = dict(sorted(cycle_ammo_gate_budget_missing_reason_counts.items()))
+    summary.ammo_evidence_source_counts = dict(sorted(cycle_ammo_evidence_source_counts.items()))
+    summary.ammo_only_budget_cycles = cycle_ammo_only_budget_count
+    summary.missing_ammo_gate_budget_evidence_cycles = cycle_missing_ammo_gate_budget_evidence_count
+    summary.target_velocity_evidence_source_counts = dict(sorted(cycle_target_velocity_evidence_source_counts.items()))
+    summary.target_velocity_missing_reason_counts = dict(sorted(cycle_target_velocity_missing_reason_counts.items()))
+    summary.relative_velocity_evidence_source_counts = dict(sorted(cycle_relative_velocity_evidence_source_counts.items()))
+    summary.relative_velocity_missing_reason_counts = dict(sorted(cycle_relative_velocity_missing_reason_counts.items()))
+    summary.target_velocity_evidence_cycles = sum(
+        count for source, count in cycle_target_velocity_evidence_source_counts.items() if source not in {"unknown", "none"}
+    )
+    summary.relative_velocity_evidence_cycles = sum(
+        count for source, count in cycle_relative_velocity_evidence_source_counts.items() if source not in {"unknown", "none"}
+    )
+    summary.pd_weight_evidence_source_counts = dict(sorted(cycle_pd_weight_evidence_source_counts.items()))
+    summary.pd_weight_default_reason_counts = dict(sorted(cycle_pd_weight_default_reason_counts.items()))
+    summary.pd_weight_missing_reason_counts = dict(sorted(cycle_pd_weight_missing_reason_counts.items()))
+    summary.pd_weight_defaulted_cycles = cycle_pd_weight_defaulted_counts.get("true", 0)
+    summary.pd_weight_observed_cycles = cycle_pd_weight_defaulted_counts.get("false", 0)
+    summary.pd_weight_unknown_cycles = cycle_pd_weight_defaulted_counts.get("unknown", 0)
     summary.suspicious_patterns = allocation_suspicious_patterns(
         summary,
         rejection_reason_counts,
@@ -312,16 +396,22 @@ def allocation_suspicious_patterns(
     patterns: list[str] = []
     shadow_cycles = summary.shadow_cycles
 
-    if shadow_cycles and summary.missing_input_counts.get("readyShots", 0) == shadow_cycles:
-        patterns.append("all shadow cycles missing readyShots")
+    if shadow_cycles and summary.missing_input_counts.get("ammoGateBudgetShots", 0) == shadow_cycles:
+        patterns.append("all shadow cycles missing ammoGateBudgetShots")
+
+    if shadow_cycles and summary.ammo_only_budget_cycles == shadow_cycles:
+        patterns.append("all shadow cycles have ammo-only budget evidence")
+
+    if shadow_cycles and summary.missing_ammo_gate_budget_evidence_cycles == shadow_cycles:
+        patterns.append("all shadow cycles blocked by missing ammo/gate budget evidence")
 
     if (
-        summary.ready_shots_numeric_cycles
-        and summary.total_ready_shots is not None
-        and summary.total_ready_shots > 0
+        summary.ammo_gate_budget_shots_numeric_cycles
+        and summary.total_ammo_gate_budget_shots is not None
+        and summary.total_ammo_gate_budget_shots > 0
         and summary.total_assigned_shots == 0
     ):
-        patterns.append("all numeric ready shots left unassigned")
+        patterns.append("all numeric ammo/gate budget shots left unassigned")
 
     launch_window_rejects = sum(
         count
@@ -381,18 +471,39 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     missile_try_fire_pre_post_ammo_delta_counts: Counter[str] = Counter()
     snapshot_source_counts: Counter[str] = Counter()
     snapshot_missing_counts: Counter[str] = Counter()
-    snapshot_ready_shots_counts: Counter[str] = Counter()
+    snapshot_ammo_gate_budget_shots_counts: Counter[str] = Counter()
+    snapshot_ammo_gate_budget_evidence_source_counts: Counter[str] = Counter()
+    snapshot_ammo_gate_budget_missing_reason_counts: Counter[str] = Counter()
+    snapshot_ammo_evidence_source_counts: Counter[str] = Counter()
+    snapshot_live_weapon_state_counts: Counter[str] = Counter()
     snapshot_target_identity_source_counts: Counter[str] = Counter()
+    snapshot_target_velocity_evidence_source_counts: Counter[str] = Counter()
+    snapshot_target_velocity_missing_reason_counts: Counter[str] = Counter()
+    snapshot_relative_velocity_evidence_source_counts: Counter[str] = Counter()
+    snapshot_relative_velocity_missing_reason_counts: Counter[str] = Counter()
+    snapshot_pd_weight_evidence_source_counts: Counter[str] = Counter()
+    snapshot_pd_weight_default_reason_counts: Counter[str] = Counter()
+    snapshot_pd_weight_missing_reason_counts: Counter[str] = Counter()
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
     allocation_record_type_counts: Counter[str] = Counter()
     allocation_status_counts: Counter[str] = Counter()
     allocation_missing_input_counts: Counter[str] = Counter()
+    allocation_ammo_gate_budget_evidence_source_counts: Counter[str] = Counter()
+    allocation_ammo_gate_budget_missing_reason_counts: Counter[str] = Counter()
+    allocation_ammo_evidence_source_counts: Counter[str] = Counter()
+    allocation_target_velocity_evidence_source_counts: Counter[str] = Counter()
+    allocation_target_velocity_missing_reason_counts: Counter[str] = Counter()
+    allocation_relative_velocity_evidence_source_counts: Counter[str] = Counter()
+    allocation_relative_velocity_missing_reason_counts: Counter[str] = Counter()
+    allocation_pd_weight_evidence_source_counts: Counter[str] = Counter()
+    allocation_pd_weight_default_reason_counts: Counter[str] = Counter()
+    allocation_pd_weight_missing_reason_counts: Counter[str] = Counter()
     allocation_rejection_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
     cycle_missing_input_counts: Counter[str] = Counter()
     cycle_target_counts: list[int] = []
-    ready_shot_values: list[int | None] = []
+    ammo_gate_budget_values: list[int | None] = []
     assigned_shot_values: list[int | None] = []
     unassigned_shot_values: list[int | None] = []
     kill_size_values: list[float] = []
@@ -401,6 +512,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     score_per_shot_values: list[float] = []
     allocation_partial_saturation_count = 0
     allocation_overkill_count = 0
+    cycle_ammo_gate_budget_evidence_source_counts: Counter[str] = Counter()
+    cycle_ammo_gate_budget_missing_reason_counts: Counter[str] = Counter()
+    cycle_ammo_evidence_source_counts: Counter[str] = Counter()
+    cycle_target_velocity_evidence_source_counts: Counter[str] = Counter()
+    cycle_target_velocity_missing_reason_counts: Counter[str] = Counter()
+    cycle_relative_velocity_evidence_source_counts: Counter[str] = Counter()
+    cycle_relative_velocity_missing_reason_counts: Counter[str] = Counter()
+    cycle_pd_weight_evidence_source_counts: Counter[str] = Counter()
+    cycle_pd_weight_default_reason_counts: Counter[str] = Counter()
+    cycle_pd_weight_missing_reason_counts: Counter[str] = Counter()
+    cycle_pd_weight_defaulted_counts: Counter[str] = Counter()
+    cycle_ammo_only_budget_count = 0
+    cycle_missing_ammo_gate_budget_evidence_count = 0
     cycle_allocated_target_values: dict[str, list[float]] = {}
     cycle_rejected_target_values: dict[str, list[float]] = {}
     pre_fire_fields = (
@@ -502,7 +626,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
 
                 source = pairs.get("source", "unknown")
                 snapshot_source_counts[source] += 1
-                snapshot_ready_shots_counts[pairs.get("readyShots", "unknown")] += 1
+                snapshot_ammo_gate_budget_shots_counts[pairs.get("ammoGateBudgetShots", "unknown")] += 1
+                ammo_gate_budget_evidence_source = pairs.get("ammoGateBudgetEvidenceSource")
+                if ammo_gate_budget_evidence_source:
+                    snapshot_ammo_gate_budget_evidence_source_counts[ammo_gate_budget_evidence_source] += 1
+                ammo_gate_budget_missing_reason = pairs.get("ammoGateBudgetMissingReason")
+                if ammo_gate_budget_missing_reason:
+                    snapshot_ammo_gate_budget_missing_reason_counts[ammo_gate_budget_missing_reason] += 1
+                ammo_evidence_source = pairs.get("ammoEvidenceSource")
+                if ammo_evidence_source:
+                    snapshot_ammo_evidence_source_counts[ammo_evidence_source] += 1
+                live_weapon_state = pairs.get("liveWeaponState")
+                if live_weapon_state:
+                    snapshot_live_weapon_state_counts[live_weapon_state] += 1
 
                 target_id = pairs.get("targetId", "unknown")
                 target_name = pairs.get("target", "unknown")
@@ -513,6 +649,28 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 target_identity_source = pairs.get("targetIdentitySource")
                 if target_identity_source:
                     snapshot_target_identity_source_counts[target_identity_source] += 1
+
+                target_velocity_evidence_source = pairs.get("targetVelocityEvidenceSource")
+                if target_velocity_evidence_source:
+                    snapshot_target_velocity_evidence_source_counts[target_velocity_evidence_source] += 1
+                target_velocity_missing_reason = pairs.get("targetVelocityMissingReason")
+                if target_velocity_missing_reason:
+                    snapshot_target_velocity_missing_reason_counts[target_velocity_missing_reason] += 1
+                relative_velocity_evidence_source = pairs.get("relativeVelocityEvidenceSource")
+                if relative_velocity_evidence_source:
+                    snapshot_relative_velocity_evidence_source_counts[relative_velocity_evidence_source] += 1
+                relative_velocity_missing_reason = pairs.get("relativeVelocityMissingReason")
+                if relative_velocity_missing_reason:
+                    snapshot_relative_velocity_missing_reason_counts[relative_velocity_missing_reason] += 1
+                pd_weight_evidence_source = pairs.get("pdWeightEvidenceSource")
+                if pd_weight_evidence_source:
+                    snapshot_pd_weight_evidence_source_counts[pd_weight_evidence_source] += 1
+                pd_weight_default_reason = pairs.get("pdWeightDefaultReason")
+                if pd_weight_default_reason:
+                    snapshot_pd_weight_default_reason_counts[pd_weight_default_reason] += 1
+                pd_weight_missing_reason = pairs.get("pdWeightMissingReason")
+                if pd_weight_missing_reason:
+                    snapshot_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
 
                 target_team = pairs.get("targetTeam")
                 if target_team:
@@ -549,6 +707,60 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if record_type == "cycle":
                         cycle_missing_input_counts[field_name] += 1
 
+                ammo_gate_budget_evidence_source = pairs.get("ammoGateBudgetEvidenceSource")
+                if ammo_gate_budget_evidence_source:
+                    allocation_ammo_gate_budget_evidence_source_counts[ammo_gate_budget_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_ammo_gate_budget_evidence_source_counts[ammo_gate_budget_evidence_source] += 1
+
+                ammo_gate_budget_missing_reason = pairs.get("ammoGateBudgetMissingReason")
+                if ammo_gate_budget_missing_reason:
+                    allocation_ammo_gate_budget_missing_reason_counts[ammo_gate_budget_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_ammo_gate_budget_missing_reason_counts[ammo_gate_budget_missing_reason] += 1
+
+                ammo_evidence_source = pairs.get("ammoEvidenceSource")
+                if ammo_evidence_source:
+                    allocation_ammo_evidence_source_counts[ammo_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_ammo_evidence_source_counts[ammo_evidence_source] += 1
+
+                target_velocity_evidence_source = pairs.get("targetVelocityEvidenceSource")
+                if target_velocity_evidence_source:
+                    allocation_target_velocity_evidence_source_counts[target_velocity_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_target_velocity_evidence_source_counts[target_velocity_evidence_source] += 1
+                target_velocity_missing_reason = pairs.get("targetVelocityMissingReason")
+                if target_velocity_missing_reason:
+                    allocation_target_velocity_missing_reason_counts[target_velocity_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_target_velocity_missing_reason_counts[target_velocity_missing_reason] += 1
+                relative_velocity_evidence_source = pairs.get("relativeVelocityEvidenceSource")
+                if relative_velocity_evidence_source:
+                    allocation_relative_velocity_evidence_source_counts[relative_velocity_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_relative_velocity_evidence_source_counts[relative_velocity_evidence_source] += 1
+                relative_velocity_missing_reason = pairs.get("relativeVelocityMissingReason")
+                if relative_velocity_missing_reason:
+                    allocation_relative_velocity_missing_reason_counts[relative_velocity_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_relative_velocity_missing_reason_counts[relative_velocity_missing_reason] += 1
+                pd_weight_evidence_source = pairs.get("pdWeightEvidenceSource")
+                if pd_weight_evidence_source:
+                    allocation_pd_weight_evidence_source_counts[pd_weight_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_pd_weight_evidence_source_counts[pd_weight_evidence_source] += 1
+                pd_weight_default_reason = pairs.get("pdWeightDefaultReason")
+                if pd_weight_default_reason:
+                    allocation_pd_weight_default_reason_counts[pd_weight_default_reason] += 1
+                    if record_type == "cycle":
+                        cycle_pd_weight_default_reason_counts[pd_weight_default_reason] += 1
+                pd_weight_missing_reason = pairs.get("pdWeightMissingReason")
+                if pd_weight_missing_reason:
+                    allocation_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
+
                 rejection_reason = pairs.get("rejectionReason")
                 if rejection_reason:
                     allocation_rejection_reason_counts[rejection_reason] += 1
@@ -561,9 +773,20 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     target_count = try_parse_int(pairs.get("targetCount"))
                     if target_count is not None:
                         cycle_target_counts.append(target_count)
-                    ready_shot_values.append(try_parse_int(pairs.get("totalReadyShots")))
+                    ammo_gate_budget_shots = try_parse_int(pairs.get("totalAmmoGateBudgetShots"))
+                    ammo_gate_budget_values.append(ammo_gate_budget_shots)
                     assigned_shot_values.append(try_parse_int(pairs.get("assignedShots")))
                     unassigned_shot_values.append(try_parse_int(pairs.get("unassignedShots")))
+                    if ammo_gate_budget_shots is None and is_ammo_only_budget_reason(ammo_gate_budget_missing_reason):
+                        cycle_ammo_only_budget_count += 1
+                    if ammo_gate_budget_shots is None and (
+                        "ammoGateBudgetShots" in missing_inputs or ammo_gate_budget_missing_reason is not None
+                    ):
+                        cycle_missing_ammo_gate_budget_evidence_count += 1
+                    pd_weight_defaulted = pairs.get("pdWeightDefaulted", "unknown").strip().lower()
+                    if pd_weight_defaulted not in {"true", "false"}:
+                        pd_weight_defaulted = "unknown"
+                    cycle_pd_weight_defaulted_counts[pd_weight_defaulted] += 1
 
                 if record_type in {"allocation", "rejection"}:
                     kill_size = try_parse_float(pairs.get("killSize"))
@@ -617,13 +840,56 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     )
     summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
     summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
-    summary.snapshot_ready_shots_counts = dict(sorted(snapshot_ready_shots_counts.items()))
+    summary.snapshot_ammo_gate_budget_shots_counts = dict(sorted(snapshot_ammo_gate_budget_shots_counts.items()))
+    summary.snapshot_ammo_gate_budget_evidence_source_counts = dict(
+        sorted(snapshot_ammo_gate_budget_evidence_source_counts.items())
+    )
+    summary.snapshot_ammo_gate_budget_missing_reason_counts = dict(sorted(snapshot_ammo_gate_budget_missing_reason_counts.items()))
+    summary.snapshot_ammo_evidence_source_counts = dict(sorted(snapshot_ammo_evidence_source_counts.items()))
+    summary.snapshot_live_weapon_state_counts = dict(sorted(snapshot_live_weapon_state_counts.items()))
     summary.snapshot_target_identity_source_counts = dict(sorted(snapshot_target_identity_source_counts.items()))
+    summary.snapshot_target_velocity_evidence_source_counts = dict(
+        sorted(snapshot_target_velocity_evidence_source_counts.items())
+    )
+    summary.snapshot_target_velocity_missing_reason_counts = dict(
+        sorted(snapshot_target_velocity_missing_reason_counts.items())
+    )
+    summary.snapshot_relative_velocity_evidence_source_counts = dict(
+        sorted(snapshot_relative_velocity_evidence_source_counts.items())
+    )
+    summary.snapshot_relative_velocity_missing_reason_counts = dict(
+        sorted(snapshot_relative_velocity_missing_reason_counts.items())
+    )
+    summary.snapshot_pd_weight_evidence_source_counts = dict(sorted(snapshot_pd_weight_evidence_source_counts.items()))
+    summary.snapshot_pd_weight_default_reason_counts = dict(sorted(snapshot_pd_weight_default_reason_counts.items()))
+    summary.snapshot_pd_weight_missing_reason_counts = dict(sorted(snapshot_pd_weight_missing_reason_counts.items()))
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
+    summary.allocation_ammo_gate_budget_evidence_source_counts = dict(
+        sorted(allocation_ammo_gate_budget_evidence_source_counts.items())
+    )
+    summary.allocation_ammo_gate_budget_missing_reason_counts = dict(
+        sorted(allocation_ammo_gate_budget_missing_reason_counts.items())
+    )
+    summary.allocation_ammo_evidence_source_counts = dict(sorted(allocation_ammo_evidence_source_counts.items()))
+    summary.allocation_target_velocity_evidence_source_counts = dict(
+        sorted(allocation_target_velocity_evidence_source_counts.items())
+    )
+    summary.allocation_target_velocity_missing_reason_counts = dict(
+        sorted(allocation_target_velocity_missing_reason_counts.items())
+    )
+    summary.allocation_relative_velocity_evidence_source_counts = dict(
+        sorted(allocation_relative_velocity_evidence_source_counts.items())
+    )
+    summary.allocation_relative_velocity_missing_reason_counts = dict(
+        sorted(allocation_relative_velocity_missing_reason_counts.items())
+    )
+    summary.allocation_pd_weight_evidence_source_counts = dict(sorted(allocation_pd_weight_evidence_source_counts.items()))
+    summary.allocation_pd_weight_default_reason_counts = dict(sorted(allocation_pd_weight_default_reason_counts.items()))
+    summary.allocation_pd_weight_missing_reason_counts = dict(sorted(allocation_pd_weight_missing_reason_counts.items()))
     summary.allocation_rejection_reason_counts = sorted_count_dict(allocation_rejection_reason_counts, limit=12)
     summary.allocation_assigned_shots_counts = dict(
         sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
@@ -633,7 +899,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         allocation_rejection_reason_counts,
         cycle_missing_input_counts,
         cycle_target_counts,
-        ready_shot_values,
+        ammo_gate_budget_values,
         assigned_shot_values,
         unassigned_shot_values,
         kill_size_values,
@@ -644,6 +910,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         allocation_overkill_count,
         cycle_allocated_target_values,
         cycle_rejected_target_values,
+        cycle_ammo_gate_budget_evidence_source_counts,
+        cycle_ammo_gate_budget_missing_reason_counts,
+        cycle_ammo_evidence_source_counts,
+        cycle_ammo_only_budget_count,
+        cycle_missing_ammo_gate_budget_evidence_count,
+        cycle_target_velocity_evidence_source_counts,
+        cycle_target_velocity_missing_reason_counts,
+        cycle_relative_velocity_evidence_source_counts,
+        cycle_relative_velocity_missing_reason_counts,
+        cycle_pd_weight_evidence_source_counts,
+        cycle_pd_weight_default_reason_counts,
+        cycle_pd_weight_missing_reason_counts,
+        cycle_pd_weight_defaulted_counts,
     )
     if sequences:
         ordered = sorted(sequences)
@@ -750,11 +1029,47 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
     )
     print(f"- target observations: {summary.target_observations}")
     print(
-        "- ready shots observed: "
-        f"{summary.ready_shots_numeric_cycles} numeric cycles, "
-        f"{summary.ready_shots_unknown_cycles} unknown cycles, "
-        f"total {format_optional_total(summary.total_ready_shots)}"
+        "- ammo/gate budget shots observed: "
+        f"{summary.ammo_gate_budget_shots_numeric_cycles} numeric cycles, "
+        f"{summary.ammo_gate_budget_shots_unknown_cycles} unknown cycles, "
+        f"total {format_optional_total(summary.total_ammo_gate_budget_shots)}"
     )
+    print(f"- ammo-only budget cycles: {summary.ammo_only_budget_cycles}")
+    print(f"- missing ammo/gate budget evidence cycles: {summary.missing_ammo_gate_budget_evidence_cycles}")
+    if summary.ammo_gate_budget_evidence_source_counts:
+        print("- ammo/gate budget evidence sources: " + format_count_dict(summary.ammo_gate_budget_evidence_source_counts))
+    if summary.ammo_gate_budget_missing_reason_counts:
+        print("- ammo/gate budget missing reasons: " + format_count_dict(summary.ammo_gate_budget_missing_reason_counts))
+    if summary.ammo_evidence_source_counts:
+        print("- ammo evidence sources: " + format_count_dict(summary.ammo_evidence_source_counts))
+    print(
+        "- target velocity evidence: "
+        f"{summary.target_velocity_evidence_cycles}/{summary.shadow_cycles} cycles"
+    )
+    if summary.target_velocity_evidence_source_counts:
+        print("- target velocity evidence sources: " + format_count_dict(summary.target_velocity_evidence_source_counts))
+    if summary.target_velocity_missing_reason_counts:
+        print("- target velocity missing reasons: " + format_count_dict(summary.target_velocity_missing_reason_counts))
+    print(
+        "- relative velocity evidence: "
+        f"{summary.relative_velocity_evidence_cycles}/{summary.shadow_cycles} cycles"
+    )
+    if summary.relative_velocity_evidence_source_counts:
+        print("- relative velocity evidence sources: " + format_count_dict(summary.relative_velocity_evidence_source_counts))
+    if summary.relative_velocity_missing_reason_counts:
+        print("- relative velocity missing reasons: " + format_count_dict(summary.relative_velocity_missing_reason_counts))
+    print(
+        "- PD weight inputs: "
+        f"{summary.pd_weight_observed_cycles} observed cycles, "
+        f"{summary.pd_weight_defaulted_cycles} defaulted cycles, "
+        f"{summary.pd_weight_unknown_cycles} unknown cycles"
+    )
+    if summary.pd_weight_evidence_source_counts:
+        print("- PD weight evidence sources: " + format_count_dict(summary.pd_weight_evidence_source_counts))
+    if summary.pd_weight_default_reason_counts:
+        print("- PD weight default reasons: " + format_count_dict(summary.pd_weight_default_reason_counts))
+    if summary.pd_weight_missing_reason_counts:
+        print("- PD weight missing reasons: " + format_count_dict(summary.pd_weight_missing_reason_counts))
     print(
         "- assigned shots observed: "
         f"{summary.assigned_shots_numeric_cycles} numeric cycles, "
@@ -827,7 +1142,7 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             + (", ".join(map(str, summary.duplicate_sequences)) if summary.duplicate_sequences else "none")
         )
         if summary.missile_try_fire_count:
-            print("  missile try-fire readiness evidence:")
+            print("  missile try-fire ammo/gate evidence:")
             print(f"    rows: {summary.missile_try_fire_count}")
             if summary.missile_try_fire_pre_fire_field_counts:
                 print("    pre-fire fields:")
@@ -859,10 +1174,26 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
                 print(f"    {field_name}: {count}")
         else:
             print("    none")
-        if summary.snapshot_ready_shots_counts:
-            print("  readyShots:")
-            for value, count in summary.snapshot_ready_shots_counts.items():
+        if summary.snapshot_ammo_gate_budget_shots_counts:
+            print("  ammoGateBudgetShots:")
+            for value, count in summary.snapshot_ammo_gate_budget_shots_counts.items():
                 print(f"    {value}: {count}")
+        if summary.snapshot_ammo_gate_budget_evidence_source_counts:
+            print("  ammo/gate budget evidence sources:")
+            for source, count in summary.snapshot_ammo_gate_budget_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_ammo_gate_budget_missing_reason_counts:
+            print("  ammo/gate budget missing reasons:")
+            for reason, count in summary.snapshot_ammo_gate_budget_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_ammo_evidence_source_counts:
+            print("  ammo evidence sources:")
+            for source, count in summary.snapshot_ammo_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_live_weapon_state_counts:
+            print("  live weapon states:")
+            for state, count in summary.snapshot_live_weapon_state_counts.items():
+                print(f"    {state}: {count}")
         print(
             "  target identity: "
             f"{summary.snapshot_known_target_count}/{summary.snapshot_log_count} snapshots"
@@ -871,6 +1202,34 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  target identity sources:")
             for source, count in summary.snapshot_target_identity_source_counts.items():
                 print(f"    {source}: {count}")
+        if summary.snapshot_target_velocity_evidence_source_counts:
+            print("  target velocity evidence sources:")
+            for source, count in summary.snapshot_target_velocity_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_target_velocity_missing_reason_counts:
+            print("  target velocity missing reasons:")
+            for reason, count in summary.snapshot_target_velocity_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_relative_velocity_evidence_source_counts:
+            print("  relative velocity evidence sources:")
+            for source, count in summary.snapshot_relative_velocity_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_relative_velocity_missing_reason_counts:
+            print("  relative velocity missing reasons:")
+            for reason, count in summary.snapshot_relative_velocity_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_pd_weight_evidence_source_counts:
+            print("  PD weight evidence sources:")
+            for source, count in summary.snapshot_pd_weight_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_pd_weight_default_reason_counts:
+            print("  PD weight default reasons:")
+            for reason, count in summary.snapshot_pd_weight_default_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_pd_weight_missing_reason_counts:
+            print("  PD weight missing reasons:")
+            for reason, count in summary.snapshot_pd_weight_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
         if summary.snapshot_target_counts:
             print("  targets:")
             for target, count in summary.snapshot_target_counts.items():
@@ -895,6 +1254,46 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  missing inputs:")
             for field_name, count in summary.allocation_missing_input_counts.items():
                 print(f"    {field_name}: {count}")
+        if summary.allocation_ammo_gate_budget_evidence_source_counts:
+            print("  ammo/gate budget evidence sources:")
+            for source, count in summary.allocation_ammo_gate_budget_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_ammo_gate_budget_missing_reason_counts:
+            print("  ammo/gate budget missing reasons:")
+            for reason, count in summary.allocation_ammo_gate_budget_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_ammo_evidence_source_counts:
+            print("  ammo evidence sources:")
+            for source, count in summary.allocation_ammo_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_target_velocity_evidence_source_counts:
+            print("  target velocity evidence sources:")
+            for source, count in summary.allocation_target_velocity_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_target_velocity_missing_reason_counts:
+            print("  target velocity missing reasons:")
+            for reason, count in summary.allocation_target_velocity_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_relative_velocity_evidence_source_counts:
+            print("  relative velocity evidence sources:")
+            for source, count in summary.allocation_relative_velocity_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_relative_velocity_missing_reason_counts:
+            print("  relative velocity missing reasons:")
+            for reason, count in summary.allocation_relative_velocity_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_pd_weight_evidence_source_counts:
+            print("  PD weight evidence sources:")
+            for source, count in summary.allocation_pd_weight_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_pd_weight_default_reason_counts:
+            print("  PD weight default reasons:")
+            for reason, count in summary.allocation_pd_weight_default_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_pd_weight_missing_reason_counts:
+            print("  PD weight missing reasons:")
+            for reason, count in summary.allocation_pd_weight_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
         if summary.allocation_assigned_shots_counts:
             print("  assigned shots:")
             for assigned_shots, count in summary.allocation_assigned_shots_counts.items():

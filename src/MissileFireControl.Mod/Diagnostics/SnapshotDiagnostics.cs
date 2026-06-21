@@ -8,7 +8,10 @@ namespace MissileFireControl.Mod.Diagnostics
 {
     internal static class SnapshotDiagnostics
     {
-        public static void LogProjectileFireSnapshot(object projectile, object[] args)
+        public static void LogProjectileFireSnapshot(
+            object projectile,
+            object[] args,
+            ReadinessEvidenceSnapshot readinessEvidence)
         {
             if (!ShouldLog())
             {
@@ -17,7 +20,7 @@ namespace MissileFireControl.Mod.Diagnostics
 
             try
             {
-                ExtractedCombatSnapshot snapshot = CombatSnapshotExtractor.FromProjectileMissileFire(projectile, args);
+                ExtractedCombatSnapshot snapshot = CombatSnapshotExtractor.FromProjectileMissileFire(projectile, args, readinessEvidence);
                 StringBuilder builder = new StringBuilder(512);
                 AppendPair(builder, "source", snapshot.Source);
                 AppendPair(builder, "launcherId", snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id);
@@ -28,13 +31,31 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "targetTeam", snapshot.Target == null ? "unknown" : snapshot.Target.TeamId);
                 AppendPair(builder, "targetIdentitySource", snapshot.TargetIdentitySource ?? "none");
                 AppendPair(builder, "expectedTargetPosition", snapshot.HasExpectedTargetPosition ? Format(snapshot.ExpectedTargetPositionKm) : "unknown");
+                AppendPair(builder, "targetVelocityKps", snapshot.HasTargetVelocity ? Format(snapshot.TargetVelocityKps) : "unknown");
+                AppendPair(builder, "targetVelocityEvidenceSource", snapshot.TargetVelocityEvidenceSource ?? "unknown");
+                AppendPair(builder, "targetVelocityMissingReason", snapshot.TargetVelocityMissingReason ?? "unknown");
+                AppendPair(builder, "relativeVelocityKps", snapshot.HasRelativeVelocity ? Format(snapshot.RelativeVelocityKps) : "unknown");
+                AppendPair(builder, "relativeSpeedKps", snapshot.HasRelativeVelocity ? Format(snapshot.RelativeSpeedKps) : "unknown");
+                AppendPair(builder, "relativeVelocityEvidenceSource", snapshot.RelativeVelocityEvidenceSource ?? "unknown");
+                AppendPair(builder, "relativeVelocityMissingReason", snapshot.RelativeVelocityMissingReason ?? "unknown");
                 AppendPair(builder, "missileId", snapshot.Missile == null ? "unknown" : snapshot.Missile.Id);
                 AppendPair(builder, "missile", snapshot.Missile == null ? "unknown" : snapshot.Missile.DisplayName);
                 AppendPair(builder, "rangeKm", snapshot.Missile == null ? "unknown" : Format(snapshot.Missile.NominalRangeKm));
                 AppendPair(builder, "velocityKps", snapshot.Missile == null ? "unknown" : Format(snapshot.Missile.EffectiveVelocityKps));
                 AppendPair(builder, "weaponRole", WeaponRole(snapshot));
-                AppendPair(builder, "readyShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.ReadyShots));
+                AppendPair(builder, "ammoGateBudgetShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateBudgetShots));
+                AppendPair(builder, "ammoGateBudgetEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoGateBudgetEvidenceSource, "unknown"));
+                AppendPair(builder, "ammoGateBudgetMissingReason", Evidence(snapshot, inventory => inventory.AmmoGateBudgetMissingReason, "unknown"));
+                AppendPair(builder, "ammoEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoEvidenceSource, "unknown"));
+                AppendPair(builder, "liveWeaponState", Evidence(snapshot, inventory => inventory.LiveWeaponState, "unknown"));
+                AppendPair(builder, "ammoGateWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.AmmoGateWeaponCount));
+                AppendPair(builder, "unknownAmmoGateWeaponCount", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.UnknownAmmoGateWeaponCount));
                 AppendPair(builder, "remainingShots", FormatCount(snapshot.Inventory == null ? -1 : snapshot.Inventory.RemainingShots));
+                AppendPair(builder, "pdWeight", Format(snapshot.PdWeight));
+                AppendPair(builder, "pdWeightEvidenceSource", snapshot.PdWeightEvidenceSource ?? "unknown");
+                AppendPair(builder, "pdWeightDefaulted", snapshot.PdWeightDefaulted ? "True" : "False");
+                AppendPair(builder, "pdWeightDefaultReason", snapshot.PdWeightDefaultReason ?? "none");
+                AppendPair(builder, "pdWeightMissingReason", snapshot.PdWeightMissingReason ?? "unknown");
                 AppendPair(builder, "originPosition", snapshot.HasOriginPosition ? Format(snapshot.OriginPositionKm) : "unknown");
                 AppendPair(builder, "originVelocityKps", snapshot.HasOriginVelocity ? Format(snapshot.OriginVelocityKps) : "unknown");
                 AppendPair(builder, "missing", snapshot.MissingFields.Count == 0 ? "none" : string.Join(",", snapshot.MissingFields.ToArray()));
@@ -90,6 +111,20 @@ namespace MissileFireControl.Mod.Diagnostics
         private static string FormatCount(int value)
         {
             return value < 0 ? "unknown" : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string Evidence(
+            ExtractedCombatSnapshot snapshot,
+            Func<MissileInventorySnapshot, string> read,
+            string fallback)
+        {
+            if (snapshot == null || snapshot.Inventory == null || read == null)
+            {
+                return fallback;
+            }
+
+            string value = read(snapshot.Inventory);
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
     }
 }

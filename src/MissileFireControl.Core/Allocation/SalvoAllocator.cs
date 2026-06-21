@@ -33,16 +33,16 @@ namespace MissileFireControl.Core.Allocation
                 return result;
             }
 
-            int readyShots = request.MissileInventories.Sum(x => Math.Max(0, x.ReadyShots));
-            result.TotalReadyShots = readyShots;
-            result.UnassignedShots = readyShots;
+            int ammoGateBudgetShots = request.MissileInventories.Sum(x => Math.Max(0, x.AmmoGateBudgetShots));
+            result.TotalAmmoGateBudgetShots = ammoGateBudgetShots;
+            result.UnassignedShots = ammoGateBudgetShots;
 
-            if (readyShots <= 0 || request.EnemyTargets.Count == 0)
+            if (ammoGateBudgetShots <= 0 || request.EnemyTargets.Count == 0)
             {
                 return result;
             }
 
-            double remainingMissileFactor = Math.Min(2.0, Math.Max(0.25, readyShots / 24.0));
+            double remainingMissileFactor = Math.Min(2.0, Math.Max(0.25, ammoGateBudgetShots / 24.0));
             List<TargetCandidate> candidates = new List<TargetCandidate>();
 
             foreach (ShipSnapshot target in request.EnemyTargets)
@@ -96,24 +96,24 @@ namespace MissileFireControl.Core.Allocation
 
             foreach (TargetCandidate candidate in candidates.OrderByDescending(x => x.ScorePerShot))
             {
-                if (readyShots <= 0)
+                if (ammoGateBudgetShots <= 0)
                 {
                     break;
                 }
 
                 int assigned = 0;
-                if (readyShots >= candidate.Package.KillSize)
+                if (ammoGateBudgetShots >= candidate.Package.KillSize)
                 {
                     assigned = candidate.Package.KillSize;
                 }
-                else if (request.AllowPartialSaturation && readyShots >= candidate.Package.SaturationSize)
+                else if (request.AllowPartialSaturation && ammoGateBudgetShots >= candidate.Package.SaturationSize)
                 {
-                    assigned = readyShots;
+                    assigned = ammoGateBudgetShots;
                 }
 
                 if (assigned <= 0)
                 {
-                    candidate.Allocation.Reason = "not enough ready shots to form a useful package";
+                    candidate.Allocation.Reason = "not enough ammo/gate budget shots to form a useful package";
                     result.Rejections.Add(candidate.Allocation);
                     continue;
                 }
@@ -121,11 +121,11 @@ namespace MissileFireControl.Core.Allocation
                 candidate.Allocation.AssignedShots = assigned;
                 candidate.Allocation.Reason = assigned >= candidate.Package.KillSize ? "kill package" : "partial saturation package";
                 result.Allocations.Add(candidate.Allocation);
-                readyShots -= assigned;
+                ammoGateBudgetShots -= assigned;
             }
 
             result.AssignedShots = result.Allocations.Sum(x => x.AssignedShots);
-            result.UnassignedShots = Math.Max(0, result.TotalReadyShots - result.AssignedShots);
+            result.UnassignedShots = Math.Max(0, result.TotalAmmoGateBudgetShots - result.AssignedShots);
             return result;
         }
 

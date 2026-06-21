@@ -10,7 +10,7 @@ namespace MissileFireControl.Core.Allocation
             Rejections = new List<TargetAllocation>();
         }
 
-        public int TotalReadyShots { get; set; }
+        public int TotalAmmoGateBudgetShots { get; set; }
         public int AssignedShots { get; set; }
         public int UnassignedShots { get; set; }
         public List<TargetAllocation> Allocations { get; private set; }

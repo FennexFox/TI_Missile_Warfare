@@ -42,7 +42,7 @@ Find classes or structs representing:
 - Manual target commands.
 - Automatic weapon fire decisions.
 
-Record candidate class/method names in `docs/reverse-engineering-notes.local.md` and do not commit machine-specific paths.
+Record candidate class/method names in `docs/research/reverse-engineering-notes.local.md` and do not commit machine-specific paths.
 
 ## Phase 1: log-only patches
 
@@ -61,7 +61,29 @@ Add Harmony postfixes/prefixes that log:
 No gameplay behavior should change in this phase.
 
 Current confirmed runtime hook findings are recorded in
-`docs/confirmed-hooks.md`.
+[`diagnostics/hooks.md`](../diagnostics/hooks.md).
+
+### Current readiness decision
+
+Issue #17 resolved the shot-budget semantics to Path A. Source review confirms
+that the vanilla missile fire path spends module-keyed
+`TISpaceShipState.ammo[weaponData]` only after `TryFireCommon` passes cooldown,
+target, `WeaponCanFire(weaponData)`, and on-target gates. See
+[`readiness-semantics.md`](readiness-semantics.md).
+
+The mod should call the derived value `ammoGateBudgetShots`. Do not introduce
+`readyShots`, loaded, or chambered terminology unless a future source actually
+exposes a distinct state.
+
+Future reverse-engineering should focus on:
+
+- selected player ship/weapon command scope;
+- target velocity and relative velocity sources;
+- target point-defense weapon weights;
+- projectile/controller guidance target identity;
+- vanilla command application around `SelectSalvoTargetCommand`,
+  `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`, and
+  `SetWeaponModeAction`.
 
 ## Phase 2: snapshot extraction
 
@@ -88,11 +110,17 @@ Acceptance criteria:
 
 ## Phase 4: controlled command helper
 
-Only after recommendation quality is acceptable:
+Only after recommendation quality is acceptable and selected-player command
+scope is verified:
 
 - Add a player-triggered button or hotkey.
 - Apply target assignments to selected ships only.
 - Keep an option to stay in recommendation-only mode.
+
+Do not start controlled allocation from a fictitious `readyShots` source. Use
+explicit `ammoGateBudgetShots` evidence and let vanilla combat enforce the final
+legal launch result while the mod logs command intent, skipped reasons, and
+observed results.
 
 ## Phase 5: launch discipline
 
