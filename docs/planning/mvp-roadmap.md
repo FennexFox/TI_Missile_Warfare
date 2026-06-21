@@ -109,8 +109,9 @@ Implementation notes:
   `python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest`.
 - One real selected combat log can support a `Conditionally ready` #6 baseline
   when required evidence is present and no impossible or obviously unsafe
-  allocation behavior is classified.
-- PD-default-only evidence blocks full readiness but does not block a
+  allocation behavior is classified, provided the report also includes at
+  least one plausible allocation or no-op decision.
+- Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
 
 ## Blocked controlled features

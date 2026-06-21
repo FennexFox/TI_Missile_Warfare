@@ -245,9 +245,9 @@ conservative buckets:
 - `impossible`
 - `ambiguous`
 
-PD default-model evidence is reported as an evidence limitation. A log set where
-all PD inputs are `pdWeightEvidenceSource=defaultModel` can support at most a
-conditional #6 baseline recommendation; it cannot establish full readiness.
+PD default-model evidence is reported as an evidence limitation. Any
+PD-defaulted evidence can support at most a conditional #6 baseline
+recommendation; it cannot establish full readiness.
 
 A tiny synthetic fixture exists at
 `tools/fixtures/shadow_allocation_synthetic.txt` for wrapper smoke validation.

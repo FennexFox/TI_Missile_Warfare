@@ -482,6 +482,7 @@ def aggregate_report(input_path: Path, output_path: Path, logs: list[FittingLogR
 def write_outputs(report: AggregateReport, output_path: Path) -> None:
     """Write per-log JSON, aggregate JSON, and aggregate Markdown."""
     if output_path.exists():
+        ensure_safe_to_clear(output_path)
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -500,6 +501,25 @@ def write_outputs(report: AggregateReport, output_path: Path) -> None:
         format_markdown_report(report),
         encoding="utf-8",
     )
+
+
+def ensure_safe_to_clear(output_path: Path) -> None:
+    """Refuse to delete arbitrary non-empty directories."""
+    if not output_path.is_dir() or not any(output_path.iterdir()):
+        return
+
+    if (output_path / "summary.json").exists() or (output_path / "shadow-fitting-report.md").exists():
+        return
+
+    artifacts_root = Path("artifacts/shadow-fitting").resolve()
+    resolved_output = output_path.resolve()
+    try:
+        resolved_output.relative_to(artifacts_root)
+    except ValueError as exc:
+        raise SystemExit(
+            "Refusing to overwrite non-empty directory without fitting report "
+            f"sentinel outside {artifacts_root}: {output_path}"
+        ) from exc
 
 
 def safe_output_name(path: Path, index: int) -> str:
@@ -609,9 +629,10 @@ def format_markdown_report(report: AggregateReport) -> str:
             "## Interpretation rules",
             "",
             "- Synthetic fixtures validate the wrapper only; they are not fitting evidence.",
-            "- PD-default-only evidence can support at most `Conditionally ready`.",
-            "- Full `Ready for #6 baseline` requires multiple real selected logs or",
-            "  varied scenarios and no bad evidence-supported classifications.",
+            "- Any PD-defaulted evidence can support at most `Conditionally ready`.",
+            "- Full `Ready for #6 baseline` requires multiple real selected logs with",
+            "  required evidence, at least one plausible decision, no severe",
+            "  classifications, and no PD-defaulted evidence.",
         ]
     )
     return "\n".join(lines) + "\n"

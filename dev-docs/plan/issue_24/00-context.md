@@ -157,8 +157,10 @@ Interpretation for #24:
   - This folder is for temporary per-issue / per-PR context.
 - Suggested #24 temp docs:
   - `dev-docs/plan/issue_24/00-context.md` — this file.
-  - `dev-docs/plan/issue_24/01-implementation-plan.md` — optional next step if a detailed task split is useful.
-  - `dev-docs/plan/issue_24/02-fitting-notes.md` — optional scratch findings while reviewing selected logs.
+  - `dev-docs/plan/issue_24/00-master-plan.md`
+  - `dev-docs/plan/issue_24/01-planning-and-boundaries.md`
+  - `dev-docs/plan/issue_24/02-wrapper-and-classification.md`
+  - `dev-docs/plan/issue_24/03-docs-and-validation.md`
 
 ## Recommended implementation shape
 

@@ -247,11 +247,14 @@ Current Issue #24 readiness rule for #6:
 
 - One real selected combat log with `LaunchLog`, `SnapshotLog`, and
   `AllocationLog` evidence can support `Conditionally ready` if the fitting
-  report shows no impossible or obviously unsafe allocation behavior.
-- Full `Ready for #6 baseline` requires more than one real log or more varied
-  combat scenarios.
-- PD-default-only logs can support at most `Conditionally ready`; observed
-  target point-defense weapon recovery is still required before full readiness.
+  report shows no impossible or obviously unsafe allocation behavior and at
+  least one plausible allocation or no-op decision.
+- Full `Ready for #6 baseline` requires multiple real selected logs with
+  required evidence, at least one plausible decision, no severe
+  classifications, and no PD-defaulted evidence.
+- Any PD-defaulted evidence keeps the verdict at most `Conditionally ready`;
+  observed target point-defense weapon recovery is still required before full
+  readiness.
 - Any heuristic or scoring change must be justified by repeated,
   evidence-supported bad classifications in selected real logs.
 

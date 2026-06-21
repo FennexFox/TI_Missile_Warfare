@@ -25,9 +25,11 @@ This plan follows the context in `00-context.md` and the GitHub issue body.
 - Real selected combat logs are local and ignored.
 - One valid selected combat log can support `Conditionally ready` for #6 when
   required evidence exists and no impossible or obviously unsafe allocation
-  behavior appears.
-- Full readiness requires more than one log or more varied combat scenarios.
-- PD-default-only logs may support conditional readiness, but block full
+  behavior appears, and at least one plausible decision is classified.
+- Full readiness requires multiple real selected logs with required evidence,
+  at least one plausible decision, no severe classifications, and no
+  PD-defaulted evidence.
+- Any PD-defaulted evidence keeps the verdict conditional and blocks full
   readiness.
 
 ## Phase order
@@ -65,4 +67,3 @@ requires a current local `Player.log` or selected log with diagnostics enabled.
 - Parser aggregates may hide per-cycle detail unless the wrapper scans allocation
   rows directly.
 - Generated artifacts should remain ignored and should not be committed.
-
