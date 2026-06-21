@@ -71,4 +71,18 @@ Follow-up implementation after decompiled-source review:
 - Source checked: `../TI_RE_Workspace/graphify-out/slices/missile-fire-control-master-source/PavonisInteractive.TerraInvicta.Ship/MissileWeapon.cs`, `Weapon.cs`, `IDamageable.cs`, `PavonisInteractive.TerraInvicta.SpaceCombat/CombatShipController.cs`, and `PavonisInteractive.TerraInvicta/TISpaceCombatProjectileState.cs`.
 - Finding: vanilla missile targeting computes intercepts from `IDamageable.position`, `velocityVector`, and `accelerationVector`; the direct target is available from `Weapon.target` during `MissileWeapon.TryFire`, not from the projectile-state `Fire(...)` hook arguments.
 - Change: thread TryFire target velocity evidence through the existing readiness handoff so snapshot/allocation logs can report `tryFireTargetDamageableVelocity` or `tryFireTargetPositionAtTimeDelta`.
-- Runtime validation pending for this follow-up.
+- Fresh deployed runtime smoke on `Player.log` last written `2026-06-21 09:34:44` local time: passed.
+
+Follow-up runtime smoke results:
+
+- diagnostics bootstrap remained `patched=3`, `skipped=0`.
+- `LaunchLog`: 6,701 entries, contiguous sequence range `1-6701`, no duplicates.
+- `SnapshotLog`: 748 entries.
+- `AllocationLog`: 1,496 entries: 748 `cycle`, 748 `allocation`.
+- `ammoGateBudgetShots`: 748/748 numeric snapshot/cycle evidence, total cycle budget 5,998 shots.
+- Target velocity evidence: 748/748 cycles with `targetVelocityEvidenceSource=tryFireTargetDamageableVelocity` and `targetVelocityMissingReason=none`.
+- Relative velocity evidence: 748/748 cycles with `relativeVelocityEvidenceSource=targetAndLauncherVelocity` and `relativeVelocityMissingReason=none`.
+- PD weight fields remained explicit defaults: 748/748 cycles `pdWeightEvidenceSource=defaultModel`, `pdWeightDefaulted=True`, `pdWeightDefaultReason=pdEvidenceUnavailable`, `pdWeightMissingReason=none`.
+- MissileWarfare issues: none.
+
+Interpretation: #18 target/relative velocity evidence is runtime-confirmed. #19 remains runtime-confirmed as explicit default-model reporting.

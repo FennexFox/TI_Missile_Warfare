@@ -174,3 +174,32 @@ Fresh runtime smoke on the active `Player.log`, last written `2026-06-21 09:23:1
 - MissileWarfare issues: none
 
 Interpretation: the point-defense default model is now explicit and runtime-confirmed instead of opaque. Target velocity is still unavailable from the current launcher-selected target object, but it now fails with a precise missing reason rather than a generic all-cycles missing flag. Controlled allocation remains blocked until this velocity gap is accepted or a better target combat-state/member source is found.
+
+## Issue #18 target velocity recovery follow-up
+
+Decompiled source review showed target velocity should be read from the live `MissileWeapon.target` object during `MissileWeapon.TryFire`, not from the later `TISpaceCombatProjectileState.Fire(...)` arguments. `Weapon.target` is an `IDamageable`; vanilla missile targeting uses that object's `position`, `velocityVector`, and `accelerationVector` for intercept calculation.
+
+The diagnostics now capture `IDamageable.velocityVector_kps` in the `MissileWeapon.TryFire` prefix and pass it through the existing same-thread readiness handoff to snapshot/allocation diagnostics. A same-target `positionAtTime(t + 1s) - positionAtTime(t)` derivative remains as fallback if direct velocity is unavailable.
+
+Fresh runtime smoke on the active `Player.log`, last written `2026-06-21 09:34:44` local time, confirmed the corrected target-velocity source:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- `LaunchLog` entries: 6,701, with contiguous sequence range `1-6701`
+- `MissileWeapon.TryFire` rows: 748
+- `SnapshotLog` entries: 748
+- `AllocationLog` entries: 1,496: 748 `cycle`, 748 `allocation`
+- `ammoGateBudgetShots`: 748/748 numeric snapshot/cycle evidence
+- total allocation-cycle ammo/gate budget: 5,998 shots
+- target velocity evidence: 748/748 cycles
+- `targetVelocityEvidenceSource=tryFireTargetDamageableVelocity`: 748/748 cycles
+- `targetVelocityMissingReason=none`: 748/748 cycles
+- relative velocity evidence: 748/748 cycles
+- `relativeVelocityEvidenceSource=targetAndLauncherVelocity`: 748/748 cycles
+- `relativeVelocityMissingReason=none`: 748/748 cycles
+- PD weight inputs: 0 observed, 748 defaulted, 0 unknown cycles
+- `pdWeightEvidenceSource=defaultModel`: 748/748 cycles
+- `pdWeightDefaultReason=pdEvidenceUnavailable`: 748/748 cycles
+- MissileWarfare issues: none
+
+Interpretation: #18 target/relative velocity evidence is now runtime-confirmed. The remaining all-cycle diagnostic limitation is #19's intentional PD default model, not missing target velocity.
