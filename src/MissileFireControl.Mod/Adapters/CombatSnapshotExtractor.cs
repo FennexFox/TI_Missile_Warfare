@@ -1,4 +1,7 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using MissileFireControl.Core.Models;
 
 namespace MissileFireControl.Mod.Adapters
@@ -67,12 +70,13 @@ namespace MissileFireControl.Mod.Adapters
             object expectedTargetPosition = GetArg(args, 4);
             object originVelocity = GetArg(args, 5);
             string targetIdentitySource;
+            object targetObject = ExtractTargetObject(launcher, out targetIdentitySource);
 
             ExtractedCombatSnapshot snapshot = new ExtractedCombatSnapshot
             {
                 Source = "TISpaceCombatProjectileState.Fire(missile)",
                 Launcher = ExtractShip(launcher, "launcher"),
-                Target = ExtractTarget(launcher, out targetIdentitySource),
+                Target = targetObject == null ? null : ExtractShip(targetObject, "target"),
                 TargetIdentitySource = targetIdentitySource,
                 Missile = ExtractMissileProfile(missileTemplate),
                 HasExpectedTargetPosition = GameObjectReader.HasVector(expectedTargetPosition),
@@ -94,7 +98,7 @@ namespace MissileFireControl.Mod.Adapters
             ApplyTryFireTargetVelocityEvidence(snapshot, readinessEvidence);
             AddTargetVelocityEvidence(snapshot);
             AddRelativeVelocityEvidence(snapshot);
-            AddPdWeightEvidence(snapshot);
+            AddPdWeightEvidence(snapshot, targetObject);
             AddMissingFields(snapshot);
             return snapshot;
         }
@@ -119,9 +123,9 @@ namespace MissileFireControl.Mod.Adapters
             return snapshot;
         }
 
-        private static ShipSnapshot ExtractTarget(object launcher, out string source)
+        private static object ExtractTargetObject(object launcher, out string source)
         {
-            ShipSnapshot target = TryExtractTarget(
+            object target = TryExtractTargetObject(
                 launcher,
                 "launcher",
                 out source,
@@ -130,16 +134,11 @@ namespace MissileFireControl.Mod.Adapters
                 "primaryTarget",
                 "target",
                 "Target");
-            if (target != null)
-            {
-                return target;
-            }
-
-            source = "none";
-            return null;
+            source = target == null ? "none" : source;
+            return target;
         }
 
-        private static ShipSnapshot TryExtractTarget(object owner, string ownerName, out string source, params string[] memberNames)
+        private static object TryExtractTargetObject(object owner, string ownerName, out string source, params string[] memberNames)
         {
             source = "none";
             object target = GameObjectReader.ReadFirstMember(owner, memberNames);
@@ -150,7 +149,7 @@ namespace MissileFireControl.Mod.Adapters
             }
 
             source = ownerName;
-            return ExtractShip(target, "target");
+            return target;
         }
 
         private static object NormalizeTarget(object target)
@@ -403,13 +402,263 @@ namespace MissileFireControl.Mod.Adapters
             snapshot.RelativeVelocityMissingReason = "none";
         }
 
-        private static void AddPdWeightEvidence(ExtractedCombatSnapshot snapshot)
+        private static void AddPdWeightEvidence(ExtractedCombatSnapshot snapshot, object targetObject)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            if (targetObject == null || snapshot.Target == null || !HasConcreteIdentity(snapshot.Target, "target"))
+            {
+                SetDefaultPdWeight(snapshot, targetObject == null ? "targetObjectUnavailable" : "targetIdentityUnavailable");
+                return;
+            }
+
+            PdWeaponEvidence evidence = ExtractPdWeaponEvidence(targetObject);
+            if (!evidence.HasWeaponTemplateSource)
+            {
+                SetDefaultPdWeight(snapshot, "targetWeaponTemplatesUnavailable");
+                return;
+            }
+
+            if (evidence.InspectedWeaponCount == 0 && evidence.ObservedWeaponCount > 0)
+            {
+                SetDefaultPdWeight(snapshot, "targetWeaponDefenseModeUnavailable");
+                return;
+            }
+
+            snapshot.PdWeight = evidence.PointDefenseWeight;
+            snapshot.PdWeightEvidenceSource = "observedTargetWeaponTemplates";
+            snapshot.PdWeightDefaulted = false;
+            snapshot.PdWeightDefaultReason = "none";
+            snapshot.PdWeightMissingReason = "none";
+
+            foreach (WeaponSnapshot weapon in evidence.PointDefenseWeapons)
+            {
+                snapshot.Target.Weapons.Add(weapon);
+            }
+        }
+
+        private static void SetDefaultPdWeight(ExtractedCombatSnapshot snapshot, string missingReason)
         {
             snapshot.PdWeight = 0.0;
             snapshot.PdWeightEvidenceSource = "defaultModel";
             snapshot.PdWeightDefaulted = true;
             snapshot.PdWeightDefaultReason = "pdEvidenceUnavailable";
-            snapshot.PdWeightMissingReason = "none";
+            snapshot.PdWeightMissingReason = string.IsNullOrWhiteSpace(missingReason) ? "unknown" : missingReason;
+        }
+
+        private static PdWeaponEvidence ExtractPdWeaponEvidence(object targetObject)
+        {
+            PdWeaponEvidence evidence = new PdWeaponEvidence();
+            foreach (object weaponTemplate in ReadTargetWeaponTemplates(targetObject))
+            {
+                object template = NormalizeWeaponTemplate(weaponTemplate);
+                if (template == null)
+                {
+                    continue;
+                }
+
+                evidence.HasWeaponTemplateSource = true;
+                evidence.ObservedWeaponCount++;
+
+                bool defenseMode;
+                if (!TryReadBool(template, out defenseMode, "defenseMode", "DefenseMode"))
+                {
+                    continue;
+                }
+
+                evidence.InspectedWeaponCount++;
+                if (!defenseMode)
+                {
+                    continue;
+                }
+
+                double supportRange = ReadNonNegativeDouble(
+                    template,
+                    "EffectiveRangeAgainstProjectiles_km",
+                    "effectiveRangeAgainstProjectiles_km",
+                    "targetingRange_km",
+                    "TargetingRangeKm");
+
+                evidence.PointDefenseWeight += 1.0;
+                evidence.PointDefenseWeapons.Add(new WeaponSnapshot
+                {
+                    Id = GameObjectReader.StableId(template, "target-pd-weapon"),
+                    DisplayName = GameObjectReader.Label(template, "target PD weapon"),
+                    Role = WeaponRole.PointDefense,
+                    PointDefenseWeight = 1.0,
+                    ThreatWeight = 0.0,
+                    CanDefendOtherShips = false,
+                    SupportRangeKm = supportRange,
+                    AmmoGateBudgetShots = -1,
+                    RemainingShots = -1,
+                    AmmoGateBudgetEvidenceSource = "notObservedForTargetPd",
+                    AmmoGateBudgetMissingReason = "targetPdEvidenceOnly",
+                    AmmoEvidenceSource = "notObservedForTargetPd",
+                    LiveWeaponState = "notObservedForTargetPd",
+                    AmmoGateWeaponCount = -1,
+                    UnknownAmmoGateWeaponCount = 1
+                });
+            }
+
+            return evidence;
+        }
+
+        private static IEnumerable<object> ReadTargetWeaponTemplates(object targetObject)
+        {
+            List<object> templates = ReadTemplatesFromMembers(
+                targetObject,
+                "allWeaponTemplates",
+                "AllWeaponTemplates",
+                "weaponTemplates",
+                "WeaponTemplates");
+            if (templates.Count > 0)
+            {
+                return templates;
+            }
+
+            object targetTemplate = GameObjectReader.ReadFirstMember(targetObject, "template", "Template");
+            templates = ReadTemplatesFromMembers(
+                targetTemplate,
+                "allWeaponTemplates",
+                "AllWeaponTemplates",
+                "weaponTemplates",
+                "WeaponTemplates");
+            if (templates.Count > 0)
+            {
+                return templates;
+            }
+
+            templates = ReadTemplatesFromMembers(targetObject, "AllWeaponModuleData", "allWeapons", "noseWeapons", "hullWeapons");
+            if (templates.Count > 0)
+            {
+                return templates;
+            }
+
+            return ReadTemplatesFromMembers(targetTemplate, "allWeapons", "AllWeapons", "noseWeapons", "hullWeapons");
+        }
+
+        private static List<object> ReadTemplatesFromMembers(object owner, params string[] memberNames)
+        {
+            List<object> templates = new List<object>();
+            if (owner == null)
+            {
+                return templates;
+            }
+
+            foreach (string memberName in memberNames)
+            {
+                object value = GameObjectReader.ReadFirstMember(owner, memberName);
+                AddTemplates(templates, value);
+                if (templates.Count > 0)
+                {
+                    return templates;
+                }
+            }
+
+            return templates;
+        }
+
+        private static void AddTemplates(List<object> templates, object value)
+        {
+            if (templates == null || value == null || value is string)
+            {
+                return;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable == null)
+            {
+                templates.Add(value);
+                return;
+            }
+
+            foreach (object item in enumerable)
+            {
+                if (item != null)
+                {
+                    templates.Add(item);
+                }
+            }
+        }
+
+        private static object NormalizeWeaponTemplate(object candidate)
+        {
+            if (candidate == null)
+            {
+                return null;
+            }
+
+            object moduleTemplate = GameObjectReader.ReadFirstMember(candidate, "moduleTemplate", "ModuleTemplate");
+            object weaponTemplate = GameObjectReader.ReadFirstMember(
+                moduleTemplate ?? candidate,
+                "ref_weapon",
+                "RefWeapon",
+                "weaponTemplate",
+                "WeaponTemplate");
+            return weaponTemplate ?? candidate;
+        }
+
+        private static double ReadNonNegativeDouble(object instance, params string[] memberNames)
+        {
+            double value;
+            return TryReadDouble(instance, out value, memberNames) && value > 0.0 ? value : 0.0;
+        }
+
+        private static bool TryReadDouble(object instance, out double parsed, params string[] memberNames)
+        {
+            parsed = 0.0;
+            object value = GameObjectReader.ReadFirstMember(instance, memberNames);
+            if (!(value is IConvertible))
+            {
+                return false;
+            }
+
+            try
+            {
+                parsed = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                parsed = 0.0;
+                return false;
+            }
+        }
+
+        private static bool TryReadBool(object instance, out bool parsed, params string[] memberNames)
+        {
+            parsed = false;
+            object value = GameObjectReader.ReadFirstMember(instance, memberNames);
+            if (value is bool boolValue)
+            {
+                parsed = boolValue;
+                return true;
+            }
+
+            if (!(value is IConvertible))
+            {
+                return false;
+            }
+
+            string text = Convert.ToString(value, CultureInfo.InvariantCulture);
+            if (bool.TryParse(text, out parsed))
+            {
+                return true;
+            }
+
+            try
+            {
+                parsed = Convert.ToDouble(value, CultureInfo.InvariantCulture) != 0.0;
+                return true;
+            }
+            catch
+            {
+                parsed = false;
+                return false;
+            }
         }
 
         private static int FirstKnownCount(object first, object second, object third, params string[] memberNames)
@@ -485,6 +734,20 @@ namespace MissileFireControl.Mod.Adapters
             }
 
             return !ship.Id.StartsWith(fallbackPrefix + ":");
+        }
+
+        private sealed class PdWeaponEvidence
+        {
+            public PdWeaponEvidence()
+            {
+                PointDefenseWeapons = new List<WeaponSnapshot>();
+            }
+
+            public bool HasWeaponTemplateSource { get; set; }
+            public int ObservedWeaponCount { get; set; }
+            public int InspectedWeaponCount { get; set; }
+            public double PointDefenseWeight { get; set; }
+            public List<WeaponSnapshot> PointDefenseWeapons { get; private set; }
         }
     }
 }

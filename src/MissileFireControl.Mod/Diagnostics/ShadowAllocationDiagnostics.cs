@@ -168,7 +168,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 AddMissing(missing, "missileProfileData");
             }
 
-            AddMissing(missing, "pdWeightsDefaulted");
+            if (snapshot.PdWeightDefaulted)
+            {
+                AddMissing(missing, "pdWeightsDefaulted");
+            }
+
             return missing;
         }
 

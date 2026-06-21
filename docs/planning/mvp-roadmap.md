@@ -22,10 +22,9 @@ Current blocker:
 Current missing or provisional inputs:
 
 - dry-run command-intent logging for the verified selected-player scope;
-- target point-defense weapon weights;
+- multiple-real-log fitting evidence with Issue #27 observed target
+  point-defense evidence;
 - in-flight projectile/controller guidance target identity.
-- selected-log fitting evidence from real local combat logs for the Issue #24
-  wrapper.
 
 ## Completed diagnostic foundation
 
@@ -165,7 +164,8 @@ Acceptance criteria once unblocked:
 
 1. Implement #22 dry-run command-intent logging from the verified selected ship
    and group-selected ship scopes.
-2. Locate target velocity and point-defense weapon data sources.
+2. Run fresh selected-log fitting with Issue #27 PD evidence enabled and record
+   whether multiple real logs remain free of PD-default limitations.
 3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
 4. Only then revisit #23 live command safety, controlled allocation, and launch
