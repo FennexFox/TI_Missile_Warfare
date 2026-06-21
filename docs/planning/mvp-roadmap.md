@@ -24,9 +24,10 @@ Current missing or provisional inputs:
 - dry-run command-intent logging for the verified selected-player scope;
 - evidence-sufficiency reporting now classifies the Issue #30 four-log fitting
   sweep as baseline-ready with named limitations, not controlled-command ready;
-- Issue #27 observed target point-defense evidence is presence-only until
-  Issue #29 upgrades it from defense-mode template presence into a richer
-  capability model;
+- Issue #29 upgrades observed target point-defense evidence from
+  defense-mode presence to provisional static template capability when range,
+  cooldown, or similar template fields are visible; live readiness, ammo,
+  geometry, and arc coverage remain unproven;
 - vanilla salvo target command granularity is ship-level across all
   salvo-capable weapons on the ship, so per-visible-module command assumptions
   remain unsafe;
@@ -128,10 +129,12 @@ Implementation notes:
   safe skip evidence when no launcher-selected priority target is visible. It is
   not allocation-quality evidence and not proof that vanilla had no missile
   target.
-- Issue #28's sufficiency report keeps the fitting baseline ready while naming
-  limitations: current target PD evidence is `presenceOnly`, target-identity
-  no-op evidence is `provisional`, observed launch/ammo deltas are
-  `provisional`, and controlled live command readiness is `Not ready`.
+- Issue #28/#29 sufficiency reporting keeps the fitting baseline distinct from
+  controlled command readiness while naming limitations: target PD evidence is
+  `presenceOnly` for legacy template-presence logs and `provisional` only when
+  Issue #29 static capability fields are present; target-identity no-op
+  evidence is `provisional`, observed launch/ammo deltas are `provisional`,
+  and controlled live command readiness is `Not ready`.
 - #6 readiness now separates three remaining concerns: evidence quality
   (#29 after #28's gate), command safety (#22/#23), and allocator design choices
   (#6).
@@ -185,15 +188,13 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Classify the remaining Issue #30 follow-ups before treating #6 as controlled
-   command-ready: evidence sufficiency gates (#28) and PD capability modeling
-   (#29).
-2. Implement #22 dry-run command-intent logging from the verified selected ship
+1. Implement #22 dry-run command-intent logging from the verified selected ship
    and group-selected ship scopes.
-3. Re-run selected-log fitting after those evidence-quality follow-ups and
+2. Re-run selected-log fitting after the Issue #29 PD capability schema is
+   present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited
    classifications.
-4. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-5. Only then revisit #23 live command safety, controlled allocation, and launch
+4. Only then revisit #23 live command safety, controlled allocation, and launch
    discipline behavior.

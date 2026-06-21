@@ -35,6 +35,13 @@ namespace MissileFireControl.Mod.Adapters
         public bool PdWeightDefaulted { get; set; }
         public string PdWeightDefaultReason { get; set; }
         public string PdWeightMissingReason { get; set; }
+        public string PdEvidenceQuality { get; set; }
+        public string PdCapabilityEvidenceSource { get; set; }
+        public int PdCapabilityWeaponCount { get; set; } = -1;
+        public double PdCapabilityRangeKm { get; set; }
+        public double PdCapabilityCooldownSeconds { get; set; }
+        public string PdCapabilityMissingReason { get; set; }
+        public string PdCapabilityLimitations { get; set; }
         public Vector3d OriginPositionKm { get; set; }
         public bool HasOriginPosition { get; set; }
         public Vector3d OriginVelocityKps { get; set; }
@@ -433,6 +440,19 @@ namespace MissileFireControl.Mod.Adapters
             snapshot.PdWeightDefaulted = false;
             snapshot.PdWeightDefaultReason = "none";
             snapshot.PdWeightMissingReason = "none";
+            snapshot.PdEvidenceQuality = evidence.HasTemplateCapability
+                ? "observedTemplateCapability"
+                : "observedPresenceOnly";
+            snapshot.PdCapabilityEvidenceSource = evidence.HasTemplateCapability
+                ? "observedTargetWeaponTemplateCapability"
+                : "observedTargetWeaponTemplates";
+            snapshot.PdCapabilityWeaponCount = evidence.PointDefenseWeapons.Count;
+            snapshot.PdCapabilityRangeKm = evidence.MaxCapabilityRangeKm;
+            snapshot.PdCapabilityCooldownSeconds = evidence.AverageCapabilityCooldownSeconds;
+            snapshot.PdCapabilityMissingReason = evidence.HasTemplateCapability ? "none" : "templateCapabilityFieldsUnavailable";
+            snapshot.PdCapabilityLimitations = evidence.HasTemplateCapability
+                ? "templateCapabilityOnly,noLiveReadiness,noGeometry,noArcCoverage"
+                : "defenseModePresenceOnly,noTemplateCapability,noLiveReadiness,noGeometry";
 
             foreach (WeaponSnapshot weapon in evidence.PointDefenseWeapons)
             {
@@ -447,6 +467,13 @@ namespace MissileFireControl.Mod.Adapters
             snapshot.PdWeightDefaulted = true;
             snapshot.PdWeightDefaultReason = "pdEvidenceUnavailable";
             snapshot.PdWeightMissingReason = string.IsNullOrWhiteSpace(missingReason) ? "unknown" : missingReason;
+            snapshot.PdEvidenceQuality = "defaultModel";
+            snapshot.PdCapabilityEvidenceSource = "none";
+            snapshot.PdCapabilityWeaponCount = 0;
+            snapshot.PdCapabilityRangeKm = 0.0;
+            snapshot.PdCapabilityCooldownSeconds = 0.0;
+            snapshot.PdCapabilityMissingReason = snapshot.PdWeightMissingReason;
+            snapshot.PdCapabilityLimitations = "targetPdEvidenceUnavailable";
         }
 
         private static PdWeaponEvidence ExtractPdWeaponEvidence(object targetObject)
@@ -481,8 +508,22 @@ namespace MissileFireControl.Mod.Adapters
                     "effectiveRangeAgainstProjectiles_km",
                     "targetingRange_km",
                     "TargetingRangeKm");
+                double cooldownSeconds = ReadNonNegativeDouble(
+                    template,
+                    "averageCooldown_s",
+                    "AverageCooldownSeconds",
+                    "cooldown_s",
+                    "CooldownSeconds");
+                int salvoShots = ReadPositiveInt(template, "salvo_shots", "SalvoShots");
+                int magazine = ReadPositiveInt(template, "magazine", "Magazine");
 
                 evidence.PointDefenseWeight += 1.0;
+                evidence.AddCapability(supportRange, cooldownSeconds);
+                if (salvoShots > 0 || magazine > 0)
+                {
+                    evidence.HasTemplateCapability = true;
+                }
+
                 evidence.PointDefenseWeapons.Add(new WeaponSnapshot
                 {
                     Id = GameObjectReader.StableId(template, "target-pd-weapon"),
@@ -490,7 +531,7 @@ namespace MissileFireControl.Mod.Adapters
                     Role = WeaponRole.PointDefense,
                     PointDefenseWeight = 1.0,
                     ThreatWeight = 0.0,
-                    CanDefendOtherShips = false,
+                    CanDefendOtherShips = supportRange > 0.0,
                     SupportRangeKm = supportRange,
                     AmmoGateBudgetShots = -1,
                     RemainingShots = -1,
@@ -504,6 +545,12 @@ namespace MissileFireControl.Mod.Adapters
             }
 
             return evidence;
+        }
+
+        private static int ReadPositiveInt(object instance, params string[] memberNames)
+        {
+            int count = GameObjectReader.ReadCount(instance, memberNames);
+            return count > 0 ? count : 0;
         }
 
         private static IEnumerable<object> ReadTargetWeaponTemplates(object targetObject)
@@ -747,7 +794,39 @@ namespace MissileFireControl.Mod.Adapters
             public int ObservedWeaponCount { get; set; }
             public int InspectedWeaponCount { get; set; }
             public double PointDefenseWeight { get; set; }
+            public bool HasTemplateCapability { get; set; }
+            public double MaxCapabilityRangeKm { get; private set; }
+            public double AverageCapabilityCooldownSeconds
+            {
+                get
+                {
+                    return _cooldownCount == 0 ? 0.0 : _cooldownSumSeconds / _cooldownCount;
+                }
+            }
+
             public List<WeaponSnapshot> PointDefenseWeapons { get; private set; }
+
+            private double _cooldownSumSeconds;
+            private int _cooldownCount;
+
+            public void AddCapability(double rangeKm, double cooldownSeconds)
+            {
+                if (rangeKm > 0.0)
+                {
+                    HasTemplateCapability = true;
+                    if (rangeKm > MaxCapabilityRangeKm)
+                    {
+                        MaxCapabilityRangeKm = rangeKm;
+                    }
+                }
+
+                if (cooldownSeconds > 0.0)
+                {
+                    HasTemplateCapability = true;
+                    _cooldownSumSeconds += cooldownSeconds;
+                    _cooldownCount++;
+                }
+            }
         }
     }
 }

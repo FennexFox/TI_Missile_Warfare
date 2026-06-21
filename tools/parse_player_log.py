@@ -116,6 +116,10 @@ class AllocationBattleSummary:
     pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
     pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
     pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    pd_evidence_quality_counts: dict[str, int] = field(default_factory=dict)
+    pd_capability_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    pd_capability_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    pd_capability_limitation_counts: dict[str, int] = field(default_factory=dict)
     suspicious_patterns: list[str] = field(default_factory=list)
 
 
@@ -166,6 +170,10 @@ class LogSummary:
     snapshot_pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
     snapshot_pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_evidence_quality_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_capability_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_capability_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_pd_capability_limitation_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
     first_snapshot_line: int | None = None
@@ -184,6 +192,10 @@ class LogSummary:
     allocation_pd_weight_evidence_source_counts: dict[str, int] = field(default_factory=dict)
     allocation_pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_evidence_quality_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_capability_evidence_source_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_capability_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_pd_capability_limitation_counts: dict[str, int] = field(default_factory=dict)
     allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_no_op_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
@@ -316,6 +328,10 @@ def build_allocation_battle_summary(
     cycle_pd_weight_default_reason_counts: Counter[str],
     cycle_pd_weight_missing_reason_counts: Counter[str],
     cycle_pd_weight_defaulted_counts: Counter[str],
+    cycle_pd_evidence_quality_counts: Counter[str],
+    cycle_pd_capability_evidence_source_counts: Counter[str],
+    cycle_pd_capability_missing_reason_counts: Counter[str],
+    cycle_pd_capability_limitation_counts: Counter[str],
 ) -> AllocationBattleSummary:
     """Build a compact battle-level allocation summary from parsed records."""
     summary = AllocationBattleSummary()
@@ -384,6 +400,10 @@ def build_allocation_battle_summary(
     summary.pd_weight_evidence_source_counts = dict(sorted(cycle_pd_weight_evidence_source_counts.items()))
     summary.pd_weight_default_reason_counts = dict(sorted(cycle_pd_weight_default_reason_counts.items()))
     summary.pd_weight_missing_reason_counts = dict(sorted(cycle_pd_weight_missing_reason_counts.items()))
+    summary.pd_evidence_quality_counts = dict(sorted(cycle_pd_evidence_quality_counts.items()))
+    summary.pd_capability_evidence_source_counts = dict(sorted(cycle_pd_capability_evidence_source_counts.items()))
+    summary.pd_capability_missing_reason_counts = dict(sorted(cycle_pd_capability_missing_reason_counts.items()))
+    summary.pd_capability_limitation_counts = dict(sorted(cycle_pd_capability_limitation_counts.items()))
     summary.pd_weight_defaulted_cycles = cycle_pd_weight_defaulted_counts.get("true", 0)
     summary.pd_weight_observed_cycles = cycle_pd_weight_defaulted_counts.get("false", 0)
     summary.pd_weight_unknown_cycles = cycle_pd_weight_defaulted_counts.get("unknown", 0)
@@ -498,6 +518,10 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     snapshot_pd_weight_evidence_source_counts: Counter[str] = Counter()
     snapshot_pd_weight_default_reason_counts: Counter[str] = Counter()
     snapshot_pd_weight_missing_reason_counts: Counter[str] = Counter()
+    snapshot_pd_evidence_quality_counts: Counter[str] = Counter()
+    snapshot_pd_capability_evidence_source_counts: Counter[str] = Counter()
+    snapshot_pd_capability_missing_reason_counts: Counter[str] = Counter()
+    snapshot_pd_capability_limitation_counts: Counter[str] = Counter()
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
     allocation_record_type_counts: Counter[str] = Counter()
@@ -513,6 +537,10 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_pd_weight_evidence_source_counts: Counter[str] = Counter()
     allocation_pd_weight_default_reason_counts: Counter[str] = Counter()
     allocation_pd_weight_missing_reason_counts: Counter[str] = Counter()
+    allocation_pd_evidence_quality_counts: Counter[str] = Counter()
+    allocation_pd_capability_evidence_source_counts: Counter[str] = Counter()
+    allocation_pd_capability_missing_reason_counts: Counter[str] = Counter()
+    allocation_pd_capability_limitation_counts: Counter[str] = Counter()
     allocation_rejection_reason_counts: Counter[str] = Counter()
     allocation_no_op_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
@@ -538,6 +566,10 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     cycle_pd_weight_default_reason_counts: Counter[str] = Counter()
     cycle_pd_weight_missing_reason_counts: Counter[str] = Counter()
     cycle_pd_weight_defaulted_counts: Counter[str] = Counter()
+    cycle_pd_evidence_quality_counts: Counter[str] = Counter()
+    cycle_pd_capability_evidence_source_counts: Counter[str] = Counter()
+    cycle_pd_capability_missing_reason_counts: Counter[str] = Counter()
+    cycle_pd_capability_limitation_counts: Counter[str] = Counter()
     cycle_ammo_only_budget_count = 0
     cycle_missing_ammo_gate_budget_evidence_count = 0
     cycle_allocated_target_values: dict[str, list[float]] = {}
@@ -686,6 +718,17 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 pd_weight_missing_reason = pairs.get("pdWeightMissingReason")
                 if pd_weight_missing_reason:
                     snapshot_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
+                pd_evidence_quality = pairs.get("pdEvidenceQuality")
+                if pd_evidence_quality:
+                    snapshot_pd_evidence_quality_counts[pd_evidence_quality] += 1
+                pd_capability_evidence_source = pairs.get("pdCapabilityEvidenceSource")
+                if pd_capability_evidence_source:
+                    snapshot_pd_capability_evidence_source_counts[pd_capability_evidence_source] += 1
+                pd_capability_missing_reason = pairs.get("pdCapabilityMissingReason")
+                if pd_capability_missing_reason:
+                    snapshot_pd_capability_missing_reason_counts[pd_capability_missing_reason] += 1
+                for limitation in split_csv_field(pairs.get("pdCapabilityLimitations")):
+                    snapshot_pd_capability_limitation_counts[limitation] += 1
 
                 target_team = pairs.get("targetTeam")
                 if target_team:
@@ -775,6 +818,25 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     allocation_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
                     if record_type == "cycle":
                         cycle_pd_weight_missing_reason_counts[pd_weight_missing_reason] += 1
+                pd_evidence_quality = pairs.get("pdEvidenceQuality")
+                if pd_evidence_quality:
+                    allocation_pd_evidence_quality_counts[pd_evidence_quality] += 1
+                    if record_type == "cycle":
+                        cycle_pd_evidence_quality_counts[pd_evidence_quality] += 1
+                pd_capability_evidence_source = pairs.get("pdCapabilityEvidenceSource")
+                if pd_capability_evidence_source:
+                    allocation_pd_capability_evidence_source_counts[pd_capability_evidence_source] += 1
+                    if record_type == "cycle":
+                        cycle_pd_capability_evidence_source_counts[pd_capability_evidence_source] += 1
+                pd_capability_missing_reason = pairs.get("pdCapabilityMissingReason")
+                if pd_capability_missing_reason:
+                    allocation_pd_capability_missing_reason_counts[pd_capability_missing_reason] += 1
+                    if record_type == "cycle":
+                        cycle_pd_capability_missing_reason_counts[pd_capability_missing_reason] += 1
+                for limitation in split_csv_field(pairs.get("pdCapabilityLimitations")):
+                    allocation_pd_capability_limitation_counts[limitation] += 1
+                    if record_type == "cycle":
+                        cycle_pd_capability_limitation_counts[limitation] += 1
 
                 rejection_reason = pairs.get("rejectionReason")
                 if rejection_reason:
@@ -881,6 +943,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.snapshot_pd_weight_evidence_source_counts = dict(sorted(snapshot_pd_weight_evidence_source_counts.items()))
     summary.snapshot_pd_weight_default_reason_counts = dict(sorted(snapshot_pd_weight_default_reason_counts.items()))
     summary.snapshot_pd_weight_missing_reason_counts = dict(sorted(snapshot_pd_weight_missing_reason_counts.items()))
+    summary.snapshot_pd_evidence_quality_counts = dict(sorted(snapshot_pd_evidence_quality_counts.items()))
+    summary.snapshot_pd_capability_evidence_source_counts = dict(
+        sorted(snapshot_pd_capability_evidence_source_counts.items())
+    )
+    summary.snapshot_pd_capability_missing_reason_counts = dict(
+        sorted(snapshot_pd_capability_missing_reason_counts.items())
+    )
+    summary.snapshot_pd_capability_limitation_counts = dict(
+        sorted(snapshot_pd_capability_limitation_counts.items())
+    )
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
@@ -908,6 +980,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.allocation_pd_weight_evidence_source_counts = dict(sorted(allocation_pd_weight_evidence_source_counts.items()))
     summary.allocation_pd_weight_default_reason_counts = dict(sorted(allocation_pd_weight_default_reason_counts.items()))
     summary.allocation_pd_weight_missing_reason_counts = dict(sorted(allocation_pd_weight_missing_reason_counts.items()))
+    summary.allocation_pd_evidence_quality_counts = dict(sorted(allocation_pd_evidence_quality_counts.items()))
+    summary.allocation_pd_capability_evidence_source_counts = dict(
+        sorted(allocation_pd_capability_evidence_source_counts.items())
+    )
+    summary.allocation_pd_capability_missing_reason_counts = dict(
+        sorted(allocation_pd_capability_missing_reason_counts.items())
+    )
+    summary.allocation_pd_capability_limitation_counts = dict(
+        sorted(allocation_pd_capability_limitation_counts.items())
+    )
     summary.allocation_rejection_reason_counts = sorted_count_dict(allocation_rejection_reason_counts, limit=12)
     summary.allocation_no_op_reason_counts = sorted_count_dict(allocation_no_op_reason_counts, limit=12)
     summary.allocation_assigned_shots_counts = dict(
@@ -944,6 +1026,10 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         cycle_pd_weight_default_reason_counts,
         cycle_pd_weight_missing_reason_counts,
         cycle_pd_weight_defaulted_counts,
+        cycle_pd_evidence_quality_counts,
+        cycle_pd_capability_evidence_source_counts,
+        cycle_pd_capability_missing_reason_counts,
+        cycle_pd_capability_limitation_counts,
     )
     if sequences:
         ordered = sorted(sequences)
@@ -1093,6 +1179,14 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         print("- PD weight default reasons: " + format_count_dict(summary.pd_weight_default_reason_counts))
     if summary.pd_weight_missing_reason_counts:
         print("- PD weight missing reasons: " + format_count_dict(summary.pd_weight_missing_reason_counts))
+    if summary.pd_evidence_quality_counts:
+        print("- PD evidence quality: " + format_count_dict(summary.pd_evidence_quality_counts))
+    if summary.pd_capability_evidence_source_counts:
+        print("- PD capability evidence sources: " + format_count_dict(summary.pd_capability_evidence_source_counts))
+    if summary.pd_capability_missing_reason_counts:
+        print("- PD capability missing reasons: " + format_count_dict(summary.pd_capability_missing_reason_counts))
+    if summary.pd_capability_limitation_counts:
+        print("- PD capability limitations: " + format_count_dict(summary.pd_capability_limitation_counts))
     print(
         "- assigned shots observed: "
         f"{summary.assigned_shots_numeric_cycles} numeric cycles, "
@@ -1258,6 +1352,22 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  PD weight missing reasons:")
             for reason, count in summary.snapshot_pd_weight_missing_reason_counts.items():
                 print(f"    {reason}: {count}")
+        if summary.snapshot_pd_evidence_quality_counts:
+            print("  PD evidence quality:")
+            for quality, count in summary.snapshot_pd_evidence_quality_counts.items():
+                print(f"    {quality}: {count}")
+        if summary.snapshot_pd_capability_evidence_source_counts:
+            print("  PD capability evidence sources:")
+            for source, count in summary.snapshot_pd_capability_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.snapshot_pd_capability_missing_reason_counts:
+            print("  PD capability missing reasons:")
+            for reason, count in summary.snapshot_pd_capability_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.snapshot_pd_capability_limitation_counts:
+            print("  PD capability limitations:")
+            for limitation, count in summary.snapshot_pd_capability_limitation_counts.items():
+                print(f"    {limitation}: {count}")
         if summary.snapshot_target_counts:
             print("  targets:")
             for target, count in summary.snapshot_target_counts.items():
@@ -1322,6 +1432,22 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  PD weight missing reasons:")
             for reason, count in summary.allocation_pd_weight_missing_reason_counts.items():
                 print(f"    {reason}: {count}")
+        if summary.allocation_pd_evidence_quality_counts:
+            print("  PD evidence quality:")
+            for quality, count in summary.allocation_pd_evidence_quality_counts.items():
+                print(f"    {quality}: {count}")
+        if summary.allocation_pd_capability_evidence_source_counts:
+            print("  PD capability evidence sources:")
+            for source, count in summary.allocation_pd_capability_evidence_source_counts.items():
+                print(f"    {source}: {count}")
+        if summary.allocation_pd_capability_missing_reason_counts:
+            print("  PD capability missing reasons:")
+            for reason, count in summary.allocation_pd_capability_missing_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_pd_capability_limitation_counts:
+            print("  PD capability limitations:")
+            for limitation, count in summary.allocation_pd_capability_limitation_counts.items():
+                print(f"    {limitation}: {count}")
         if summary.allocation_assigned_shots_counts:
             print("  assigned shots:")
             for assigned_shots, count in summary.allocation_assigned_shots_counts.items():

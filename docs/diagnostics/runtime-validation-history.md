@@ -417,3 +417,41 @@ reporting surface preserved the fitting result:
 This means parser `OK`, empty allocator-critical `missingInputs`, and
 `Ready for #6 baseline` are no longer sufficient wording for controlled #6
 readiness. They support a baseline for design and diagnostics only.
+
+## Issue #29 point-defense capability evidence quality
+
+Issue #29 upgrades the point-defense evidence vocabulary without changing the
+legacy `pdWeight` count-style scalar. Source review confirmed conservative
+static template capability fields on `TIShipWeaponTemplate`, including
+`defenseMode`, `EffectiveRangeAgainstProjectiles_km()`, `targetingRange_km`,
+`cooldown_s`, and `averageCooldown_s`. The same review did not prove that the
+current projectile-fire snapshot can safely observe target defensive weapon
+cooldown/readiness, live ammo, arc coverage, or target/projectile geometry.
+
+The runtime schema now emits additive fields:
+
+- `pdEvidenceQuality`
+- `pdCapabilityEvidenceSource`
+- `pdCapabilityWeaponCount`
+- `pdCapabilityRangeKm`
+- `pdCapabilityCooldownSeconds`
+- `pdCapabilityMissingReason`
+- `pdCapabilityLimitations`
+
+The fitting report interprets those fields conservatively:
+
+- missing new fields on old logs preserve the Issue #28 legacy behavior:
+  `observedTargetWeaponTemplates` remains `presenceOnly`;
+- `pdEvidenceQuality=observedPresenceOnly` remains `presenceOnly`;
+- `pdEvidenceQuality=observedTemplateCapability` becomes `provisional`, with
+  limitations naming template-only evidence, no live readiness, no geometry,
+  and no arc coverage;
+- `pdEvidenceQuality=defaultModel` remains defaulted fallback evidence.
+
+Static validation used `tools/fixtures/shadow_allocation_synthetic.txt` to
+exercise `observedTemplateCapability` and
+`tools/fixtures/shadow_allocation_missing_target_noop.txt` to preserve the
+defaulted no-op path. The fixture fitting report correctly classified observed
+target PD evidence as `provisional`; the aggregate readiness verdict remained
+`Not ready` because fixtures are synthetic and do not count as real combat
+evidence.

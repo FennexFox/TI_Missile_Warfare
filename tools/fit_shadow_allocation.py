@@ -85,6 +85,8 @@ class CycleContext:
     relative_velocity_evidence_source: str
     pd_weight_defaulted: str
     pd_weight_evidence_source: str
+    pd_evidence_quality: str
+    pd_capability_evidence_source: str
     status: str
 
 
@@ -192,6 +194,10 @@ def scan_allocation_records(path: Path) -> tuple[dict[str, CycleContext], list[d
                     pd_weight_defaulted=str(pairs.get("pdWeightDefaulted", "unknown")).lower(),
                     pd_weight_evidence_source=str(
                         pairs.get("pdWeightEvidenceSource", "unknown")
+                    ),
+                    pd_evidence_quality=str(pairs.get("pdEvidenceQuality", "unknown")),
+                    pd_capability_evidence_source=str(
+                        pairs.get("pdCapabilityEvidenceSource", "unknown")
                     ),
                     status=str(pairs.get("status", "unknown")),
                 )
@@ -770,6 +776,10 @@ def target_pd_status(
 ) -> EvidenceSufficiencyInput:
     """Classify target point-defense evidence sufficiency."""
     source_counts = aggregate_allocation_counter(logs, "pd_weight_evidence_source_counts")
+    quality_counts = aggregate_allocation_counter(logs, "pd_evidence_quality_counts")
+    capability_source_counts = aggregate_allocation_counter(logs, "pd_capability_evidence_source_counts")
+    capability_missing_reason_counts = aggregate_allocation_counter(logs, "pd_capability_missing_reason_counts")
+    capability_limitation_counts = aggregate_allocation_counter(logs, "pd_capability_limitation_counts")
     observed = sum(allocation_summary_value(log, "pd_weight_observed_cycles") for log in logs)
     defaulted = sum(allocation_summary_value(log, "pd_weight_defaulted_cycles") for log in logs)
     unknown = sum(allocation_summary_value(log, "pd_weight_unknown_cycles") for log in logs)
@@ -779,6 +789,14 @@ def target_pd_status(
         status = "unknown"
     elif defaulted_decision_limits:
         status = "defaulted"
+    elif quality_counts.get("geometryAwareCapability", 0):
+        status = "ready"
+    elif quality_counts.get("observedLiveCapability", 0):
+        status = "provisional"
+    elif quality_counts.get("observedTemplateCapability", 0):
+        status = "provisional"
+    elif quality_counts.get("observedPresenceOnly", 0):
+        status = "presenceOnly"
     elif source_counts.get("observedTargetWeaponTemplates", 0):
         status = "presenceOnly"
     elif observed:
@@ -787,10 +805,20 @@ def target_pd_status(
         status = "unknown"
 
     limitations = []
-    if source_counts.get("observedTargetWeaponTemplates", 0):
+    if quality_counts.get("observedTemplateCapability", 0):
+        limitations.append(
+            "observed target weapon templates include static capability fields, but not live readiness or geometry"
+        )
+    if quality_counts.get("observedLiveCapability", 0):
+        limitations.append("live defensive weapon state is observed, but geometry/arc coverage is not fully proven")
+    if quality_counts.get("observedPresenceOnly", 0) or (
+        not quality_counts and source_counts.get("observedTargetWeaponTemplates", 0)
+    ):
         limitations.append(
             "observed target weapon templates prove defense-mode presence, not calibrated PD capability"
         )
+    for limitation, count in sorted(capability_limitation_counts.items()):
+        limitations.append(f"{count} cycles report PD capability limitation: {limitation}")
     if defaulted_decision_limits:
         limitations.append(
             f"{defaulted_decision_limits} allocation/rejection decisions used default-model PD evidence"
@@ -811,7 +839,12 @@ def target_pd_status(
             f"{unknown} unknown cycles."
         ),
         limitations=limitations,
-        evidence={"sources": dict(sorted(source_counts.items()))},
+        evidence={
+            "sources": dict(sorted(source_counts.items())),
+            "quality": dict(sorted(quality_counts.items())),
+            "capability_sources": dict(sorted(capability_source_counts.items())),
+            "capability_missing_reasons": dict(sorted(capability_missing_reason_counts.items())),
+        },
     )
 
 

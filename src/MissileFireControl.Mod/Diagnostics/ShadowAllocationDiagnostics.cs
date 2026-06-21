@@ -210,6 +210,13 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "pdWeightDefaulted", snapshot == null ? "unknown" : snapshot.PdWeightDefaulted ? "True" : "False");
             AppendPair(builder, "pdWeightDefaultReason", snapshot == null ? "unknown" : snapshot.PdWeightDefaultReason ?? "none");
             AppendPair(builder, "pdWeightMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdWeightMissingReason ?? "unknown");
+            AppendPair(builder, "pdEvidenceQuality", snapshot == null ? "unknown" : snapshot.PdEvidenceQuality ?? "unknown");
+            AppendPair(builder, "pdCapabilityEvidenceSource", snapshot == null ? "unknown" : snapshot.PdCapabilityEvidenceSource ?? "unknown");
+            AppendPair(builder, "pdCapabilityWeaponCount", snapshot == null ? "unknown" : FormatCount(snapshot.PdCapabilityWeaponCount));
+            AppendPair(builder, "pdCapabilityRangeKm", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityRangeKm));
+            AppendPair(builder, "pdCapabilityCooldownSeconds", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityCooldownSeconds));
+            AppendPair(builder, "pdCapabilityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityMissingReason ?? "unknown");
+            AppendPair(builder, "pdCapabilityLimitations", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityLimitations ?? "unknown");
             AppendPair(builder, "assignedShots", result == null ? "0" : result.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "unassignedShots", result == null || AmmoGateBudgetShots(snapshot) < 0 ? "unknown" : result.UnassignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
@@ -237,6 +244,13 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "pdWeightDefaulted", snapshot == null ? "unknown" : snapshot.PdWeightDefaulted ? "True" : "False");
             AppendPair(builder, "pdWeightDefaultReason", snapshot == null ? "unknown" : snapshot.PdWeightDefaultReason ?? "none");
             AppendPair(builder, "pdWeightMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdWeightMissingReason ?? "unknown");
+            AppendPair(builder, "pdEvidenceQuality", snapshot == null ? "unknown" : snapshot.PdEvidenceQuality ?? "unknown");
+            AppendPair(builder, "pdCapabilityEvidenceSource", snapshot == null ? "unknown" : snapshot.PdCapabilityEvidenceSource ?? "unknown");
+            AppendPair(builder, "pdCapabilityWeaponCount", snapshot == null ? "unknown" : FormatCount(snapshot.PdCapabilityWeaponCount));
+            AppendPair(builder, "pdCapabilityRangeKm", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityRangeKm));
+            AppendPair(builder, "pdCapabilityCooldownSeconds", snapshot == null ? "unknown" : Format(snapshot.PdCapabilityCooldownSeconds));
+            AppendPair(builder, "pdCapabilityMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityMissingReason ?? "unknown");
+            AppendPair(builder, "pdCapabilityLimitations", snapshot == null ? "snapshotUnavailable" : snapshot.PdCapabilityLimitations ?? "unknown");
             AppendPair(builder, "target", allocation == null ? "unknown" : allocation.TargetName);
             AppendPair(builder, "assignedShots", allocation == null ? "0" : allocation.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "pdScore", hasAllocationMetrics ? Format(allocation.PdScore) : "unknown");

@@ -56,6 +56,13 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "pdWeightDefaulted", snapshot.PdWeightDefaulted ? "True" : "False");
                 AppendPair(builder, "pdWeightDefaultReason", snapshot.PdWeightDefaultReason ?? "none");
                 AppendPair(builder, "pdWeightMissingReason", snapshot.PdWeightMissingReason ?? "unknown");
+                AppendPair(builder, "pdEvidenceQuality", snapshot.PdEvidenceQuality ?? "unknown");
+                AppendPair(builder, "pdCapabilityEvidenceSource", snapshot.PdCapabilityEvidenceSource ?? "unknown");
+                AppendPair(builder, "pdCapabilityWeaponCount", FormatCount(snapshot.PdCapabilityWeaponCount));
+                AppendPair(builder, "pdCapabilityRangeKm", Format(snapshot.PdCapabilityRangeKm));
+                AppendPair(builder, "pdCapabilityCooldownSeconds", Format(snapshot.PdCapabilityCooldownSeconds));
+                AppendPair(builder, "pdCapabilityMissingReason", snapshot.PdCapabilityMissingReason ?? "unknown");
+                AppendPair(builder, "pdCapabilityLimitations", snapshot.PdCapabilityLimitations ?? "unknown");
                 AppendPair(builder, "originPosition", snapshot.HasOriginPosition ? Format(snapshot.OriginPositionKm) : "unknown");
                 AppendPair(builder, "originVelocityKps", snapshot.HasOriginVelocity ? Format(snapshot.OriginVelocityKps) : "unknown");
                 AppendPair(builder, "missing", snapshot.MissingFields.Count == 0 ? "none" : string.Join(",", snapshot.MissingFields.ToArray()));
