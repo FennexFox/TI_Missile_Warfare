@@ -28,7 +28,7 @@ PAIR_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=\"(?P<value>[^\"]*)\"")
 APPLIED_ALLOCATION_RECORD_TYPES = {"applied", "appliedDecision", "applied-decision", "commandApplied"}
 SKIPPED_ALLOCATION_RECORD_TYPES = {"skipped", "skippedDecision", "skipped-decision"}
 FAILED_ALLOCATION_RECORD_TYPES = {"failed", "failedCommand", "commandFailed", "command-failed"}
-SHADOW_ALLOCATION_RECORD_TYPES = {"cycle", "allocation", "rejection"}
+SHADOW_ALLOCATION_RECORD_TYPES = {"cycle", "allocation", "rejection", "noOp"}
 KNOWN_ALLOCATION_RECORD_TYPES = (
     SHADOW_ALLOCATION_RECORD_TYPES
     | APPLIED_ALLOCATION_RECORD_TYPES
@@ -68,6 +68,8 @@ class NumericFieldSummary:
 @dataclass
 class AllocationBattleSummary:
     shadow_cycles: int = 0
+    shadow_evaluated_cycles: int = 0
+    shadow_skipped_cycles: int = 0
     applied_decisions: int = 0
     skipped_decisions: int = 0
     failed_command_applications: int = 0
@@ -86,8 +88,12 @@ class AllocationBattleSummary:
     total_unassigned_shots: int | None = None
     allocations: int = 0
     rejections: int = 0
+    no_op_decisions: int = 0
     top_rejection_reason: str | None = None
     top_rejection_reason_count: int = 0
+    top_no_op_reason: str | None = None
+    top_no_op_reason_count: int = 0
+    no_op_reason_counts: dict[str, int] = field(default_factory=dict)
     kill_size: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     saturation_size: NumericFieldSummary = field(default_factory=NumericFieldSummary)
     launch_window_score: NumericFieldSummary = field(default_factory=NumericFieldSummary)
@@ -179,6 +185,7 @@ class LogSummary:
     allocation_pd_weight_default_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_pd_weight_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_rejection_reason_counts: dict[str, int] = field(default_factory=dict)
+    allocation_no_op_reason_counts: dict[str, int] = field(default_factory=dict)
     allocation_assigned_shots_counts: dict[str, int] = field(default_factory=dict)
     allocation_summary: AllocationBattleSummary = field(default_factory=AllocationBattleSummary)
     first_allocation_line: int | None = None
@@ -280,7 +287,9 @@ def top_count(counter: Counter[str]) -> tuple[str | None, int]:
 
 def build_allocation_battle_summary(
     record_type_counts: Counter[str],
+    status_counts: Counter[str],
     rejection_reason_counts: Counter[str],
+    no_op_reason_counts: Counter[str],
     cycle_missing_input_counts: Counter[str],
     cycle_target_counts: list[int],
     ammo_gate_budget_values: list[int | None],
@@ -311,6 +320,8 @@ def build_allocation_battle_summary(
     """Build a compact battle-level allocation summary from parsed records."""
     summary = AllocationBattleSummary()
     summary.shadow_cycles = record_type_counts.get("cycle", 0)
+    summary.shadow_evaluated_cycles = status_counts.get("evaluated", 0)
+    summary.shadow_skipped_cycles = status_counts.get("skipped", 0)
     summary.applied_decisions = sum(record_type_counts[record_type] for record_type in APPLIED_ALLOCATION_RECORD_TYPES)
     summary.skipped_decisions = sum(record_type_counts[record_type] for record_type in SKIPPED_ALLOCATION_RECORD_TYPES)
     summary.failed_command_applications = sum(
@@ -346,7 +357,10 @@ def build_allocation_battle_summary(
 
     summary.allocations = record_type_counts.get("allocation", 0)
     summary.rejections = record_type_counts.get("rejection", 0)
+    summary.no_op_decisions = record_type_counts.get("noOp", 0)
     summary.top_rejection_reason, summary.top_rejection_reason_count = top_count(rejection_reason_counts)
+    summary.top_no_op_reason, summary.top_no_op_reason_count = top_count(no_op_reason_counts)
+    summary.no_op_reason_counts = sorted_count_dict(no_op_reason_counts, limit=12)
     summary.kill_size = summarize_numeric(kill_size_values)
     summary.saturation_size = summarize_numeric(saturation_size_values)
     summary.launch_window_score = summarize_numeric(launch_window_score_values)
@@ -500,6 +514,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_pd_weight_default_reason_counts: Counter[str] = Counter()
     allocation_pd_weight_missing_reason_counts: Counter[str] = Counter()
     allocation_rejection_reason_counts: Counter[str] = Counter()
+    allocation_no_op_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
     cycle_missing_input_counts: Counter[str] = Counter()
     cycle_target_counts: list[int] = []
@@ -764,6 +779,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 rejection_reason = pairs.get("rejectionReason")
                 if rejection_reason:
                     allocation_rejection_reason_counts[rejection_reason] += 1
+                no_op_reason = pairs.get("noOpReason")
+                if no_op_reason:
+                    allocation_no_op_reason_counts[no_op_reason] += 1
 
                 assigned_shots = pairs.get("assignedShots")
                 if assigned_shots:
@@ -788,7 +806,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         pd_weight_defaulted = "unknown"
                     cycle_pd_weight_defaulted_counts[pd_weight_defaulted] += 1
 
-                if record_type in {"allocation", "rejection"}:
+                if record_type in {"allocation", "rejection", "noOp"}:
                     kill_size = try_parse_float(pairs.get("killSize"))
                     saturation_size = try_parse_float(pairs.get("saturationSize"))
                     launch_window_score = try_parse_float(pairs.get("launchWindowScore"))
@@ -810,7 +828,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if target_value is not None:
                         if record_type == "allocation":
                             cycle_allocated_target_values.setdefault(cycle_id, []).append(target_value)
-                        else:
+                        elif record_type == "rejection":
                             cycle_rejected_target_values.setdefault(cycle_id, []).append(target_value)
 
                 if record_type == "allocation":
@@ -891,12 +909,15 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.allocation_pd_weight_default_reason_counts = dict(sorted(allocation_pd_weight_default_reason_counts.items()))
     summary.allocation_pd_weight_missing_reason_counts = dict(sorted(allocation_pd_weight_missing_reason_counts.items()))
     summary.allocation_rejection_reason_counts = sorted_count_dict(allocation_rejection_reason_counts, limit=12)
+    summary.allocation_no_op_reason_counts = sorted_count_dict(allocation_no_op_reason_counts, limit=12)
     summary.allocation_assigned_shots_counts = dict(
         sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
     )
     summary.allocation_summary = build_allocation_battle_summary(
         allocation_record_type_counts,
+        allocation_status_counts,
         allocation_rejection_reason_counts,
+        allocation_no_op_reason_counts,
         cycle_missing_input_counts,
         cycle_target_counts,
         ammo_gate_budget_values,
@@ -1018,6 +1039,8 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
     """Print compact battle-level allocation diagnostics."""
     print("Allocation summary")
     print(f"- shadow cycles: {summary.shadow_cycles}")
+    print(f"- shadow evaluated cycles: {summary.shadow_evaluated_cycles}")
+    print(f"- shadow skipped cycles: {summary.shadow_skipped_cycles}")
     print(f"- applied decisions: {summary.applied_decisions}")
     print(f"- skipped decisions: {summary.skipped_decisions}")
     print(f"- failed command applications: {summary.failed_command_applications}")
@@ -1079,10 +1102,15 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
     print(f"- unassigned shots: {format_optional_total(summary.total_unassigned_shots)}")
     print(f"- allocations: {summary.allocations}")
     print(f"- rejections: {summary.rejections}")
+    print(f"- no-op/skip decisions: {summary.no_op_decisions}")
     if summary.top_rejection_reason is None:
         print("- top rejection reason: none")
     else:
         print(f"- top rejection reason: {summary.top_rejection_reason} ({summary.top_rejection_reason_count})")
+    if summary.top_no_op_reason is None:
+        print("- top no-op/skip reason: none")
+    else:
+        print(f"- top no-op/skip reason: {summary.top_no_op_reason} ({summary.top_no_op_reason_count})")
     print(f"- average / median kill package size: {format_average_median(summary.kill_size)}")
     print(f"- average / median saturation size: {format_average_median(summary.saturation_size)}")
     print(f"- average / median launch-window score: {format_average_median(summary.launch_window_score)}")
@@ -1301,6 +1329,10 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
         if summary.allocation_rejection_reason_counts:
             print("  rejection reasons:")
             for reason, count in summary.allocation_rejection_reason_counts.items():
+                print(f"    {reason}: {count}")
+        if summary.allocation_no_op_reason_counts:
+            print("  no-op/skip reasons:")
+            for reason, count in summary.allocation_no_op_reason_counts.items():
                 print(f"    {reason}: {count}")
         print_allocation_battle_summary(summary.allocation_summary)
 

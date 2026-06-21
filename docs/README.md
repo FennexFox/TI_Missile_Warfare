@@ -8,7 +8,7 @@ The project is still diagnostics-first. Current runtime evidence can observe mis
 
 Issue #17 resolves the shot-budget design gate to Path A: `TISpaceShipState.ammo[weaponData]` plus vanilla fire gates is the per-weapon game-equivalent fire budget. The mod names that explicit value `ammoGateBudgetShots`; no distinct loaded/chambered source was found. See [Readiness semantics](research/readiness-semantics.md).
 
-Controlled command/application work should remain disabled until selected-player command scope and command-application safety are verified.
+Issue #21 verifies selected-player command scope for later dry-run command-intent logging. Live controlled command/application work should remain disabled until dry-run evidence and command-application safety are verified. See [Selected command scope](research/selected-command-scope.md).
 
 ## Start here
 
@@ -19,6 +19,7 @@ Controlled command/application work should remain disabled until selected-player
 - [Battle snapshot and allocation diagnostics](diagnostics/snapshot-and-allocation.md): current snapshot fields, shadow allocation logs, parser behavior, and validation commands.
 - [Runtime validation history](diagnostics/runtime-validation-history.md): historical smoke-test results and issue-by-issue runtime findings.
 - [Readiness semantics](research/readiness-semantics.md): confirmed ammo/gate budget semantics and remaining command-safety constraints.
+- [Selected command scope](research/selected-command-scope.md): verified selected-player command scope and vanilla salvo command granularity.
 - [Assumption audit](maintenance/assumption-audit.md): assumptions that were fixed or explicitly marked provisional.
 
 ## Directory map
@@ -38,5 +39,5 @@ Controlled command/application work should remain disabled until selected-player
 
 - Separate confirmed runtime evidence from hypotheses.
 - Use `ammoGateBudgetShots` for the validated module-keyed ammo plus vanilla gate budget; do not introduce `readyShots` terminology.
-- Keep controlled command/application work gated behind verified player-selection or command-path evidence.
+- Keep controlled command/application work gated behind dry-run evidence and command-application safety, using the verified selected-player command scope.
 - Keep temporary implementation plans in `dev-docs/plan/**`, not in durable `docs/` pages.

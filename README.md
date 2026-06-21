@@ -8,7 +8,7 @@ This repository is intentionally an **initial scaffold**, not a working gameplay
 
 Planned core features:
 
-- **Auto Salvo Allocation**: assign ready missile shots to enemy ships in package-sized salvos instead of scattering shots too thinly.
+- **Auto Salvo Allocation**: assign ammo/gate-budgeted missile shots to enemy ships in package-sized salvos instead of scattering shots too thinly.
 - **Launch Discipline**: avoid firing when range, relative velocity, or salvo size makes the launch likely to waste missiles.
 - **Diagnostics First**: log battle snapshots and launch decisions so the heuristics can be tuned against real combat outcomes.
 

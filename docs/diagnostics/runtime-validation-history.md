@@ -6,7 +6,9 @@ For the current log schema and parser behavior, see [`snapshot-and-allocation.md
 
 ## Issue #4 shadow allocation smoke
 
-Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow allocation diagnostics confirmed the shadow loop was observation-only and conservative when allocator-safe numeric `readyShots` were unavailable.
+Fresh Issue #4 runtime smoke on the active `Player.log` after enabling shadow allocation diagnostics confirmed the shadow loop was observation-only and conservative when the then-current shot-budget field was unavailable.
+
+The first two smoke results below preserve raw pre-#17 log field names for historical traceability. Current diagnostics use `ammoGateBudgetShots` / `totalAmmoGateBudgetShots`; do not treat those older field names as current allocator inputs.
 
 First smoke, 2026-06-19, initial Issue #4 build:
 
@@ -19,8 +21,8 @@ First smoke, 2026-06-19, initial Issue #4 build:
 - `recordType=cycle`: 665
 - `recordType=rejection`: 665
 - `status=evaluated`: 665
-- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 665
-- `rejectionReason=missing readyShots`: 665
+- raw legacy `missingInputs` included the old shot-budget field, `targetVelocity`, and `pdWeightsDefaulted`: 665
+- raw legacy rejection reason was missing shot-budget evidence: 665
 - MissileWarfare issues: none
 
 That first smoke also showed `battle="unavailable"` on both existing LaunchLog records and new AllocationLog records. Source tracing against the read-only decompiled reference found that `GameControl` is in the global namespace, while the diagnostic reflection lookup only tried `PavonisInteractive.TerraInvicta.GameControl`. The lookup now tries the global `GameControl` type first and keeps the namespaced form as a fallback.
@@ -36,8 +38,8 @@ Follow-up smoke, 2026-06-19, after rebuilding and redeploying the battle-context
 - `recordType=cycle`: 675
 - `recordType=rejection`: 675
 - `status=evaluated`: 675
-- `missingInputs=readyShots,targetVelocity,pdWeightsDefaulted`: 675
-- `rejectionReason=missing readyShots`: 675
+- raw legacy `missingInputs` included the old shot-budget field, `targetVelocity`, and `pdWeightsDefaulted`: 675
+- raw legacy rejection reason was missing shot-budget evidence: 675
 - `AllocationLog battle unavailable`: `0/1350`
 - `LaunchLog battle unavailable`: `0/3742`
 - MissileWarfare issues: none
@@ -51,7 +53,7 @@ First launcher-selected target identity smoke test:
 - `SnapshotLog` entries: 1416
 - `targetIdentitySource=launcher`: 816
 - `targetIdentitySource=none`: 600
-- `readyShots=unknown`: 1416
+- raw legacy shot-budget field was `unknown`: 1416
 - `remainingShots`: visible for every snapshot
 
 Later focused-target smoke run with the trimmed launcher-only path:
@@ -59,7 +61,7 @@ Later focused-target smoke run with the trimmed launcher-only path:
 - `SnapshotLog` entries: 671
 - `targetIdentitySource=launcher`: 671
 - launcher-selected target identity: 671/671 snapshots
-- `readyShots=unknown`: 671
+- raw legacy shot-budget field was `unknown`: 671
 - `remainingShots`: visible for every snapshot
 - MissileWarfare issues: none
 
@@ -71,7 +73,7 @@ Interpretation:
 
 ## Issue #11 live weapon ammo and gate evidence
 
-Issue #11 Phase 01 recommended a separate live weapon diagnostic path around `MissileWeapon.TryFire` or `TISpaceShipState.FireWeapon` to record post-fire remaining ammo and capacity evidence. Existing postfix observations occur after ammo decrement, so those values should be named as post-fire remaining ammo, not `readyShots`.
+Issue #11 Phase 01 recommended a separate live weapon diagnostic path around `MissileWeapon.TryFire` or `TISpaceShipState.FireWeapon` to record post-fire remaining ammo and capacity evidence. Existing postfix observations occur after ammo decrement, so those values should be named as post-fire remaining ammo, not as a fireable-shot budget.
 
 Issue #11 Phase 02 added that evidence to successful `MissileWeapon.TryFire` `LaunchLog` rows. New optional diagnostics included:
 
@@ -129,10 +131,10 @@ Phase 04 smoke result:
 - numeric `preFireRemaining` and `postFireRemaining` pairs: 670/670
 - `preFireRemaining - postFireRemaining = 1`: 670/670
 - `SnapshotLog` entries: 670
-- `readyShots=unknown`: 670/670
+- raw legacy shot-budget field was `unknown`: 670/670
 - MissileWarfare issues: none
 
-Interpretation: this relationship is consistent with observing the ship ammo dictionary before and after the `FireWeapon` magazine decrement. It proves useful pre-fire ammo state is visible from the live weapon hook, but `preFireRemaining` is still ammo-state evidence. It is not automatically an allocator-safe `readyShots` source.
+Interpretation: this relationship is consistent with observing the ship ammo dictionary before and after the `FireWeapon` magazine decrement. It proves useful pre-fire ammo state is visible from the live weapon hook, but `preFireRemaining` is still ammo-state evidence. It is not automatically an allocator-safe fireable-shot budget.
 
 ## Issue #15 readiness evidence result
 
@@ -140,16 +142,16 @@ Issue #15 wires the live `MissileWeapon.TryFire` pre-fire evidence into the proj
 
 The new snapshot and allocation cycle fields preserve the distinction between:
 
-- numeric `readyShots` from a future proven allocator-safe fireable-shot source;
+- numeric fireable-shot evidence from a future proven allocator-safe source;
 - ammo-only evidence from `TISpaceShipState.ammo[weaponData]`;
 - gate/cooldown evidence such as `WeaponHasAmmo`, `WeaponCanFire`, and `OnCooldown`;
 - unknown readiness with a concrete missing reason.
 
 The current implementation deliberately removed the earlier optimistic projectile-snapshot ready-shot inference from names such as `loadedAmmo`, `loadedMissiles`, and `readyMissiles`.
 
-Current runtime evidence remains ammo/gate evidence, not allocator-safe fireable-shot evidence, so `SnapshotLog readyShots` and allocation `totalReadyShots` remain `unknown` until shot-budget semantics are validated.
+Current runtime evidence at this point remained ammo/gate evidence, not allocator-safe fireable-shot evidence, so the legacy snapshot and allocation shot-budget fields remained `unknown` until shot-budget semantics were validated.
 
-That means the project is not ready to proceed to Issue #6 controlled allocation based on numeric ready-shot counts alone. It is ready to collect fresh runtime smoke logs with Issue #15 fields and decide whether another runtime source can prove readiness semantics, whether `ammo[weaponData]` plus known gates is sufficient, or whether controlled allocation should avoid a numeric fleet-level budget.
+That meant the project was not ready to proceed to Issue #6 controlled allocation based on numeric shot-budget counts alone. It was ready to collect fresh runtime smoke logs with Issue #15 fields and decide whether another runtime source could prove fireable-shot semantics, whether `ammo[weaponData]` plus known gates was sufficient, or whether controlled allocation should avoid a numeric fleet-level budget.
 
 ## Issue #18/#19 velocity and PD evidence result
 
@@ -203,3 +205,20 @@ Fresh runtime smoke on the active `Player.log`, last written `2026-06-21 09:34:4
 - MissileWarfare issues: none
 
 Interpretation: #18 target/relative velocity evidence is now runtime-confirmed. The remaining all-cycle diagnostic limitation is #19's intentional PD default model, not missing target velocity.
+
+## PR #20 / Issue #4 closure evidence
+
+The post-PR #20 cleanup confirms Issue #4 is complete as an observation-only
+shadow allocation loop:
+
+- `ammoGateBudgetShots` / `totalAmmoGateBudgetShots` replaced the legacy
+  shot-budget terminology in the current schema and parser.
+- Fresh smoke history above records numeric ammo/gate budget evidence,
+  target-velocity evidence, relative-velocity evidence, allocation records, and
+  no MissileWarfare warnings/errors.
+- Parser output separates shadow cycles, allocation records, rejection records,
+  missing inputs, cycle status, and no-op/skip reasons.
+- The mod path remains diagnostics-only: it logs recommendations and
+  no-op/skip decisions, but does not assign targets, issue commands, change
+  fire mode, suppress launches, alter AI behavior, or mutate manual player
+  control.
