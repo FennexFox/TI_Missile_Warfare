@@ -78,12 +78,12 @@ namespace MissileFireControl.Mod.Diagnostics
 
             foreach (TargetAllocation allocation in result.Allocations)
             {
-                WriteTargetRecord("allocation", cycleId, allocation, "reason", allocation.Reason);
+                WriteTargetRecord("allocation", cycleId, snapshot, allocation, "reason", allocation.Reason);
             }
 
             foreach (TargetAllocation rejection in result.Rejections)
             {
-                WriteTargetRecord("rejection", cycleId, rejection, "rejectionReason", rejection.Reason);
+                WriteTargetRecord("rejection", cycleId, snapshot, rejection, "rejectionReason", rejection.Reason);
             }
 
             if (result.Allocations.Count == 0 && result.Rejections.Count == 0)
@@ -215,22 +215,32 @@ namespace MissileFireControl.Mod.Diagnostics
         private static void WriteTargetRecord(
             string recordType,
             int cycleId,
+            ExtractedCombatSnapshot snapshot,
             TargetAllocation allocation,
             string reasonKey,
             string reason)
         {
+            bool hasAllocationMetrics = allocation != null && recordType != "noOp";
+
             StringBuilder builder = new StringBuilder(512);
             AppendPair(builder, "recordType", recordType);
             AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "targetId", allocation == null ? "unknown" : allocation.TargetId);
+            AppendPair(builder, "ammoGateBudgetShots", AmmoGateBudgetShots(snapshot) < 0 ? "unknown" : AmmoGateBudgetShots(snapshot).ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetEvidenceSource", Evidence(snapshot, inventory => inventory.AmmoGateBudgetEvidenceSource, "unknown"));
+            AppendPair(builder, "ammoGateBudgetMissingReason", Evidence(snapshot, inventory => inventory.AmmoGateBudgetMissingReason, "unknown"));
+            AppendPair(builder, "pdWeightEvidenceSource", snapshot == null ? "unknown" : snapshot.PdWeightEvidenceSource ?? "unknown");
+            AppendPair(builder, "pdWeightDefaulted", snapshot == null ? "unknown" : snapshot.PdWeightDefaulted ? "True" : "False");
+            AppendPair(builder, "pdWeightDefaultReason", snapshot == null ? "unknown" : snapshot.PdWeightDefaultReason ?? "none");
+            AppendPair(builder, "pdWeightMissingReason", snapshot == null ? "snapshotUnavailable" : snapshot.PdWeightMissingReason ?? "unknown");
             AppendPair(builder, "target", allocation == null ? "unknown" : allocation.TargetName);
             AppendPair(builder, "assignedShots", allocation == null ? "0" : allocation.AssignedShots.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "pdScore", allocation == null ? "unknown" : Format(allocation.PdScore));
-            AppendPair(builder, "targetValue", allocation == null ? "unknown" : Format(allocation.TargetValue));
-            AppendPair(builder, "saturationSize", allocation == null ? "unknown" : allocation.SaturationSize.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "killSize", allocation == null ? "unknown" : allocation.KillSize.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "launchWindowScore", allocation == null ? "unknown" : Format(allocation.LaunchWindowScore));
-            AppendPair(builder, "scorePerShot", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+            AppendPair(builder, "pdScore", hasAllocationMetrics ? Format(allocation.PdScore) : "unknown");
+            AppendPair(builder, "targetValue", hasAllocationMetrics ? Format(allocation.TargetValue) : "unknown");
+            AppendPair(builder, "saturationSize", hasAllocationMetrics ? allocation.SaturationSize.ToString(CultureInfo.InvariantCulture) : "unknown");
+            AppendPair(builder, "killSize", hasAllocationMetrics ? allocation.KillSize.ToString(CultureInfo.InvariantCulture) : "unknown");
+            AppendPair(builder, "launchWindowScore", hasAllocationMetrics ? Format(allocation.LaunchWindowScore) : "unknown");
+            AppendPair(builder, "scorePerShot", hasAllocationMetrics ? Format(allocation.ScorePerShot) : "unknown");
             AppendPair(builder, reasonKey, reason ?? "unknown");
             Log.Info("[AllocationLog] " + builder);
         }
@@ -244,7 +254,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AssignedShots = 0,
                 Reason = reason
             };
-            WriteTargetRecord("noOp", cycleId, noOp, "noOpReason", reason);
+            WriteTargetRecord("noOp", cycleId, snapshot, noOp, "noOpReason", reason);
         }
 
         private static string NoOpReason(ExtractedCombatSnapshot snapshot)
