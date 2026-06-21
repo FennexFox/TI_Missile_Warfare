@@ -22,8 +22,9 @@ Current blocker:
 Current missing or provisional inputs:
 
 - dry-run command-intent logging for the verified selected-player scope;
-- evidence-sufficiency reporting now classifies the Issue #30 four-log fitting
-  sweep as baseline-ready with named limitations, not controlled-command ready;
+- fresh selected four-log fitting validation is pending; the previous local
+  four-log snapshot is superseded and should not be treated as the current
+  baseline;
 - Issue #29 upgrades observed target point-defense evidence from
   defense-mode presence to provisional static template capability when range,
   cooldown, ammo-capacity-like, or similar template fields are visible;
@@ -106,9 +107,8 @@ Acceptance criteria:
 Goal: replay selected local combat logs through parser/fitting tooling before
 using the allocator as a #6 baseline.
 
-Status: tooling available; Issue #30 completed a four-real-log pre-#6 sweep
-with local ignored artifacts and a durable summary in
-`docs/diagnostics/runtime-validation-history.md`.
+Status: tooling available. Fresh selected four-log validation is pending; old
+local fitting artifacts have been treated as stale.
 
 Implementation notes:
 
@@ -122,21 +122,17 @@ Implementation notes:
   least one plausible allocation or no-op decision.
 - Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
-- Issue #30's four-log sweep, after Issue #32 classification, found 993
-  plausible, 349 partial saturation, 585 ambiguous, 54 command-safety no-op, 0
-  missing-evidence-limited, and zero severe classifications across four
-  parser-OK real logs.
-- Issue #32 classifies intermittent missing `targetIdentity` no-op evidence as
-  safe skip evidence when no launcher-selected priority target is visible. It is
-  not allocation-quality evidence and not proof that vanilla had no missile
-  target.
+- `command-safety no-op` classifies missing launcher-selected `targetIdentity`
+  no-op evidence as a safe skip when no concrete launcher-selected priority
+  target is visible. It is not allocation-quality evidence and not proof that
+  vanilla had no missile target.
 - Issue #28/#29 sufficiency reporting keeps the fitting baseline distinct from
   controlled command readiness while naming limitations: target PD evidence is
   `presenceOnly` for legacy template-presence logs and `provisional` only when
-  Issue #29 static capability fields are present; target-identity no-op
-  evidence is `provisional`, observed launch/ammo deltas are `provisional`,
-  future geometry-aware PD evidence is also `provisional` until separately
-  validated, and controlled live command readiness is `Not ready`.
+  static capability fields are present; target-identity no-op evidence is
+  `provisional`, observed launch/ammo deltas are `provisional`, future
+  geometry-aware PD evidence is also `provisional` until separately validated,
+  and controlled live command readiness is `Not ready`.
 - #6 readiness now separates three remaining concerns: evidence quality
   (#29 after #28's gate), command safety (#22/#23), and allocator design choices
   (#6).

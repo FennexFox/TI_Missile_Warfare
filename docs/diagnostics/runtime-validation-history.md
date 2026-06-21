@@ -318,105 +318,37 @@ this combat log. Full #6 baseline readiness is no longer blocked by all-cycle
 PD defaulting in this sample, but still requires multiple real selected logs
 under the existing Issue #24 readiness rule.
 
-## Issue #30 four-log pre-#6 readiness sweep
+## Superseded four-log fitting snapshot
 
-Issue #30 reran the offline fitting wrapper across the four available current
-Terra Invicta `Player*.log` combat logs:
+A previous local Issue #30 pass replayed four Terra Invicta `Player*.log`
+combat logs through the offline fitting wrapper under ignored `artifacts/`
+paths. That local evidence set is now superseded and should not be used as the
+current readiness baseline.
+
+The replacement process is:
 
 ```powershell
-python tools\fit_shadow_allocation.py --input artifacts\combat-logs\issue_30_four_logs --output artifacts\shadow-fitting\issue_30_four_logs
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
 ```
 
-The first broad pass over the Terra Invicta log directory also matched
-non-combat `.txt`/mod log files, so the final sweep used a scoped ignored
-artifact folder containing only the four `Player*.log` files.
-
-Aggregate result:
-
-- logs analyzed: 4
-- logs with required evidence: 4
-- real selected logs with required evidence: 4
-- parser failures: 0
-- readiness verdict after Issue #32 classification: `Ready for #6 baseline`
-- readiness reason: multiple real selected logs have required evidence and no
-  bad classifications
-- plausible: 993
-- partial saturation: 349
-- ambiguous: 585
-- command-safety no-op: 54
-- missing-evidence-limited: 0
-- severe classifications: 0 (`overkill`, `underkill`, `target-value mismatch`,
-  `PD-risk mismatch`, and `impossible` were all zero)
-- evidence limitations: none
-
-Per-log summary:
-
-- `Player-prev.log`: parser `OK`; 259 shadow cycles; 195 plausible, 8 partial
-  saturation, 2 ambiguous, 54 command-safety no-op; 205 cycles used
-  `observedTargetWeaponTemplates`; 54 no-op cycles lacked a launcher-selected
-  `targetIdentity` and made no allocation.
-- `Player-prev1.log`: parser `OK`; 555 shadow cycles; 162 plausible, 143
-  partial saturation, 250 ambiguous; all cycles had observed target PD evidence
-  and zero critical missing fields.
-- `Player-prev2.log`: parser `OK`; 730 shadow cycles; 328 plausible, 120
-  partial saturation, 282 ambiguous; all cycles had observed target PD evidence
-  and zero critical missing fields.
-- `Player.log`: parser `OK`; 437 shadow cycles; 308 plausible, 78 partial
-  saturation, 51 ambiguous; all cycles had observed target PD evidence and zero
-  critical missing fields.
-
-Issue #32 classified the repeated 54 `Player-prev.log` no-op cycles where
-`targetIdentity` was unavailable as `command-safety no-op`: no concrete
-launcher-selected priority target was visible to the current hook, so the shadow
-allocator made no allocation. This is safe skip evidence, not allocation-quality
-evidence and not parser failure. No repeated severe fitting pattern was found.
-
-## Issue `#6` readiness interpretation:
-
-- Evidence quality: the four-log sweep is stronger than the earlier single-log
-  sample. Under the current fitting wrapper rules it is ready for the #6
-  baseline because all real logs parse, severe classifications are zero, and no
-  allocation/rejection decision depends on PD-defaulted evidence. The broader
-  evidence sufficiency gates in Issue #28/#29 still decide whether this baseline
-  is enough for controlled command design.
-- Command safety: Issue #30 did not exercise live commands. #6 remains blocked
-  on dry-run command-intent logging and the live command safety gate.
-- Allocator design choices: the sweep found many plausible and partial
-  saturation classifications and no severe bad classifications, but ambiguous
-  rejection rows still need to be treated as conservative fitting evidence, not
-  tuning permission.
+Use only the fresh selected four-log set for new parser, fitting, and
+evidence-sufficiency claims. Historical counts from the superseded local logs
+were removed from this durable doc so they do not get mistaken for current #6
+readiness evidence.
 
 ## Issue #28 evidence sufficiency gate
 
 Issue #28 adds an explicit sufficiency layer above the parser verdict and the
-Issue #24/#30 fitting baseline. Rerunning the four-log sweep with the Issue #28
-reporting surface preserved the fitting result:
+Issue #24 fitting baseline. The gate separates parser/fitting health from
+controlled live-command readiness and reports named evidence limits for each
+input category.
 
-- parser verdicts: all `OK`
-- fitting readiness verdict: `Ready for #6 baseline`
-- evidence sufficiency verdict: `Baseline-ready with named limitations`
-- controlled live command readiness: `Not ready`
-- `ammoGateBudgetShots`: `ready`, 1,981/1,981 cycles numeric
-- target identity: `provisional`, because 54 no-op cycles lacked
-  launcher-selected target identity and allocated no shots
-- target velocity: `ready`, 1,981/1,981 cycles observed
-- relative velocity: `ready`, 1,981/1,981 cycles observed
-- missile profile data: `ready`, 1,981/1,981 cycles present
-- observed target PD evidence: `presenceOnly`, because
-  `observedTargetWeaponTemplates` proves defense-mode template presence but not
-  calibrated vanilla interception capability
-- selected-player command scope: `ready` for command design from Issue #21
-  source review, but not exercised by offline fitting
-- vanilla command granularity: `commandUnsafe`, because vanilla salvo target
-  commands operate at ship level across all salvo-capable weapons
-- dry-run command intent logging: `commandUnsafe`, because selected-scope
-  command intent is not yet logged
-- observed launch/ammo delta evidence: `provisional`, useful observation
-  evidence but not controlled-command result evidence
-
-This means parser `OK`, empty allocator-critical `missingInputs`, and
-`Ready for #6 baseline` are no longer sufficient wording for controlled #6
-readiness. They support a baseline for design and diagnostics only.
+The fitting report now names statuses such as `ready`, `provisional`,
+`presenceOnly`, `defaulted`, `unknown`, and `commandUnsafe`. Parser `OK`, empty
+allocator-critical `missingInputs`, and a fitting-wrapper readiness verdict are
+not sufficient wording for controlled #6 readiness. They can support a baseline
+for design and diagnostics only after the fresh selected logs are replayed and
+the generated report is reviewed.
 
 ## Issue #29 point-defense capability evidence quality
 
