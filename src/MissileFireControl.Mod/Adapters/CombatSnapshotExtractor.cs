@@ -47,6 +47,10 @@ namespace MissileFireControl.Mod.Adapters
         public string LiveWeaponState { get; set; }
         public int AmmoGateWeaponCount { get; set; } = -1;
         public int UnknownAmmoGateWeaponCount { get; set; } = 1;
+        public bool HasTargetVelocity { get; set; }
+        public Vector3d TargetVelocityKps { get; set; }
+        public string TargetVelocityEvidenceSource { get; set; }
+        public string TargetVelocityMissingReason { get; set; }
     }
 
     internal static class CombatSnapshotExtractor
@@ -86,6 +90,7 @@ namespace MissileFireControl.Mod.Adapters
 
             snapshot.Inventory = ExtractInventory(launcher, missileTemplate, snapshot.Launcher, snapshot.Missile, readinessEvidence);
             AddWeapon(snapshot.Launcher, missileTemplate, snapshot.Inventory);
+            ApplyTryFireTargetVelocityEvidence(snapshot, readinessEvidence);
             AddTargetVelocityEvidence(snapshot);
             AddRelativeVelocityEvidence(snapshot);
             AddPdWeightEvidence(snapshot);
@@ -251,7 +256,11 @@ namespace MissileFireControl.Mod.Adapters
                     AmmoEvidenceSource = CleanEvidence(readinessEvidence.AmmoEvidenceSource, "unknown"),
                     LiveWeaponState = CleanEvidence(readinessEvidence.LiveWeaponState, "unknown"),
                     AmmoGateWeaponCount = readinessEvidence.AmmoGateWeaponCount,
-                    UnknownAmmoGateWeaponCount = readinessEvidence.UnknownAmmoGateWeaponCount
+                    UnknownAmmoGateWeaponCount = readinessEvidence.UnknownAmmoGateWeaponCount,
+                    HasTargetVelocity = readinessEvidence.HasTargetVelocity,
+                    TargetVelocityKps = readinessEvidence.TargetVelocityKps,
+                    TargetVelocityEvidenceSource = CleanEvidence(readinessEvidence.TargetVelocityEvidenceSource, "unknown"),
+                    TargetVelocityMissingReason = CleanEvidence(readinessEvidence.TargetVelocityMissingReason, "unknown")
                 };
             }
 
@@ -263,7 +272,9 @@ namespace MissileFireControl.Mod.Adapters
                     AmmoGateBudgetMissingReason = "ammo-only projectile snapshot evidence",
                     AmmoEvidenceSource = "projectileSnapshotCount",
                     LiveWeaponState = "missing live weapon correlation",
-                    UnknownAmmoGateWeaponCount = 1
+                    UnknownAmmoGateWeaponCount = 1,
+                    TargetVelocityEvidenceSource = "unknown",
+                    TargetVelocityMissingReason = "missing live weapon correlation"
                 };
             }
 
@@ -273,7 +284,9 @@ namespace MissileFireControl.Mod.Adapters
                 AmmoGateBudgetMissingReason = "missing live weapon correlation",
                 AmmoEvidenceSource = "none",
                 LiveWeaponState = "missing live weapon correlation",
-                UnknownAmmoGateWeaponCount = 1
+                UnknownAmmoGateWeaponCount = 1,
+                TargetVelocityEvidenceSource = "unknown",
+                TargetVelocityMissingReason = "missing live weapon correlation"
             };
         }
 
@@ -285,6 +298,17 @@ namespace MissileFireControl.Mod.Adapters
 
         private static void AddTargetVelocityEvidence(ExtractedCombatSnapshot snapshot)
         {
+            if (snapshot.HasTargetVelocity)
+            {
+                if (string.IsNullOrWhiteSpace(snapshot.TargetVelocityEvidenceSource))
+                {
+                    snapshot.TargetVelocityEvidenceSource = "targetCombatState";
+                }
+
+                snapshot.TargetVelocityMissingReason = "none";
+                return;
+            }
+
             if (snapshot.Target == null)
             {
                 snapshot.HasTargetVelocity = false;
@@ -305,12 +329,49 @@ namespace MissileFireControl.Mod.Adapters
             {
                 snapshot.HasTargetVelocity = false;
                 snapshot.TargetVelocityEvidenceSource = "unknown";
-                snapshot.TargetVelocityMissingReason = "targetVelocityMemberUnavailable";
+                snapshot.TargetVelocityMissingReason = string.IsNullOrWhiteSpace(snapshot.TargetVelocityMissingReason)
+                    ? "targetVelocityMemberUnavailable"
+                    : snapshot.TargetVelocityMissingReason;
                 return;
             }
 
             snapshot.HasTargetVelocity = true;
             snapshot.TargetVelocityEvidenceSource = "targetCombatState";
+            snapshot.TargetVelocityMissingReason = "none";
+        }
+
+        private static void ApplyTryFireTargetVelocityEvidence(
+            ExtractedCombatSnapshot snapshot,
+            ReadinessEvidenceSnapshot readinessEvidence)
+        {
+            if (snapshot == null || readinessEvidence == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(readinessEvidence.TargetVelocityEvidenceSource))
+            {
+                snapshot.TargetVelocityEvidenceSource = readinessEvidence.TargetVelocityEvidenceSource;
+            }
+
+            if (!string.IsNullOrWhiteSpace(readinessEvidence.TargetVelocityMissingReason))
+            {
+                snapshot.TargetVelocityMissingReason = readinessEvidence.TargetVelocityMissingReason;
+            }
+
+            if (!readinessEvidence.HasTargetVelocity)
+            {
+                return;
+            }
+
+            if (snapshot.Target != null)
+            {
+                snapshot.Target.VelocityKps = readinessEvidence.TargetVelocityKps;
+                snapshot.Target.HasVelocityEvidence = true;
+            }
+
+            snapshot.HasTargetVelocity = true;
+            snapshot.TargetVelocityEvidenceSource = readinessEvidence.TargetVelocityEvidenceSource;
             snapshot.TargetVelocityMissingReason = "none";
         }
 

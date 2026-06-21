@@ -161,9 +161,15 @@ state. The cycle also reports `pdWeightEvidenceSource`, `pdWeightDefaulted`,
 `pdWeightDefaultReason`, and `pdWeightMissingReason` so a formal default model
 is distinguishable from observed PD evidence and unknown PD evidence.
 
-`targetVelocity` is reported when target velocity cannot be read from the
-target combat state. When available, `targetVelocityKps` is paired with
-`targetVelocityEvidenceSource="targetCombatState"` and
+`targetVelocity` is reported when target velocity cannot be read from runtime
+target evidence. The preferred evidence path is the live `MissileWeapon.target`
+`IDamageable` observed in the `MissileWeapon.TryFire` prefix, using
+`velocityVector_kps`. If that direct value is unavailable, diagnostics attempt a
+same-target `positionAtTime(t + 1s) - positionAtTime(t)` derivative and convert
+from combat scale units to kps. The older projectile-fire target combat-state
+read remains a fallback. When available, `targetVelocityKps` is paired with a
+source such as `tryFireTargetDamageableVelocity`,
+`tryFireTargetPositionAtTimeDelta`, or `targetCombatState`, and
 `targetVelocityMissingReason="none"`. The diagnostics derive
 `relativeVelocityKps` and `relativeSpeedKps` only when both target velocity and
 launcher/origin velocity are present; otherwise the relative-velocity missing

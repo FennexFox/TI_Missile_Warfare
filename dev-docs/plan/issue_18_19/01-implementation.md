@@ -39,7 +39,9 @@ Add explicit velocity and PD evidence/default diagnostics without changing contr
 
 - Kept `pdWeightsDefaulted` in `missingInputs` as a limitation marker because observed PD weights are still not recovered.
 - Used the hook-provided origin velocity as launcher velocity evidence for shadow allocation diagnostics when present.
-- Did not derive velocity from previous positions because no stable same-battle/tick history exists in the current snapshot path.
+- Decompiled source review showed `TISpaceCombatProjectileState.Fire(...)` does not receive the direct target, while `MissileWeapon.TryFire(...)` has `Weapon.target` as `IDamageable`.
+- Added target velocity capture from `IDamageable.velocityVector_kps` in the `MissileWeapon.TryFire` prefix, plus a `positionAtTime(t + 1s) - positionAtTime(t)` derivative fallback converted from combat scale units to kps.
+- Did not derive velocity from cross-session or stale historical positions; the fallback uses the same target object and the current TryFire time.
 
 ## Validation Results
 
@@ -63,3 +65,10 @@ Fresh runtime smoke results:
 - MissileWarfare issues: none.
 
 Interpretation: #19 default formalization is runtime-confirmed. #18 now reports a precise, actionable missing reason, but direct target velocity is still not recovered from the launcher-selected target object.
+
+Follow-up implementation after decompiled-source review:
+
+- Source checked: `../TI_RE_Workspace/graphify-out/slices/missile-fire-control-master-source/PavonisInteractive.TerraInvicta.Ship/MissileWeapon.cs`, `Weapon.cs`, `IDamageable.cs`, `PavonisInteractive.TerraInvicta.SpaceCombat/CombatShipController.cs`, and `PavonisInteractive.TerraInvicta/TISpaceCombatProjectileState.cs`.
+- Finding: vanilla missile targeting computes intercepts from `IDamageable.position`, `velocityVector`, and `accelerationVector`; the direct target is available from `Weapon.target` during `MissileWeapon.TryFire`, not from the projectile-state `Fire(...)` hook arguments.
+- Change: thread TryFire target velocity evidence through the existing readiness handoff so snapshot/allocation logs can report `tryFireTargetDamageableVelocity` or `tryFireTargetPositionAtTimeDelta`.
+- Runtime validation pending for this follow-up.

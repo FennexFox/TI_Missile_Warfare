@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using MissileFireControl.Core.Models;
 using MissileFireControl.Mod.Adapters;
 
 namespace MissileFireControl.Mod.Diagnostics
@@ -78,6 +79,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "launcher", Describe(launcher));
                 AppendPair(builder, "target", Describe(ReadMember(__instance, "target")));
                 AppendPair(builder, "targetedPosition", DescribeVector(ReadMember(__instance, "targetedPosition")));
+                AppendPreFireTargetVelocityEvidence(builder, __state as TryFireObservation);
                 AppendPair(builder, "fireMode", Describe(ReadMember(__instance, "currentFireMode")));
                 AppendPair(builder, "currentTime", Describe(GetArg(__args, 0)));
                 AppendPreFireWeaponAmmoEvidence(builder, __state as TryFireObservation);
@@ -284,6 +286,7 @@ namespace MissileFireControl.Mod.Diagnostics
             observation.OnCooldown = Describe(InvokeMember(weapon, "OnCooldown", currentTime));
             observation.SalvoShotsFired = Describe(ReadMember(weapon, "shotsFiredThisSalvo"));
             observation.SalvoShots = Describe(ReadMember(weaponTemplate, "salvo_shots"));
+            CaptureTargetVelocityObservation(weapon, currentTime, observation);
             return observation;
         }
 
@@ -310,6 +313,24 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "preFireSalvoShots", observation.SalvoShots);
         }
 
+        private static void AppendPreFireTargetVelocityEvidence(StringBuilder builder, TryFireObservation observation)
+        {
+            if (observation == null)
+            {
+                AppendPair(builder, "preFireTargetVelocityKps", "unknown");
+                AppendPair(builder, "preFireTargetVelocityEvidenceSource", "unavailable");
+                AppendPair(builder, "preFireTargetVelocityMissingReason", "missing live weapon correlation");
+                return;
+            }
+
+            AppendPair(
+                builder,
+                "preFireTargetVelocityKps",
+                observation.HasTargetVelocity ? GameObjectReader.FormatVector(observation.TargetVelocityKps) : "unknown");
+            AppendPair(builder, "preFireTargetVelocityEvidenceSource", observation.TargetVelocityEvidenceSource);
+            AppendPair(builder, "preFireTargetVelocityMissingReason", observation.TargetVelocityMissingReason);
+        }
+
         private static ReadinessEvidenceSnapshot ToReadinessEvidence(TryFireObservation observation)
         {
             if (observation == null)
@@ -334,7 +355,11 @@ namespace MissileFireControl.Mod.Diagnostics
                     + ";preFireSalvoShotsFired=" + observation.SalvoShotsFired
                     + ";preFireSalvoShots=" + observation.SalvoShots,
                 AmmoGateWeaponCount = ammoGateBudgetShots >= 0 ? 1 : -1,
-                UnknownAmmoGateWeaponCount = ammoGateBudgetShots >= 0 ? 0 : 1
+                UnknownAmmoGateWeaponCount = ammoGateBudgetShots >= 0 ? 0 : 1,
+                HasTargetVelocity = observation.HasTargetVelocity,
+                TargetVelocityKps = observation.TargetVelocityKps,
+                TargetVelocityEvidenceSource = observation.TargetVelocityEvidenceSource,
+                TargetVelocityMissingReason = observation.TargetVelocityMissingReason
             };
         }
 
@@ -399,6 +424,68 @@ namespace MissileFireControl.Mod.Diagnostics
                 && observation.OnCooldown != "unknown";
         }
 
+        private static void CaptureTargetVelocityObservation(
+            object weapon,
+            object currentTime,
+            TryFireObservation observation)
+        {
+            object target = ReadMember(weapon, "target");
+            if (target == null)
+            {
+                observation.HasTargetVelocity = false;
+                observation.TargetVelocityEvidenceSource = "unknown";
+                observation.TargetVelocityMissingReason = "tryFireTargetUnavailable";
+                return;
+            }
+
+            if (TryReadVector(target, out Vector3d directVelocity, "velocityVector_kps"))
+            {
+                observation.HasTargetVelocity = true;
+                observation.TargetVelocityKps = directVelocity;
+                observation.TargetVelocityEvidenceSource = "tryFireTargetDamageableVelocity";
+                observation.TargetVelocityMissingReason = "none";
+                return;
+            }
+
+            if (TryDeriveTargetVelocityFromPositionAtTime(target, currentTime, out Vector3d derivedVelocity))
+            {
+                observation.HasTargetVelocity = true;
+                observation.TargetVelocityKps = derivedVelocity;
+                observation.TargetVelocityEvidenceSource = "tryFireTargetPositionAtTimeDelta";
+                observation.TargetVelocityMissingReason = "none";
+                return;
+            }
+
+            observation.HasTargetVelocity = false;
+            observation.TargetVelocityEvidenceSource = "unknown";
+            observation.TargetVelocityMissingReason = "tryFireTargetVelocityUnavailable";
+        }
+
+        private static bool TryDeriveTargetVelocityFromPositionAtTime(
+            object target,
+            object currentTime,
+            out Vector3d velocityKps)
+        {
+            velocityKps = Vector3d.Zero;
+            if (!(currentTime is DateTime time))
+            {
+                return false;
+            }
+
+            const double seconds = 1.0;
+            object currentPosition = InvokeMember(target, "positionAtTime", time);
+            object futurePosition = InvokeMember(target, "positionAtTime", time.AddSeconds(seconds));
+            if (!TryReadVector(currentPosition, out Vector3d current)
+                || !TryReadVector(futurePosition, out Vector3d future))
+            {
+                return false;
+            }
+
+            Vector3d deltaScaleUnits = future - current;
+            velocityKps = deltaScaleUnits * (1.0 / (seconds * 0.05));
+            return true;
+        }
+
         private static void AppendCapacityEvidence(StringBuilder builder, object launcher, object weaponTemplate)
         {
             object projectileWeapon = ReadMember(weaponTemplate, "ref_projectileWeapon");
@@ -424,6 +511,38 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return FormatNumber(x) + "," + FormatNumber(y) + "," + FormatNumber(z);
+        }
+
+        private static bool TryReadVector(object value, out Vector3d vector, params string[] memberNames)
+        {
+            vector = Vector3d.Zero;
+            object source = memberNames == null || memberNames.Length == 0 ? value : ReadFirstMember(value, memberNames);
+            if (!GameObjectReader.HasVector(source))
+            {
+                return false;
+            }
+
+            vector = GameObjectReader.ReadVector(source);
+            return true;
+        }
+
+        private static object ReadFirstMember(object instance, params string[] memberNames)
+        {
+            if (instance == null || memberNames == null)
+            {
+                return null;
+            }
+
+            foreach (string memberName in memberNames)
+            {
+                object value = ReadMember(instance, memberName);
+                if (value != null)
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static object GetArg(object[] args, int index)
@@ -753,6 +872,14 @@ namespace MissileFireControl.Mod.Diagnostics
             public string SalvoShotsFired { get; set; }
 
             public string SalvoShots { get; set; }
+
+            public bool HasTargetVelocity { get; set; }
+
+            public Vector3d TargetVelocityKps { get; set; }
+
+            public string TargetVelocityEvidenceSource { get; set; }
+
+            public string TargetVelocityMissingReason { get; set; }
         }
     }
 }
