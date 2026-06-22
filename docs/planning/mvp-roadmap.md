@@ -5,9 +5,12 @@ This roadmap records durable issue-sized work. Temporary per-PR plans belong und
 ## Current milestone state
 
 The project has enough diagnostics to observe missile launches and shadow
-allocation inputs, and Issue #34 validates a diagnostics-only controlled
-dry-run experiment envelope. It is still not ready for live controlled command
-application.
+allocation inputs, and Issues #34-#36 validate the controlled experiment
+envelope through a default-off apply gate. Issue #37 now has post-fix runtime
+smoke evidence for the first behavior-changing selected single-ship apply path:
+enemy allocator / friendly-target candidates wait, and the first selected-team
+hostile candidate can apply exactly one vanilla salvo-target command. The path
+remains default-off and selected-single-ship only.
 
 Current blocker:
 
@@ -30,9 +33,10 @@ Current blocker:
 
 Current missing or provisional inputs:
 
-- Issue #36 adds live command-application hard-stop and apply-boundary
-  reporting as diagnostics-only proof; fresh runtime evidence is still needed
-  before #37 can attempt a live command;
+- Issue #37 adds and runtime-smoke-validates a first live command path only for
+  one explicitly selected player missile ship and one resolved hostile target
+  from a selected-team allocator cycle; additional runtime evidence is still
+  needed before selected-group or fleet-wide expansion;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -157,8 +161,8 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending live command-application hard-stop and later
-single-ship apply-boundary safety work.
+Status: blocked pending later selected-group / fleet-wide scope expansion. #37
+now supplies selected-single-ship live smoke evidence only.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -166,11 +170,12 @@ the selected-player command path for later dry-run logging, but controlled
 command application still must let vanilla combat enforce the final legal launch
 result.
 
-Future #6 design should continue from the Issue #34 dry-run envelope and the
-#35 command-resolvability report: preserve the audited player-controlled command
-scope, selected or otherwise verified player missile ship identity, visible
-weapon/module identity, `ammoGateBudgetShots` and its evidence source, the
-allocator recommendation that motivated the command, command intent and target,
+Future #6 design should continue from the Issue #34 dry-run envelope, the #35
+command-resolvability report, the #36 hard-stop proof, and the #37 single-ship
+apply boundary: preserve the audited player-controlled command scope, selected
+or otherwise verified player missile ship identity, visible weapon/module
+identity, `ammoGateBudgetShots` and its evidence source, the allocator
+recommendation that motivated the command, command intent and target,
 skipped/failure reason, and observed ammo delta or launch evidence when
 available.
 
@@ -206,15 +211,18 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Validate the #36 apply-gate hard stop in a fresh runtime smoke. If the
-   runtime still produces only `wouldSkip` candidates, keep that fail-closed
-   evidence and rely on deterministic fixture coverage for the gate-reachable
-   blocked path.
+1. Use the post-fix #37 selected-single-ship smoke as the current live-apply
+   baseline, and expand only through the planned #38 selected-subgroup and #43
+   fleet-wide rungs. Any further #37 retest should preserve the same checks:
+   `launcherId` names the selected ship, `allocatorLauncherId` names a same-team
+   cycle producer, `targetTeam` differs from `launcherTeam`, with at most one
+   applied/failed command per trigger and no scope violations, same-team missile
+   target snapshots, or MissileWarfare warnings/errors.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited
    classifications.
 3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-4. Only then revisit #23 live command safety, controlled allocation, and launch
-   discipline behavior.
+4. Expand controlled apply only through the planned #38 selected subgroup and
+   #43 fleet-wide rungs after #37 evidence is understood.

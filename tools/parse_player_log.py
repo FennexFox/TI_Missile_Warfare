@@ -99,6 +99,7 @@ class AllocationBattleSummary:
     controlled_dry_run_safety_gate_blocked_commands: int = 0
     controlled_dry_run_candidate_classification_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_candidate_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_dry_run_candidate_source_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_apply_gate_result_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_safety_gate_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_command_scope_source_counts: dict[str, int] = field(default_factory=dict)
@@ -106,6 +107,13 @@ class AllocationBattleSummary:
     controlled_dry_run_scope_violations: int = 0
     controlled_dry_run_selected_ship_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_attempts: int = 0
+    controlled_live_apply_applied: int = 0
+    controlled_live_apply_skipped: int = 0
+    controlled_live_apply_failed: int = 0
+    controlled_live_apply_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_path_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_candidate_source_counts: dict[str, int] = field(default_factory=dict)
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
@@ -154,6 +162,7 @@ class AllocationBattleSummary:
     pd_capability_observed_field_counts: dict[str, int] = field(default_factory=dict)
     pd_capability_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     pd_capability_limitation_counts: dict[str, int] = field(default_factory=dict)
+    same_team_missile_target_snapshots: int = 0
     suspicious_patterns: list[str] = field(default_factory=list)
 
 
@@ -211,6 +220,7 @@ class LogSummary:
     snapshot_pd_capability_limitation_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_counts: dict[str, int] = field(default_factory=dict)
     snapshot_target_team_counts: dict[str, int] = field(default_factory=dict)
+    snapshot_same_team_target_count: int = 0
     first_snapshot_line: int | None = None
     last_snapshot_line: int | None = None
     allocation_log_count: int = 0
@@ -486,6 +496,9 @@ def allocation_suspicious_patterns(
     if shadow_cycles and summary.missing_ammo_gate_budget_evidence_cycles == shadow_cycles:
         patterns.append("all shadow cycles blocked by missing ammo/gate budget evidence")
 
+    if summary.same_team_missile_target_snapshots:
+        patterns.append(f"same-team missile target snapshots: {summary.same_team_missile_target_snapshots}")
+
     if (
         summary.ammo_gate_budget_shots_numeric_cycles
         and summary.total_ammo_gate_budget_shots is not None
@@ -572,6 +585,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     snapshot_pd_capability_limitation_counts: Counter[str] = Counter()
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
+    snapshot_same_team_target_count = 0
     allocation_record_type_counts: Counter[str] = Counter()
     allocation_status_counts: Counter[str] = Counter()
     allocation_missing_input_counts: Counter[str] = Counter()
@@ -598,11 +612,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_dry_run_missing_reason_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_classification_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_reason_counts: Counter[str] = Counter()
+    controlled_dry_run_candidate_source_counts: Counter[str] = Counter()
     controlled_dry_run_apply_gate_result_counts: Counter[str] = Counter()
     controlled_dry_run_safety_gate_reason_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_source_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_missing_reason_counts: Counter[str] = Counter()
+    controlled_live_apply_reason_counts: Counter[str] = Counter()
+    controlled_live_apply_path_counts: Counter[str] = Counter()
+    controlled_live_apply_candidate_source_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
+    controlled_live_apply_attempts = 0
+    controlled_live_apply_applied = 0
+    controlled_live_apply_skipped = 0
+    controlled_live_apply_failed = 0
     controlled_dry_run_intended_commands = 0
     controlled_dry_run_skipped_commands = 0
     controlled_dry_run_applied_commands = 0
@@ -801,6 +823,15 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 target_team = pairs.get("targetTeam")
                 if target_team:
                     snapshot_target_team_counts[target_team] += 1
+                launcher_team = pairs.get("launcherTeam")
+                if (
+                    launcher_team
+                    and target_team
+                    and launcher_team not in {"unknown", "none"}
+                    and target_team not in {"unknown", "none"}
+                    and launcher_team == target_team
+                ):
+                    snapshot_same_team_target_count += 1
 
                 missing = pairs.get("missing", "unknown")
                 if missing and missing != "none":
@@ -838,6 +869,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         pairs.get("classification", "unknown")
                     ] += 1
                     controlled_dry_run_candidate_reason_counts[pairs.get("reason", "unknown")] += 1
+                    candidate_source = pairs.get("candidateSource")
+                    if candidate_source:
+                        controlled_dry_run_candidate_source_counts[candidate_source] += 1
                     controlled_dry_run_command_scope_source_counts[
                         pairs.get("commandScopeSource", "unknown")
                     ] += 1
@@ -863,6 +897,22 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     controlled_dry_run_result_safety_gate_blocked_commands += (
                         try_parse_int(pairs.get("safetyGateBlockedCommands")) or 0
                     )
+
+                if record_type in (
+                    APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
+                ) and pairs.get("experimentId"):
+                    controlled_live_apply_attempts += 1
+                    controlled_live_apply_reason_counts[pairs.get("reason", "unknown")] += 1
+                    controlled_live_apply_path_counts[pairs.get("commandPath", "unknown")] += 1
+                    candidate_source = pairs.get("candidateSource")
+                    if candidate_source:
+                        controlled_live_apply_candidate_source_counts[candidate_source] += 1
+                    if record_type in APPLIED_ALLOCATION_RECORD_TYPES:
+                        controlled_live_apply_applied += 1
+                    elif record_type in SKIPPED_ALLOCATION_RECORD_TYPES:
+                        controlled_live_apply_skipped += 1
+                    else:
+                        controlled_live_apply_failed += 1
 
                 status = pairs.get("status")
                 if status and record_type == "cycle":
@@ -1072,6 +1122,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     )
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
+    summary.snapshot_same_team_target_count = snapshot_same_team_target_count
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
@@ -1152,6 +1203,13 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         cycle_pd_capability_missing_reason_counts,
         cycle_pd_capability_limitation_counts,
     )
+    allocation_summary.same_team_missile_target_snapshots = snapshot_same_team_target_count
+    if snapshot_same_team_target_count:
+        same_team_pattern = f"same-team missile target snapshots: {snapshot_same_team_target_count}"
+        if allocation_summary.suspicious_patterns == ["none"]:
+            allocation_summary.suspicious_patterns = [same_team_pattern]
+        else:
+            allocation_summary.suspicious_patterns.append(same_team_pattern)
     allocation_summary.controlled_dry_run_experiments = allocation_record_type_counts.get("dryRunExperiment", 0)
     allocation_summary.controlled_dry_run_intents = allocation_record_type_counts.get("dryRunIntent", 0)
     allocation_summary.controlled_dry_run_command_candidates = allocation_record_type_counts.get(
@@ -1180,6 +1238,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_dry_run_candidate_reason_counts = dict(
         sorted(controlled_dry_run_candidate_reason_counts.items())
     )
+    allocation_summary.controlled_dry_run_candidate_source_counts = dict(
+        sorted(controlled_dry_run_candidate_source_counts.items())
+    )
     allocation_summary.controlled_dry_run_apply_gate_result_counts = dict(
         sorted(controlled_dry_run_apply_gate_result_counts.items())
     )
@@ -1198,6 +1259,15 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     )
     allocation_summary.controlled_dry_run_missing_reason_counts = dict(
         sorted(controlled_dry_run_missing_reason_counts.items())
+    )
+    allocation_summary.controlled_live_apply_attempts = controlled_live_apply_attempts
+    allocation_summary.controlled_live_apply_applied = controlled_live_apply_applied
+    allocation_summary.controlled_live_apply_skipped = controlled_live_apply_skipped
+    allocation_summary.controlled_live_apply_failed = controlled_live_apply_failed
+    allocation_summary.controlled_live_apply_reason_counts = dict(sorted(controlled_live_apply_reason_counts.items()))
+    allocation_summary.controlled_live_apply_path_counts = dict(sorted(controlled_live_apply_path_counts.items()))
+    allocation_summary.controlled_live_apply_candidate_source_counts = dict(
+        sorted(controlled_live_apply_candidate_source_counts.items())
     )
     summary.allocation_summary = allocation_summary
     if sequences:
@@ -1255,6 +1325,11 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
         reasons.append("LaunchLog sequence gaps found: " + ", ".join(summary.sequence_gaps[:8]))
     if summary.duplicate_sequences:
         reasons.append("Duplicate LaunchLog sequences found: " + ", ".join(map(str, summary.duplicate_sequences[:8])))
+    if summary.allocation_summary.same_team_missile_target_snapshots:
+        reasons.append(
+            "Same-team missile target snapshots found: "
+            + str(summary.allocation_summary.same_team_missile_target_snapshots)
+        )
 
     return ("FAIL" if reasons else "OK"), reasons
 
@@ -1333,6 +1408,11 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 "- controlled dry-run command reasons: "
                 + format_count_dict(summary.controlled_dry_run_candidate_reason_counts)
             )
+        if summary.controlled_dry_run_candidate_source_counts:
+            print(
+                "- controlled dry-run candidate sources: "
+                + format_count_dict(summary.controlled_dry_run_candidate_source_counts)
+            )
         if summary.controlled_dry_run_apply_gate_result_counts:
             print(
                 "- controlled dry-run apply-gate results: "
@@ -1363,6 +1443,26 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- controlled dry-run selected-scope reasons: "
                 + format_count_dict(summary.controlled_dry_run_missing_reason_counts)
+            )
+    if summary.controlled_live_apply_attempts:
+        print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")
+        print(f"- controlled live apply applied: {summary.controlled_live_apply_applied}")
+        print(f"- controlled live apply skipped: {summary.controlled_live_apply_skipped}")
+        print(f"- controlled live apply failed: {summary.controlled_live_apply_failed}")
+        if summary.controlled_live_apply_reason_counts:
+            print(
+                "- controlled live apply reasons: "
+                + format_count_dict(summary.controlled_live_apply_reason_counts)
+            )
+        if summary.controlled_live_apply_path_counts:
+            print(
+                "- controlled live apply paths: "
+                + format_count_dict(summary.controlled_live_apply_path_counts)
+            )
+        if summary.controlled_live_apply_candidate_source_counts:
+            print(
+                "- controlled live apply candidate sources: "
+                + format_count_dict(summary.controlled_live_apply_candidate_source_counts)
             )
     if summary.unknown_record_type_counts:
         print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")

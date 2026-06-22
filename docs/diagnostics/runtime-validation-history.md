@@ -486,3 +486,118 @@ Interpretation: #36 is validated as a diagnostics-only hard-stop proof. A
 real selected single-ship candidate reached the named apply gate and was blocked
 because command application was not explicitly allowed. No live command was
 applied. #37 remains the first behavior-changing slice.
+
+## Issue #37 first single-ship live controlled apply
+
+Issue #37 introduces the first behavior-changing controlled command path behind
+the #36 gate. The implementation keeps `AllowCommandApply` default-off and
+requires an explicitly armed controlled experiment plus exactly one selected
+command-panel ship before attempting any live command.
+
+The reviewed live path is the vanilla single-ship salvo target command:
+
+- `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState, CombatTargetableState)`
+- internally queues `SetCombatPrimaryTargetAction`
+- internally queues `SetWeaponModeAction(..., FireMode.Salvo)` for salvo-capable
+  weapons on that one ship
+
+Static fixture validation uses `tools/fixtures/first_live_apply.txt` to prove
+the parser recognizes one `gateResult="allowed"` row, one
+`recordType="appliedDecision"` row, one controlled live apply attempt, one
+applied command, zero skipped live attempts, zero failed live attempts, zero
+safety-gate blocks, and no unknown record types.
+
+Runtime smoke is still required before claiming a successful live game apply.
+The expected live smoke must show one explicit experiment trigger, exactly one
+selected player missile ship, at most one applied or failed command result, no
+scope violations, no AI or unselected-player application, no unknown parser
+record types, and no MissileWarfare warnings/errors.
+
+## 2026-06-22 Issue #37 follow-up: selected command launcher vs allocator launcher
+
+A later Lake Maracaibo combat log confirmed that the first controlled apply
+reached `SelectSalvoTargetCommand.OnCommandExecute`, but also exposed a command
+scope limitation in the first #37 implementation:
+
+- selected command ship: `Lake Maracaibo` id `276`
+- first controlled target: `Persephone` id `280`
+- first controlled apply: one `appliedDecision`, one applied command, zero
+  failed commands
+- Lake Maracaibo missile `TryFire` rows: 15 total, five missile slots, each
+  observed from pre-fire ammo `15` down to `13`
+- other friendly ships continued to emit 75 missile `TryFire` rows each
+- second controlled experiment: stayed pending across cycles 226-240 because
+  the selected ship was no longer the projectile-fire launcher
+- late rejection reason: `not enough ammo/gate budget shots to form a useful
+  package`, with per-module `ammoGateBudgetShots` values of `1` or `2`
+
+The important conclusion is that `ammoGateBudgetShots` is per observed
+projectile-fire module, while `SelectSalvoTargetCommand` is ship-level and uses
+the command-panel selected ship. The controlled apply path now keeps the
+selected ship runtime object separately from the allocator snapshot launcher.
+New candidate/apply rows log `launcherId` as the selected command ship and
+`allocatorLauncherId` as the ship that produced the allocator cycle. When the
+allocator only rejects a target because the observed module budget is too small,
+an explicit controlled trigger may still issue the selected-ship command with
+`candidateSource="selectedShipRejectedTarget"`, provided the selected ship still
+reports `CanPerformShipCommands()` and `AnyOffensiveMissileWeaponCanFire()`.
+
+## 2026-06-22 Issue #37 follow-up: enemy allocator and friendly target guard
+
+A later Sadowa combat log showed that the selected-command-launcher follow-up
+was too permissive. The controlled experiment accepted an allocator cycle from
+an enemy ship and attempted to command the selected friendly ship at a friendly
+target:
+
+- selected command ship: `Sadowa` id `276`, team `47`
+- allocator snapshot launcher: `Tempest` id `283`, team `50`
+- resolved target: `Vella Gulf` id `279`, team `47`
+- command result: `failedCommand`, `reason="commandInvocationFailed"`,
+  `exceptionType="NullReferenceException"`
+- subsequent controlled-ship missile snapshots targeted friendly
+  `Vella Gulf`, matching the observed circular/near-self missile behavior
+
+Interpretation: the vanilla command can mutate primary-target state before a
+later invocation failure. #37 now requires known selected launcher, allocator
+launcher, and target teams; the selected command ship team must match the
+allocator launcher team; and the target team must differ. Enemy allocator
+cycles classify as `allocatorLauncherOutsideSelectedTeam`, friendly targets
+classify as `hostileTargetRequired`, and the experiment waits for a later
+selected-team hostile candidate instead of applying. The parser now fails logs
+with same-team missile target snapshots so this condition is not reported as a
+clean smoke.
+
+Post-fix runtime smoke on the latest `Player.log` validated the intended guard
+and recovery path:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 1,790, no sequence gaps or duplicates
+- MissileWeapon.TryFire rows: 252
+- SnapshotLog entries: 252
+- AllocationLog entries: 518: 252 `cycle`, 216 `allocation`, 36 `rejection`,
+  three `dryRunExperiment`, three `dryRunIntent`, three
+  `dryRunCommandCandidate`, one `dryRunApplyGate`, one `appliedDecision`, and
+  three `dryRunResult` rows
+- controlled dry-run command candidates: three total, with two `wouldSkip` and
+  one `eligible`
+- skipped candidate reason: `allocatorLauncherOutsideSelectedTeam: 2`
+- selected command ship: `Cape St. George` id `276`, team `47`
+- skipped allocator launcher: enemy `Yayoi` id `285`, team `50`, targeting
+  friendly `Verdun` id `278`, team `47`
+- applied candidate: selected `Cape St. George` team `47` targeting hostile
+  `Taiho` id `280`, team `50`
+- apply gate: one `allowed` result with `AllowCommandApply=True`
+- live apply: one `appliedDecision` through
+  `SelectSalvoTargetCommand.OnCommandExecute`
+- applied commands: one
+- failed commands: zero
+- scope violations: zero
+- same-team missile target snapshots: zero
+- parser suspicious patterns: none
+
+Interpretation: the post-fix log matches the intended #37 containment behavior.
+Enemy allocator / friendly-target candidates wait without applying, and the
+first selected-team hostile candidate can apply exactly one single-ship vanilla
+salvo-target command. This is still selected single-ship evidence only; it does
+not validate selected-group or fleet-wide allocation.
