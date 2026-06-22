@@ -747,3 +747,17 @@ The fitting report now also records best-effort target destruction hints from
 vanilla `CombatManager ActiveShip(DestroyShip)` lines when they occur after a
 controlled command for the same target id. This is deliberately labeled as
 post-command outcome evidence, not unique projectile/hit/kill attribution.
+
+## Issue #39 multi-target direct-correlation smoke follow-up
+
+A later controlled smoke produced direct launch/spend evidence across multiple
+controlled targets. Applied commands produced direct `MissileWeapon.TryFire`
+correlation rows, while repeated `perShipCommandCapReached` skipped rows did not
+receive direct launch attribution. Vanilla `DestroyShip` text later appeared for
+Medusa and Yudachi after directly correlated launches to those targets.
+
+The fitting report now attaches target destruction hints only to command rows
+with direct launch evidence, preventing skipped same-target rows from inheriting
+a misleading outcome hint. The evidence remains conservative: target destruction
+after directly correlated launches is useful outcome-quality evidence, but still
+not exact projectile, hit, or kill attribution.

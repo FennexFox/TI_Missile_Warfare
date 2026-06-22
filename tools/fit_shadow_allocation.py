@@ -458,14 +458,17 @@ def controlled_command_rows(
             default=None,
         )
 
-        outcome = next(
-            (
-                candidate
-                for candidate in target_outcomes
-                if candidate.line > line and candidate.target_id == target_id
-            ),
-            None,
-        )
+        outcome = None
+        if direct_launches:
+            last_direct_launch_line = max(launch.line for launch in direct_launches)
+            outcome = next(
+                (
+                    candidate
+                    for candidate in target_outcomes
+                    if candidate.line > last_direct_launch_line and candidate.target_id == target_id
+                ),
+                None,
+            )
 
         limitations: list[str] = []
         if direct_spent_shots is None and direct_observed_spent_shots is None:
@@ -483,7 +486,7 @@ def controlled_command_rows(
 
         if outcome is not None:
             limitations.append(
-                "target outcome is post-command vanilla DestroyShip text; it is outcome evidence, not unique hit attribution"
+                "target outcome is post-direct-launch vanilla DestroyShip text; it is outcome evidence, not unique hit attribution"
             )
 
         rows.append(

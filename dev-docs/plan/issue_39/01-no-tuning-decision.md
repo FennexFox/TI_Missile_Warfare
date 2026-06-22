@@ -169,3 +169,24 @@ projectile, or kill attribution. Exact damage packet, hit, or destruction
 attribution would require additional reverse engineering of Terra Invicta combat
 internals and should remain out of scope for this #39 slice unless a stable hook
 is identified later.
+
+## Additional Multi-target Smoke Observation
+
+A later controlled smoke strengthened the direct-correlation result:
+
+- controlled command result rows included three applied commands and many
+  `perShipCommandCapReached` skipped rows;
+- direct `MissileWeapon.TryFire` rows were observed for the applied commands
+  only;
+- one Medusa command spent six directly observed shots and Medusa later appeared
+  in vanilla `DestroyShip` text;
+- two Yudachi commands spent seven directly observed shots each and Yudachi later
+  appeared in vanilla `DestroyShip` text;
+- skipped rows for Yudachi had no direct launch attribution, even though the
+  target was later destroyed.
+
+The report logic now only attaches target-outcome hints to command rows that have
+directly correlated launch evidence, so skipped same-target rows do not receive a
+misleading post-command destruction hint. The outcome remains conservative:
+post-direct-launch target destruction is useful quality evidence, but not unique
+projectile or kill attribution.
