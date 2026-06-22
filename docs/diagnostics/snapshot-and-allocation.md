@@ -45,10 +45,18 @@ Shadow allocation diagnostics require both settings:
 - `EnableDiagnostics`
 - `EnableShadowAllocationDiagnostics`
 
+Controlled dry-run diagnostics require all three settings plus an explicit UMM
+panel trigger:
+
+- `EnableDiagnostics`
+- `EnableShadowAllocationDiagnostics`
+- `EnableControlledDryRunDiagnostics`
+
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
-base diagnostics toggle. Shadow allocation is diagnostics-only: it never applies
-assignments, never issues commands, never changes fire mode, and never
-suppresses or delays original game methods.
+base diagnostics toggle. Controlled dry-run diagnostics also default to
+`false`. Shadow allocation and controlled dry-run diagnostics are
+diagnostics-only: they never apply assignments, never issue commands, never
+change fire mode, and never suppress or delay original game methods.
 
 ## Snapshot mapping
 
@@ -138,6 +146,38 @@ available, assigned shots, PD score, target value, saturation and kill package
 sizes, launch-window score, score per shot, and reason fields. No-op records
 use `noOpReason` when the shadow cycle cannot or should not recommend an
 allocation, such as missing required inputs or zero ammo/gate budget.
+
+When controlled dry-run diagnostics are enabled and explicitly triggered from
+the UMM panel, the next shadow allocation cycle is tagged with a local
+`experimentId` and emits additional diagnostics-only rows:
+
+```text
+[AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
+[AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
+[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" result="dryRunOnly" resultReason="dryRunOnly"
+```
+
+The selected-scope probe is intentionally narrow. It looks for the verified
+tactical command-panel single selected ship and group selected ship members
+(`selectedFriendlyShipState`, `selectedFriendlyShip`, and
+`groupSelectedFriendlyShips`). If those members are unavailable or empty, the
+dry-run experiment row reports `selectedShipCount="0"` with an explicit
+`selectedScopeMissingReason` instead of falling back to the broad left-hand
+player-side combatant list.
+
+`dryRunIntent` rows describe allocator-motivated command candidates only. They
+do not call `SelectSalvoTargetCommand`, `FleetSelectSalvoTargetCommand`,
+`SetCombatPrimaryTargetAction`, `SetWeaponModeAction`, or equivalent live
+command APIs. `dryRunResult` rows must report `appliedCommands="0"` for Issue
+#34.
+
+The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
+UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
+applied or failed commands. In that smoke, selected command-panel scope was not
+visible (`selectedShipCount="0"`,
+`selectedScopeMissingReason="selectedScopeUnavailable"`). That is a safe #34
+result because the probe failed closed; #35 should use it as input for a
+broader auditable player-controlled command-scope resolver.
 
 ## Ammo/gate budget fields
 
@@ -231,10 +271,12 @@ safely formed.
 battle-level allocation report for before/after tuning comparisons.
 
 The parser separates current shadow cycles, allocations, rejections, and no-op
-records from future controlled-apply records. Future record types such as
-applied decisions, skipped decisions, and failed command applications are
-bucketed when they appear, but current logs are expected to show zero
-controlled-apply counts.
+records from controlled dry-run experiment rows and future controlled-apply
+records. Controlled dry-run rows are summarized by experiment count, experiment
+id, intent count, intended/skipped/applied/failed command counts, selected ship
+counts, and selected-scope missing reasons. Future record types such as applied
+decisions, skipped decisions, and failed command applications are bucketed when
+they appear, but current logs are expected to show zero controlled-apply counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather

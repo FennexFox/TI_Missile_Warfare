@@ -1,4 +1,5 @@
 using HarmonyLib;
+using MissileFireControl.Mod.Diagnostics;
 using MissileFireControl.Mod.Patches;
 using UnityEngine;
 using UnityModManagerNet;
@@ -51,6 +52,9 @@ namespace MissileFireControl.Mod
             Settings.EnableShadowAllocationDiagnostics = GUILayout.Toggle(
                 Settings.EnableShadowAllocationDiagnostics,
                 "Enable shadow allocation diagnostics (log-only)");
+            Settings.EnableControlledDryRunDiagnostics = GUILayout.Toggle(
+                Settings.EnableControlledDryRunDiagnostics,
+                "Enable controlled dry-run diagnostics (log-only)");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 
@@ -66,6 +70,11 @@ namespace MissileFireControl.Mod
             if (GUILayout.Button("Write diagnostic ping"))
             {
                 Log.Info("Diagnostic ping from UMM panel.");
+            }
+
+            if (GUILayout.Button("Trigger controlled dry-run experiment"))
+            {
+                Log.Info(ShadowAllocationDiagnostics.RequestControlledDryRun());
             }
         }
 
