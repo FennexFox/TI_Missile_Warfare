@@ -5,9 +5,8 @@ This roadmap records durable issue-sized work. Temporary per-PR plans belong und
 ## Current milestone state
 
 The project has enough diagnostics to observe missile launches and shadow
-allocation inputs, Issue #21 verifies the selected-player command scope for
-later command work, and Issue #34 adds a diagnostics-only controlled dry-run
-experiment envelope. It is still not ready for live controlled command
+allocation inputs, and Issue #34 validates a diagnostics-only controlled
+dry-run experiment envelope. It is still not ready for live controlled command
 application.
 
 Current blocker:
@@ -17,16 +16,18 @@ Current blocker:
   game-equivalent per-weapon fire budget. The mod names this explicit value
   `ammoGateBudgetShots`; no distinct loaded/chambered source was found. See
   [`readiness-semantics.md`](../research/readiness-semantics.md).
-- Issue #21 resolved selected-player command scope for the next dry-run phase:
-  the safe scope is the tactical command panel's single selected ship or
-  group-selected ship list. It is not the broader left-hand player-side
-  combatant list. See
+- Issue #21 resolved one safe selected-player scope source for command design:
+  the tactical command panel's single selected ship or group-selected ship list.
+  It is not the broader left-hand player-side combatant list. See
   [`selected-command-scope.md`](../research/selected-command-scope.md).
+- Issue #34 runtime smoke validated the dry-run envelope but did not resolve
+  selected command-panel scope in that runtime context. The probe failed closed
+  with explicit `selectedScopeUnavailable` evidence and zero applied commands.
 
 Current missing or provisional inputs:
 
-- command resolvability and selected-scope safety reporting for the dry-run
-  envelope;
+- command resolvability and player-controlled command-scope safety reporting
+  for the dry-run envelope;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -151,8 +152,8 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending command resolvability, selected-scope safety reporting,
-and live command-application safety work.
+Status: blocked pending command resolvability, player-controlled command-scope
+safety reporting, and live command-application safety work.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -160,8 +161,9 @@ the selected-player command path for later dry-run logging, but controlled
 command application still must let vanilla combat enforce the final legal launch
 result.
 
-Future #6 design should continue from the Issue #34 dry-run envelope: log
-selected player ship identity, visible weapon/module identity,
+Future #6 design should continue from the Issue #34 dry-run envelope and the
+#35 scope resolver: log the audited player-controlled command scope, selected or
+otherwise verified player missile ship identity, visible weapon/module identity,
 `ammoGateBudgetShots` and its evidence source, the allocator recommendation
 that motivated the command, command intent and target, skipped/failure reason,
 and observed ammo delta or launch evidence when available.
@@ -169,14 +171,17 @@ and observed ammo delta or launch evidence when available.
 Additional gate: vanilla salvo target command granularity is ship-level and all
 salvo-capable weapons on that ship, not one visible missile module. The Issue
 #34 dry-run logs make that broader granularity explicit, but later command
-resolvability and safety reports must still prove whether a concrete live
-command can be safely attempted.
+resolvability and safety reports must still prove whether a concrete player
+controlled scope and command can be safely attempted.
 
 Acceptance criteria once unblocked:
 
-- Selection scope is based on the verified single selected ship or
-  group-selected ship command-panel path.
-- Existing manual control remains possible after the selected-ship command path is verified.
+- Command scope is an explicit, auditable player-controlled scope. The
+  command-panel selected ship/group path is one valid source when visible;
+  current-combat active-player missile combatants may be another only after
+  #35 verifies them. Enemy, AI-controlled, allied non-player, and accidental
+  broad-side ships must not become eligible.
+- Existing manual control remains possible after the command-scope path is verified.
 - Recommendation-only mode prevents command changes.
 - Failures are logged without breaking combat.
 
@@ -195,8 +200,8 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Implement #35 command resolvability and selected-scope safety reporting on
-   top of the #34 dry-run envelope.
+1. Implement #35 command resolvability and player-controlled command-scope
+   safety reporting on top of the #34 dry-run envelope.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited

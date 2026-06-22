@@ -49,7 +49,14 @@
 
 ## Known Risks And Assumptions
 
-- Selected-scope reflection may not resolve in all tactical contexts; logging explicit unknowns is acceptable for #34.
+- Runtime smoke validated the dry-run envelope: three explicit UMM triggers
+  produced three grouped dry-run experiments, intents, and results with
+  `appliedCommands="0"`.
+- Selected-scope reflection did not resolve in that runtime context
+  (`selectedShipCount="0"`, `selectedScopeMissingReason="selectedScopeUnavailable"`).
+  This is non-fatal for #34 because the probe failed closed with explicit
+  evidence, but it is a #35 scope-resolver design input.
 - The UMM button is a minimal diagnostic trigger, not polished UX.
 - Dry-run rows must not be treated as applied/skipped/failed live command records.
-- Fixture validation proves parser grouping only; manual in-game smoke is still needed to prove selected-scope visibility in the real UI.
+- Fixture validation proves parser grouping; runtime smoke proves the
+  diagnostics-only envelope, not selected command-panel visibility.

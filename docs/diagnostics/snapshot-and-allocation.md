@@ -171,6 +171,14 @@ do not call `SelectSalvoTargetCommand`, `FleetSelectSalvoTargetCommand`,
 command APIs. `dryRunResult` rows must report `appliedCommands="0"` for Issue
 #34.
 
+The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
+UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
+applied or failed commands. In that smoke, selected command-panel scope was not
+visible (`selectedShipCount="0"`,
+`selectedScopeMissingReason="selectedScopeUnavailable"`). That is a safe #34
+result because the probe failed closed; #35 should use it as input for a
+broader auditable player-controlled command-scope resolver.
+
 ## Ammo/gate budget fields
 
 Known limitations are explicit in `missingInputs` and the ammo/gate budget

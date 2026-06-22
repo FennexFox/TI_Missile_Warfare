@@ -45,7 +45,8 @@
 
 ## Manual smoke tests
 
-- Runtime smoke not available in the repository alone. User should verify in game with the steps from Phase 02.
+- Runtime smoke was run in game on 2026-06-22 with the controlled dry-run
+  setting enabled and the UMM trigger pressed three times during combat.
 
 ## Rollback risks
 
@@ -59,11 +60,31 @@
 
 - Durable docs describe #34 as diagnostics-only and keep live command
   application blocked.
-- Runtime smoke was not run in this repository-only pass; the fixture proves
-  parser grouping, not in-game selected-scope visibility.
+- Runtime smoke validated the #34 envelope: three explicit triggers paired to
+  later shadow allocation cycles and emitted `dryRunExperiment`,
+  `dryRunIntent`, and `dryRunResult` rows.
+- Selected command-panel scope was unavailable in the runtime smoke. This does
+  not invalidate #34; the probe failed closed and logged
+  `selectedScopeMissingReason="selectedScopeUnavailable"`.
+- Carry this into #35 as a scope-resolver design input: command candidates need
+  an explicit, auditable player-controlled command scope before they can become
+  eligible, but that scope does not have to be limited to command-panel
+  selection if another current-combat active-player missile scope is safely
+  verified.
 
 ## Outcomes / Retrospective
 
 - Updated diagnostics and roadmap docs.
 - Ran parser fixture validation, fitting fixture validation, layout check,
   ruff, compileall, and `dotnet build`.
+- Runtime smoke parser verdict: OK, no logger issues.
+- Runtime smoke dry-run counts: `dryRunExperiment=3`, `dryRunIntent=3`,
+  `dryRunResult=3`, intended commands `3`, skipped commands `0`, applied
+  commands `0`, failed commands `0`.
+- Runtime smoke experiment ids:
+  `dryrun-20260622T013335735Z-1`,
+  `dryrun-20260622T013352410Z-2`,
+  `dryrun-20260622T013357121Z-3`.
+- Runtime smoke selected-scope result: `selectedShipCount="0"` and
+  `selectedScopeMissingReason="selectedScopeUnavailable"` for all three
+  experiments.
