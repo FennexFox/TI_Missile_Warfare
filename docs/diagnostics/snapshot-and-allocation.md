@@ -152,8 +152,9 @@ the UMM panel, the next shadow allocation cycle is tagged with a local
 `experimentId` and emits additional diagnostics-only rows:
 
 ```text
-[AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
+[AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
 [AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
+[AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
 [AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" result="dryRunOnly" resultReason="dryRunOnly"
 ```
 
@@ -165,11 +166,15 @@ dry-run experiment row reports `selectedShipCount="0"` with an explicit
 `selectedScopeMissingReason` instead of falling back to the broad left-hand
 player-side combatant list.
 
-`dryRunIntent` rows describe allocator-motivated command candidates only. They
-do not call `SelectSalvoTargetCommand`, `FleetSelectSalvoTargetCommand`,
-`SetCombatPrimaryTargetAction`, `SetWeaponModeAction`, or equivalent live
-command APIs. `dryRunResult` rows must report `appliedCommands="0"` for Issue
-#34.
+`dryRunIntent` rows describe allocator-motivated command intent.
+`dryRunCommandCandidate` rows classify the diagnostics-only command candidate as
+`eligible`, `wouldSkip`, or `wouldFail` under the resolved player-controlled
+command scope. They include command scope source, missing reason, scope
+violation flag, launcher, weapon/module, target, assigned shot, and ammo/gate
+budget evidence. The rows do not call `SelectSalvoTargetCommand`,
+`FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`,
+`SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
+report `appliedCommands="0"` for Issues #34 and #35.
 
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
@@ -273,10 +278,12 @@ battle-level allocation report for before/after tuning comparisons.
 The parser separates current shadow cycles, allocations, rejections, and no-op
 records from controlled dry-run experiment rows and future controlled-apply
 records. Controlled dry-run rows are summarized by experiment count, experiment
-id, intent count, intended/skipped/applied/failed command counts, selected ship
-counts, and selected-scope missing reasons. Future record types such as applied
-decisions, skipped decisions, and failed command applications are bucketed when
-they appear, but current logs are expected to show zero controlled-apply counts.
+id, intent count, command-candidate count, intended/skipped/applied/failed
+command counts, candidate classification/reason counts, command-scope source
+and missing-reason counts, scope-violation count, selected ship counts, and
+selected-scope missing reasons. Future record types such as applied decisions,
+skipped decisions, and failed command applications are bucketed when they
+appear, but current logs are expected to show zero controlled-apply counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather

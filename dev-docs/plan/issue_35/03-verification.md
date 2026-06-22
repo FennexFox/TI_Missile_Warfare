@@ -53,12 +53,16 @@
 
 ## Progress
 
-- Not started.
+- In progress; local validation completed, runtime smoke pending.
 
 ## Decision log
 
-- No decisions recorded yet.
+- #35 remains diagnostics-only. Runtime smoke should verify parser output and
+  zero applied commands before any later live command-application work.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Local fixture validation passes for eligible and skip-closed candidates.
+- `dotnet build TI_Missile_Fire_Control.sln` passes with zero warnings and zero
+  errors.
+- Runtime in-game smoke has not been run in this repository pass.

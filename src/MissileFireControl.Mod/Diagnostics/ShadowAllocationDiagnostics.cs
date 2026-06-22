@@ -110,6 +110,9 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             int cycleId = Interlocked.Increment(ref _cycleSequence);
             ControlledDryRunRequest dryRun = ConsumePendingControlledDryRun();
+            SelectedScopeEvidence selectedScope = dryRun == null ? null : CaptureSelectedScopeEvidence();
+            CommandScopeEvidence commandScope = dryRun == null ? null : ResolveCommandScope(selectedScope, snapshot);
+            List<CommandCandidateDecision> commandCandidates = new List<CommandCandidateDecision>();
             List<string> missingInputs = MissingInputs(snapshot);
             bool canAllocate = snapshot != null
                 && HasConcreteIdentity(snapshot.Launcher, "launcher")
@@ -126,27 +129,32 @@ namespace MissileFireControl.Mod.Diagnostics
             WriteCycleRecord(cycleId, snapshot, result, missingInputs, canAllocate);
             if (dryRun != null)
             {
-                WriteDryRunExperimentRecord(dryRun, cycleId, snapshot, missingInputs, canAllocate);
+                WriteDryRunExperimentRecord(dryRun, cycleId, snapshot, missingInputs, canAllocate, selectedScope, commandScope);
             }
 
             if (!canAllocate)
             {
                 WriteNoOp(cycleId, snapshot, "missing required allocation inputs");
-                WriteDryRunResult(dryRun, cycleId, 0, 1, "missing required allocation inputs");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, "missing required allocation inputs");
                 return;
             }
 
             if (result == null)
             {
                 WriteNoOp(cycleId, snapshot, "allocation result unavailable");
-                WriteDryRunResult(dryRun, cycleId, 0, 1, "allocation result unavailable");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, "allocation result unavailable");
                 return;
             }
 
+            int allocationIndex = 0;
             foreach (TargetAllocation allocation in result.Allocations)
             {
+                allocationIndex++;
                 WriteTargetRecord("allocation", cycleId, snapshot, allocation, "reason", allocation.Reason);
                 WriteDryRunIntent(dryRun, cycleId, snapshot, allocation);
+                CommandCandidateDecision candidate = BuildCommandCandidate(cycleId, allocationIndex, snapshot, allocation, commandScope);
+                commandCandidates.Add(candidate);
+                WriteDryRunCommandCandidate(dryRun, candidate);
             }
 
             foreach (TargetAllocation rejection in result.Rejections)
@@ -158,12 +166,23 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 string noOpReason = NoOpReason(snapshot);
                 WriteNoOp(cycleId, snapshot, noOpReason);
-                WriteDryRunResult(dryRun, cycleId, 0, 1, noOpReason);
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, noOpReason);
                 return;
             }
 
-            int skippedCommands = result.Allocations.Count == 0 ? 1 : 0;
-            WriteDryRunResult(dryRun, cycleId, result.Allocations.Count, skippedCommands, "dryRunOnly");
+            if (commandCandidates.Count == 0)
+            {
+                WriteDryRunResult(dryRun, cycleId, 0, result.Allocations.Count == 0 ? 1 : 0, 0, "dryRunOnly");
+                return;
+            }
+
+            WriteDryRunResult(
+                dryRun,
+                cycleId,
+                commandCandidates.Count(candidate => candidate.Classification == "eligible"),
+                commandCandidates.Count(candidate => candidate.Classification == "wouldSkip"),
+                commandCandidates.Count(candidate => candidate.Classification == "wouldFail"),
+                "dryRunOnly");
         }
 
         private static ControlledDryRunRequest ConsumePendingControlledDryRun()
@@ -192,14 +211,17 @@ namespace MissileFireControl.Mod.Diagnostics
             int cycleId,
             ExtractedCombatSnapshot snapshot,
             List<string> missingInputs,
-            bool canAllocate)
+            bool canAllocate,
+            SelectedScopeEvidence selectedScope,
+            CommandScopeEvidence commandScope)
         {
             if (request == null)
             {
                 return;
             }
 
-            SelectedScopeEvidence selectedScope = CaptureSelectedScopeEvidence();
+            selectedScope = selectedScope ?? new SelectedScopeEvidence();
+            commandScope = commandScope ?? new CommandScopeEvidence();
             StringBuilder builder = new StringBuilder(512);
             AppendPair(builder, "recordType", "dryRunExperiment");
             AppendPair(builder, "experimentId", request.ExperimentId);
@@ -214,9 +236,47 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "selectedShipIds", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.Ids.ToArray()));
             AppendPair(builder, "selectedShipNames", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.Names.ToArray()));
             AppendPair(builder, "selectedShipTeams", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.TeamIds.ToArray()));
+            AppendPair(builder, "commandScopeSource", commandScope.Source);
+            AppendPair(builder, "commandScopeMissingReason", commandScope.MissingReason);
+            AppendPair(builder, "commandScopeShipCount", commandScope.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "commandScopeShipIds", commandScope.Count == 0 ? "none" : string.Join(",", commandScope.Ids.ToArray()));
             AppendPair(builder, "targetId", snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.Id);
             AppendPair(builder, "target", snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.DisplayName);
             AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteDryRunCommandCandidate(
+            ControlledDryRunRequest request,
+            CommandCandidateDecision candidate)
+        {
+            if (request == null || candidate == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", "dryRunCommandCandidate");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "classification", candidate.Classification);
+            AppendPair(builder, "reason", candidate.Reason);
+            AppendPair(builder, "scopeViolation", candidate.ScopeViolation ? "True" : "False");
+            AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
+            AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
+            AppendPair(builder, "commandScopeSource", candidate.CommandScopeSource);
+            AppendPair(builder, "commandScopeMissingReason", candidate.CommandScopeMissingReason);
+            AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "launcherId", candidate.LauncherId);
+            AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "weaponId", candidate.WeaponId);
+            AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
+            AppendPair(builder, "targetId", candidate.TargetId);
+            AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
             AppendPair(builder, "appliedCommands", "0");
             Log.Info("[AllocationLog] " + builder);
         }
@@ -254,6 +314,7 @@ namespace MissileFireControl.Mod.Diagnostics
             int cycleId,
             int intendedCommands,
             int skippedCommands,
+            int failedCommands,
             string resultReason)
         {
             if (request == null)
@@ -268,10 +329,259 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "intendedCommands", intendedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "skippedCommands", skippedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "appliedCommands", "0");
-            AppendPair(builder, "failedCommands", "0");
+            AppendPair(builder, "failedCommands", failedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "result", "dryRunOnly");
             AppendPair(builder, "resultReason", resultReason ?? "dryRunOnly");
             Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static CommandScopeEvidence ResolveCommandScope(SelectedScopeEvidence selectedScope, ExtractedCombatSnapshot snapshot)
+        {
+            if (selectedScope != null && selectedScope.Count > 0)
+            {
+                return CommandScopeEvidence.FromSelectedScope(selectedScope);
+            }
+
+            CommandScopeEvidence launcherScope = TryResolveActivePlayerLauncherScope(snapshot);
+            if (launcherScope.Count > 0 || launcherScope.MissingReason != "playerControlledScopeUnavailable")
+            {
+                return launcherScope;
+            }
+
+            return new CommandScopeEvidence
+            {
+                Source = "none",
+                MissingReason = selectedScope == null ? "selectedScopeUnavailable" : selectedScope.MissingReason
+            };
+        }
+
+        private static CommandScopeEvidence TryResolveActivePlayerLauncherScope(ExtractedCombatSnapshot snapshot)
+        {
+            CommandScopeEvidence evidence = new CommandScopeEvidence
+            {
+                Source = "activePlayerLauncher",
+                MissingReason = "playerControlledScopeUnavailable"
+            };
+
+            if (snapshot == null || !HasConcreteIdentity(snapshot.Launcher, "launcher"))
+            {
+                evidence.MissingReason = "missingLauncherIdentity";
+                return evidence;
+            }
+
+            object launcher = snapshot.LauncherRuntimeObject;
+            if (launcher == null)
+            {
+                evidence.MissingReason = "launcherRuntimeObjectUnavailable";
+                return evidence;
+            }
+
+            object activePlayer = ActivePlayer();
+            if (activePlayer == null)
+            {
+                evidence.MissingReason = "activePlayerUnavailable";
+                return evidence;
+            }
+
+            object activePlayerFaction = ReadMember(activePlayer, "faction")
+                ?? ReadMember(activePlayer, "ref_faction")
+                ?? activePlayer;
+
+            object launcherFaction = ReadMember(launcher, "faction")
+                ?? ReadMember(launcher, "ref_faction")
+                ?? ReadMember(ReadMember(launcher, "fleet"), "faction");
+            if (launcherFaction == null)
+            {
+                evidence.MissingReason = "launcherFactionUnavailable";
+                return evidence;
+            }
+
+            if (!SameIdentity(launcherFaction, activePlayerFaction, "faction"))
+            {
+                evidence.MissingReason = "nonPlayerOrAIControlled";
+                return evidence;
+            }
+
+            bool? combatAiControl = TryReadBool(launcher, "combatAIControl", "CombatAIControl")
+                ?? TryReadBool(ReadMember(launcher, "ref_shipController"), "IsUnderAIControl", "isUnderAIControl")
+                ?? TryReadBool(ReadMember(launcher, "fleet"), "IsUnderAIControl", "isUnderAIControl");
+            if (!combatAiControl.HasValue)
+            {
+                evidence.MissingReason = "commandAuthorityUnavailable";
+                return evidence;
+            }
+
+            if (combatAiControl.Value)
+            {
+                evidence.MissingReason = "nonPlayerOrAIControlled";
+                return evidence;
+            }
+
+            bool? canPerformCommands = TryReadBool(launcher, "CanPerformShipCommands");
+            bool? canFireMissiles = TryReadBool(launcher, "AnyOffensiveMissileWeaponCanFire");
+
+            evidence.MissingReason = "none";
+            evidence.Ids.Add(snapshot.Launcher.Id);
+            evidence.Names.Add(snapshot.Launcher.DisplayName);
+            evidence.TeamIds.Add(snapshot.Launcher.TeamId);
+            evidence.CommandAuthorityKnown = canPerformCommands.HasValue;
+            evidence.CanPerformCommands = canPerformCommands.GetValueOrDefault();
+            evidence.MissileCommandKnown = canFireMissiles.HasValue;
+            evidence.CanFireMissiles = canFireMissiles.GetValueOrDefault();
+            return evidence;
+        }
+
+        private static CommandCandidateDecision BuildCommandCandidate(
+            int cycleId,
+            int allocationIndex,
+            ExtractedCombatSnapshot snapshot,
+            TargetAllocation allocation,
+            CommandScopeEvidence commandScope)
+        {
+            CommandCandidateDecision candidate = new CommandCandidateDecision
+            {
+                CycleId = cycleId,
+                CandidateId = "cycle-" + cycleId.ToString(CultureInfo.InvariantCulture)
+                    + "-allocation-" + allocationIndex.ToString(CultureInfo.InvariantCulture),
+                Classification = "eligible",
+                Reason = "none",
+                CommandScopeSource = commandScope == null ? "none" : commandScope.Source,
+                CommandScopeMissingReason = commandScope == null ? "playerControlledScopeUnavailable" : commandScope.MissingReason,
+                CommandScopeShipCount = commandScope == null ? 0 : commandScope.Count,
+                LauncherId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id,
+                LauncherName = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.DisplayName,
+                WeaponId = snapshot == null || snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
+                MissileProfileId = snapshot == null || snapshot.Missile == null ? "unknown" : snapshot.Missile.Id,
+                TargetId = allocation == null ? "unknown" : allocation.TargetId,
+                TargetName = allocation == null ? "unknown" : allocation.TargetName,
+                AssignedShots = allocation == null ? 0 : allocation.AssignedShots,
+                AmmoGateBudgetShots = AmmoGateBudgetShots(snapshot)
+            };
+
+            if (snapshot == null || !HasConcreteIdentity(snapshot.Launcher, "launcher"))
+            {
+                return candidate.Fail("wouldFail", "missingLauncherIdentity");
+            }
+
+            if (commandScope == null || commandScope.Count == 0)
+            {
+                return candidate.Fail("wouldSkip", ScopeUnavailableReason(commandScope));
+            }
+
+            if (!commandScope.ContainsShip(snapshot.Launcher.Id))
+            {
+                candidate.ScopeViolation = true;
+                return candidate.Fail("wouldSkip", "outsidePlayerControlledScope");
+            }
+
+            if (!HasConcreteToken(candidate.WeaponId))
+            {
+                return candidate.Fail("wouldFail", "missingWeaponIdentity");
+            }
+
+            if (!HasConcreteToken(candidate.TargetId))
+            {
+                return candidate.Fail("wouldFail", "missingTargetIdentity");
+            }
+
+            if (candidate.AssignedShots <= 0 || candidate.AmmoGateBudgetShots < candidate.AssignedShots)
+            {
+                return candidate.Fail("wouldFail", "insufficientAmmo");
+            }
+
+            if (commandScope.CommandAuthorityKnown && !commandScope.CanPerformCommands)
+            {
+                return candidate.Fail("wouldFail", "ambiguousCommandPath");
+            }
+
+            if (!commandScope.CommandAuthorityKnown || !commandScope.MissileCommandKnown)
+            {
+                return candidate.Fail("wouldFail", "ambiguousCommandPath");
+            }
+
+            if (!commandScope.CanFireMissiles)
+            {
+                return candidate.Fail("wouldFail", "insufficientAmmo");
+            }
+
+            return candidate;
+        }
+
+        private static string ScopeUnavailableReason(CommandScopeEvidence commandScope)
+        {
+            if (commandScope == null || string.IsNullOrWhiteSpace(commandScope.MissingReason))
+            {
+                return "unsafeScope";
+            }
+
+            return commandScope.MissingReason == "nonPlayerOrAIControlled"
+                ? "nonPlayerOrAIControlled"
+                : "unsafeScope";
+        }
+
+        private static object ActivePlayer()
+        {
+            return ReadStaticMember("GameControl", "activePlayer")
+                ?? ReadStaticMember("GameControl", "humanPlayer")
+                ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "activePlayer")
+                ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "humanPlayer");
+        }
+
+        private static bool? TryReadBool(object instance, params string[] memberNames)
+        {
+            object value = GameObjectReader.ReadFirstMember(instance, memberNames);
+            if (value is bool boolValue)
+            {
+                return boolValue;
+            }
+
+            if (!(value is IConvertible))
+            {
+                return null;
+            }
+
+            string text = Convert.ToString(value, CultureInfo.InvariantCulture);
+            bool parsed;
+            if (bool.TryParse(text, out parsed))
+            {
+                return parsed;
+            }
+
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture) != 0.0;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool SameIdentity(object left, object right, string fallbackPrefix)
+        {
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(left, right) || left.Equals(right))
+            {
+                return true;
+            }
+
+            string leftId = GameObjectReader.StableId(left, fallbackPrefix);
+            string rightId = GameObjectReader.StableId(right, fallbackPrefix);
+            return HasConcreteToken(leftId) && string.Equals(leftId, rightId, StringComparison.Ordinal);
+        }
+
+        private static bool HasConcreteToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return !value.StartsWith("unknown", StringComparison.Ordinal);
         }
 
         private static SelectedScopeEvidence CaptureSelectedScopeEvidence()
@@ -882,6 +1192,95 @@ namespace MissileFireControl.Mod.Diagnostics
             public HashSet<string> SeenIds { get; } = new HashSet<string>();
 
             public int Count => Ids.Count;
+        }
+
+        private sealed class CommandScopeEvidence
+        {
+            public string Source { get; set; } = "none";
+
+            public string MissingReason { get; set; } = "playerControlledScopeUnavailable";
+
+            public List<string> Ids { get; } = new List<string>();
+
+            public List<string> Names { get; } = new List<string>();
+
+            public List<string> TeamIds { get; } = new List<string>();
+
+            public bool CommandAuthorityKnown { get; set; }
+
+            public bool CanPerformCommands { get; set; }
+
+            public bool MissileCommandKnown { get; set; }
+
+            public bool CanFireMissiles { get; set; }
+
+            public int Count => Ids.Count;
+
+            public bool ContainsShip(string shipId)
+            {
+                return HasConcreteToken(shipId) && Ids.Contains(shipId);
+            }
+
+            public static CommandScopeEvidence FromSelectedScope(SelectedScopeEvidence selectedScope)
+            {
+                CommandScopeEvidence evidence = new CommandScopeEvidence
+                {
+                    Source = string.IsNullOrWhiteSpace(selectedScope.Source)
+                        ? "selectedCommandPanel"
+                        : selectedScope.Source,
+                    MissingReason = "none",
+                    CommandAuthorityKnown = true,
+                    CanPerformCommands = true,
+                    MissileCommandKnown = true,
+                    CanFireMissiles = true
+                };
+                evidence.Ids.AddRange(selectedScope.Ids);
+                evidence.Names.AddRange(selectedScope.Names);
+                evidence.TeamIds.AddRange(selectedScope.TeamIds);
+                return evidence;
+            }
+        }
+
+        private sealed class CommandCandidateDecision
+        {
+            public int CycleId { get; set; }
+
+            public string CandidateId { get; set; } = "unknown";
+
+            public string Classification { get; set; } = "wouldSkip";
+
+            public string Reason { get; set; } = "unsafeScope";
+
+            public bool ScopeViolation { get; set; }
+
+            public string CommandScopeSource { get; set; } = "none";
+
+            public string CommandScopeMissingReason { get; set; } = "playerControlledScopeUnavailable";
+
+            public int CommandScopeShipCount { get; set; }
+
+            public string LauncherId { get; set; } = "unknown";
+
+            public string LauncherName { get; set; } = "unknown";
+
+            public string WeaponId { get; set; } = "unknown";
+
+            public string MissileProfileId { get; set; } = "unknown";
+
+            public string TargetId { get; set; } = "unknown";
+
+            public string TargetName { get; set; } = "unknown";
+
+            public int AssignedShots { get; set; }
+
+            public int AmmoGateBudgetShots { get; set; } = -1;
+
+            public CommandCandidateDecision Fail(string classification, string reason)
+            {
+                Classification = string.IsNullOrWhiteSpace(classification) ? "wouldFail" : classification;
+                Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
+                return this;
+            }
         }
     }
 }

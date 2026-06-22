@@ -152,8 +152,9 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending command resolvability, player-controlled command-scope
-safety reporting, and live command-application safety work.
+Status: blocked pending runtime validation of command resolvability,
+player-controlled command-scope safety reporting, and live command-application
+safety work.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -200,7 +201,7 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Implement #35 command resolvability and player-controlled command-scope
+1. Runtime-smoke #35 command resolvability and player-controlled command-scope
    safety reporting on top of the #34 dry-run envelope.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and

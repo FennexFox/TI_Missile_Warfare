@@ -66,12 +66,25 @@
 
 ## Progress
 
-- Not started.
+- Completed locally.
 
 ## Decision log
 
-- No implementation decisions recorded yet.
+- `dryRunCommandCandidate` is diagnostics-only and always reports
+  `appliedCommands="0"`.
+- Candidate eligibility requires an explicit command scope and scoped launcher
+  membership; missing or unsafe scope becomes `wouldSkip`.
+- Current-combat launcher scope is accepted only when active-player ownership
+  and non-AI command control can be verified by runtime reflection.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Runtime launcher object evidence is preserved for diagnostics-only scope
+  checks.
+- Controlled dry-run logging now emits command candidates with
+  eligible/wouldSkip/wouldFail classification, reason, scope source, missing
+  reason, scope violation flag, launcher, weapon, target, and ammo fields.
+- Parser summaries now include candidate count, classification/reason counts,
+  command-scope source and missing-reason counts, and scope-violation count.
+- Fixture coverage includes a selected-scope eligible candidate and a
+  selected-scope-unavailable skip-closed candidate.
