@@ -698,3 +698,26 @@ justify a heuristic/rule/parameter-family change. A fresh instrumented
 selected-group controlled run is required before #39 can decide whether one
 specific heuristic family should be tuned or whether a final no-tuning/blocker
 decision is warranted.
+
+## Issue #39 fresh instrumented log target identity follow-up
+
+A fresh instrumented `Player.log` after the first #39 correlation slice confirmed
+that launch-side telemetry fields are emitted, including launcher/target ids,
+`visibleAmmoDelta`, `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots`.
+However, direct command correlation still did not occur in that log.
+
+The identified blocker was target identity mismatch rather than missing launch
+telemetry. Controlled command result rows used allocator target ids such as
+`280` / `283`, while `MissileWeapon.TryFire` launch rows reported a runtime
+`CombatShipController` stable id for `targetId`. The target text still exposed
+the tactical target id, so line-window evidence remained visible, but the direct
+runtime context match could not attribute the launch to the command result.
+
+The follow-up fix adds a diagnostics-only target identity bridge: launch rows now
+also report `targetStateId`, runtime context matching accepts either launch
+`targetId` or bridged `targetStateId`, and the fitting report prefers
+`targetStateId` / target-text id fallback before falling back to runtime stable
+`targetId`. A new instrumented selected-group smoke is still required before #39
+can decide whether direct stamped launch/spend evidence justifies one bounded
+heuristic change.

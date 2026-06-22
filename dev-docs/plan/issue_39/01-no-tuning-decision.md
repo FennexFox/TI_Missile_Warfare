@@ -108,3 +108,34 @@ tuning validation.
 
 #44 remains the follow-up corpus and parameter-ledger infrastructure issue.
 #43 should not treat #39 as evidence of successful heuristic tuning.
+
+## Fresh Instrumented Log Follow-up
+
+A fresh instrumented `Player.log` was reviewed after the initial correlation
+instrumentation. The new launch-side fields were present on `MissileWeapon.TryFire`
+rows, but direct correlation still remained unavailable: launch rows reported
+`controlledCommandCorrelation="none"` because the command result target id and
+launch diagnostic target id used different identity systems.
+
+Observed mismatch:
+
+- controlled command result rows used allocator target ids such as `280` / `283`;
+- launch diagnostics used a runtime `CombatShipController` stable id for
+  `targetId`, while the target text still exposed the tactical target id;
+- therefore line-window same-launcher/same-target evidence was visible, but the
+  runtime direct context match could not fire.
+
+This follow-up adds a diagnostics-only target identity bridge:
+
+- `MissileWeapon.TryFire` now also logs `targetStateId`, derived from the target
+  object's gameplay id/name or description suffix;
+- controlled command runtime matching accepts either the stable launch
+  `targetId` or the bridged `targetStateId`;
+- the fitting report prefers `targetStateId` and target-text id fallback before
+  falling back to launch-side stable `targetId`;
+- the synthetic selected-group fixture now exercises a stable `targetId` plus a
+  bridged `targetStateId`.
+
+This still does not tune allocator heuristics. A new smoke run with this target
+identity bridge is required before #39 can reassess whether direct stamped
+launch/spend evidence identifies one bounded heuristic family to change.

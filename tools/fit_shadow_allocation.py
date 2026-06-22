@@ -350,7 +350,11 @@ def scan_launch_evidence(path: Path) -> list[LaunchEvidenceRecord]:
                     launcher=launcher,
                     launcher_id=first_known_text(pairs.get("launcherId"), id_from_engine_ref(launcher)),
                     target=target,
-                    target_id=first_known_text(pairs.get("targetId"), id_from_engine_ref(target)),
+                    target_id=first_known_text(
+                        pairs.get("targetStateId"),
+                        id_from_engine_ref(target),
+                        pairs.get("targetId"),
+                    ),
                     experiment_id=pairs.get("experimentId", "none"),
                     command_result_id=pairs.get("commandResultId", "none"),
                     controlled_command_correlation=pairs.get("controlledCommandCorrelation", "none"),

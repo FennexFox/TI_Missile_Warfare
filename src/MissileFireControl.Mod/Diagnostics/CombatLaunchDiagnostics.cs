@@ -141,8 +141,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "weapon", DescribeWeapon(__instance));
                 AppendPair(builder, "launcher", Describe(launcher));
                 AppendPair(builder, "launcherId", StableIdOrUnknown(launcher, "launcher"));
+                string targetId = StableIdOrUnknown(target, "target");
+                string targetStateId = TargetStateIdOrUnknown(target);
                 AppendPair(builder, "target", Describe(target));
-                AppendPair(builder, "targetId", StableIdOrUnknown(target, "target"));
+                AppendPair(builder, "targetId", targetId);
+                AppendPair(builder, "targetStateId", targetStateId);
                 AppendPair(builder, "targetedPosition", DescribeVector(ReadMember(__instance, "targetedPosition")));
                 AppendPreFireTargetVelocityEvidence(builder, observation);
                 AppendPair(builder, "fireMode", Describe(ReadMember(__instance, "currentFireMode")));
@@ -363,7 +366,8 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             string launcherId = StableIdOrUnknown(launcher, "launcher");
             string targetId = StableIdOrUnknown(target, "target");
-            ControlledCommandLaunchMatch match = FindControlledCommandContext(launcherId, targetId, observation, postFireRemaining);
+            string targetStateId = TargetStateIdOrUnknown(target);
+            ControlledCommandLaunchMatch match = FindControlledCommandContext(launcherId, targetId, targetStateId, observation, postFireRemaining);
             AppendPair(builder, "experimentId", match.ExperimentId);
             AppendPair(builder, "commandResultId", match.CommandResultId);
             AppendPair(builder, "candidateId", match.CandidateId);
@@ -376,10 +380,11 @@ namespace MissileFireControl.Mod.Diagnostics
         private static ControlledCommandLaunchMatch FindControlledCommandContext(
             string launcherId,
             string targetId,
+            string targetStateId,
             TryFireObservation observation,
             string postFireRemaining)
         {
-            if (!HasConcreteToken(launcherId) || !HasConcreteToken(targetId))
+            if (!HasConcreteToken(launcherId) || (!HasConcreteToken(targetId) && !HasConcreteToken(targetStateId)))
             {
                 return ControlledCommandLaunchMatch.None("launcherOrTargetIdentityUnavailable");
             }
@@ -394,7 +399,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 ControlledCommandLaunchContext context = ControlledCommandContexts
                     .Where(candidate =>
                         string.Equals(candidate.LauncherId, launcherId, StringComparison.Ordinal)
-                        && string.Equals(candidate.TargetId, targetId, StringComparison.Ordinal)
+                        && TargetIdentityMatches(candidate, targetId, targetStateId)
                         && candidate.AssociatedLaunchCount < MaxControlledCommandLaunchMatches
                         && (candidate.AssignedShots < 0 || candidate.ObservedSpentShots < candidate.AssignedShots))
                     .OrderByDescending(candidate => candidate.RegisteredUtc)
@@ -976,6 +981,72 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             string id = GameObjectReader.StableId(value, fallbackPrefix);
             return HasConcreteToken(id) ? id : "unknown";
+        }
+
+        private static string TargetStateIdOrUnknown(object target)
+        {
+            string memberId = FirstNonEmptyMember(
+                target,
+                "id",
+                "ID",
+                "gameStateID",
+                "GameStateID");
+            if (HasConcreteToken(memberId))
+            {
+                return Clean(memberId);
+            }
+
+            string describedId = IdSuffixOrUnknown(Describe(target));
+            if (HasConcreteToken(describedId))
+            {
+                return describedId;
+            }
+
+            string labelId = FirstNonEmptyMember(
+                target,
+                "displayName",
+                "DisplayName",
+                "fullName",
+                "FullName",
+                "name",
+                "Name");
+            return HasConcreteToken(labelId) ? Clean(labelId) : "unknown";
+        }
+
+        private static bool TargetIdentityMatches(
+            ControlledCommandLaunchContext candidate,
+            string targetId,
+            string targetStateId)
+        {
+            if (candidate == null || string.IsNullOrWhiteSpace(candidate.TargetId))
+            {
+                return false;
+            }
+
+            return string.Equals(candidate.TargetId, targetId, StringComparison.Ordinal)
+                || string.Equals(candidate.TargetId, targetStateId, StringComparison.Ordinal);
+        }
+
+        private static string IdSuffixOrUnknown(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "unknown";
+            }
+
+            int hashIndex = text.LastIndexOf('#');
+            if (hashIndex >= 0 && hashIndex < text.Length - 1)
+            {
+                return Clean(text.Substring(hashIndex + 1));
+            }
+
+            int colonIndex = text.LastIndexOf(':');
+            if (colonIndex >= 0 && colonIndex < text.Length - 1)
+            {
+                return Clean(text.Substring(colonIndex + 1));
+            }
+
+            return "unknown";
         }
 
         private static bool HasConcreteToken(string value)

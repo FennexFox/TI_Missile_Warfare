@@ -245,3 +245,12 @@ Acceptance criteria once unblocked:
    the #37/#38 safety constraints, and do not treat #39 as evidence of a
    successful heuristic tuning change unless a fresh controlled run produces
    directly stamped causal evidence.
+
+### Issue #39 target identity bridge note
+
+A fresh instrumented #39 log showed that launch telemetry was present but direct
+correlation still failed because command results and `MissileWeapon.TryFire`
+launch rows used different target identity forms. The #39 diagnostics now add a
+launch-side `targetStateId` bridge and fitting-report fallback so the next fresh
+selected-group smoke can test direct command-result launch/spend correlation
+instead of relying on same-launcher/same-target line-window evidence.
