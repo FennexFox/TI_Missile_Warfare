@@ -69,6 +69,10 @@ REQUIRED_EVIDENCE_FIELDS = (
     "shadow allocation cycles",
 )
 CONTROLLED_COMMAND_LAUNCH_CORRELATION_MAX_LINES = 12
+TARGET_DESTROY_RE = re.compile(
+    r"removing ship from CombatManager ActiveShip\(DestroyShip\):\s*"
+    r"(?P<target_id>[^,]+),\s*(?P<target>.+)$"
+)
 
 
 @dataclass
@@ -110,6 +114,15 @@ class LaunchEvidenceRecord:
 
 
 @dataclass
+class TargetOutcomeRecord:
+    line: int
+    target_id: str
+    target: str
+    outcome: str
+    source: str
+
+
+@dataclass
 class ControlledCommandEvidence:
     line: int
     record_type: str
@@ -138,6 +151,10 @@ class ControlledCommandEvidence:
     direct_observed_spent_shots: int | None = None
     correlation: str = "none"
     limitations: list[str] = field(default_factory=list)
+    target_outcome: str = "unknown"
+    target_outcome_line: int | None = None
+    target_outcome_source: str = "none"
+    target_outcome_correlation: str = "none"
 
 
 @dataclass
@@ -370,9 +387,30 @@ def scan_launch_evidence(path: Path) -> list[LaunchEvidenceRecord]:
     return launch_records
 
 
+def scan_target_outcomes(path: Path) -> list[TargetOutcomeRecord]:
+    """Read best-effort target outcome hints from vanilla combat log text."""
+    outcomes: list[TargetOutcomeRecord] = []
+    with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            match = TARGET_DESTROY_RE.search(raw_line.rstrip("\r\n"))
+            if match is None:
+                continue
+            outcomes.append(
+                TargetOutcomeRecord(
+                    line=line_number,
+                    target_id=match.group("target_id").strip(),
+                    target=match.group("target").strip(),
+                    outcome="destroyed",
+                    source="CombatManager.ActiveShip(DestroyShip)",
+                )
+            )
+    return outcomes
+
+
 def controlled_command_rows(
     raw_records: list[dict[str, str | int]],
     launch_records: list[LaunchEvidenceRecord],
+    target_outcomes: list[TargetOutcomeRecord],
 ) -> list[ControlledCommandEvidence]:
     """Correlate controlled command results with directly logged and nearby launch evidence."""
     command_records = [
@@ -420,6 +458,15 @@ def controlled_command_rows(
             default=None,
         )
 
+        outcome = next(
+            (
+                candidate
+                for candidate in target_outcomes
+                if candidate.line > line and candidate.target_id == target_id
+            ),
+            None,
+        )
+
         limitations: list[str] = []
         if direct_spent_shots is None and direct_observed_spent_shots is None:
             limitations.append("command result spentShots field is unknown")
@@ -433,6 +480,11 @@ def controlled_command_rows(
             limitations.append("no same-launcher/same-target launch in the immediate post-command window")
         if str(raw.get("result", "")).lower() == "skipped" and matching_launches:
             limitations.append("skipped command also has nearby launch evidence, so attribution is ambiguous")
+
+        if outcome is not None:
+            limitations.append(
+                "target outcome is post-command vanilla DestroyShip text; it is outcome evidence, not unique hit attribution"
+            )
 
         rows.append(
             ControlledCommandEvidence(
@@ -479,6 +531,12 @@ def controlled_command_rows(
                     else "line-window-heuristic" if matching_launches else "uncorrelated"
                 ),
                 limitations=limitations,
+                target_outcome=outcome.outcome if outcome is not None else "unknown",
+                target_outcome_line=outcome.line if outcome is not None else None,
+                target_outcome_source=outcome.source if outcome is not None else "none",
+                target_outcome_correlation=(
+                    "post-command-target-destroyed" if outcome is not None else "none"
+                ),
             )
         )
 
@@ -695,8 +753,9 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
     has_evidence, missing_evidence = required_evidence(summary)
     cycles, raw_records = scan_allocation_records(path)
     launch_records = scan_launch_evidence(path)
+    target_outcomes = scan_target_outcomes(path)
     classified_records = classify_records(cycles, raw_records)
-    command_evidence = controlled_command_rows(raw_records, launch_records)
+    command_evidence = controlled_command_rows(raw_records, launch_records, target_outcomes)
     classification_counts = Counter(record.classification for record in classified_records)
     limitation_counts = Counter(
         limitation for record in classified_records for limitation in record.limitations
@@ -1768,8 +1827,8 @@ def controlled_command_evidence_markdown_lines(logs: list[FittingLogReport]) -> 
         f"- rows with same-launcher/same-target launch evidence in the immediate window: {observed_rows}/{len(rows)}",
         f"- observed ammo delta by command result: applied={applied_delta}, skipped={skipped_delta}",
         "",
-        "| line | experiment | command result id | ship | allocator | target | result | assigned | spent | direct launches | window launches | observed delta | correlation |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| line | experiment | command result id | ship | allocator | target | result | assigned | spent | direct launches | window launches | observed delta | correlation | target outcome |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in rows[:20]:
         spent = row.get("direct_spent_shots")
@@ -1778,7 +1837,7 @@ def controlled_command_evidence_markdown_lines(logs: list[FittingLogReport]) -> 
         observed_delta = row.get("observed_ammo_delta")
         lines.append(
             "| {line} | {experiment} | {command_result_id} | {ship} | {allocator} | {target} | {result} | "
-            "{assigned} | {spent} | {direct_launches} | {launches} | {delta} | {correlation} |".format(
+            "{assigned} | {spent} | {direct_launches} | {launches} | {delta} | {correlation} | {target_outcome} |".format(
                 line=row.get("line", "unknown"),
                 experiment=markdown_cell(str(row.get("experiment_id", "unknown"))),
                 command_result_id=markdown_cell(str(row.get("command_result_id", "unknown"))),
@@ -1800,6 +1859,13 @@ def controlled_command_evidence_markdown_lines(logs: list[FittingLogReport]) -> 
                 ),
                 delta=format_optional_int(observed_delta),
                 correlation=markdown_cell(str(row.get("correlation", "unknown"))),
+                target_outcome=markdown_cell(
+                    outcome_text(
+                        row.get("target_outcome"),
+                        row.get("target_outcome_line"),
+                        row.get("target_outcome_correlation"),
+                    )
+                ),
             )
         )
     if len(rows) > 20:
@@ -1828,6 +1894,14 @@ def controlled_command_evidence_one_line(log: FittingLogReport) -> str:
         f"direct/heuristic/uncorrelated {direct_rows}/{heuristic_rows}/{uncorrelated_rows}; "
         f"nearby launch evidence {observed_rows}/{len(rows)}"
     )
+
+
+def outcome_text(outcome: object, line: object, correlation: object) -> str:
+    """Format conservative target outcome evidence for report tables."""
+    if outcome in {None, "unknown", "none"}:
+        return "unknown"
+    suffix = f"@{line}" if line is not None else ""
+    return f"{outcome}{suffix} ({correlation or 'unknown'})"
 
 
 def format_optional_int(value: object) -> str:

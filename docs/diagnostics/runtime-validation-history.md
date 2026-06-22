@@ -721,3 +721,29 @@ also report `targetStateId`, runtime context matching accepts either launch
 `targetId`. A new instrumented selected-group smoke is still required before #39
 can decide whether direct stamped launch/spend evidence justifies one bounded
 heuristic change.
+
+## Issue #39 direct command-spend correlation smoke success
+
+A fresh selected-group controlled smoke after the target identity bridge
+confirmed direct command-result launch/spend correlation:
+
+- selected ship count was 3, within `selectedGroupMaxShips=3`;
+- controlled command result rows were 4 total: three `appliedDecision` rows and
+  one `skippedDecision` row with `perShipCommandCapReached`;
+- failed controlled commands remained zero;
+- `MissileWeapon.TryFire` rows with `controlledCommandCorrelation="directRuntimeContext"`
+  were observed for the applied commands;
+- each applied command produced six directly stamped launch rows and observed
+  spent shots of six;
+- the skipped command produced no direct launch attribution.
+
+This resolves the selected-group command-spend attribution blocker. The remaining
+#39 evidence gap is outcome quality: the logs now show that controlled commands
+spent missiles, but they still need conservative evidence about overkill,
+under-saturation, target mismatch, or point-defense absorption before any
+heuristic family should be tuned.
+
+The fitting report now also records best-effort target destruction hints from
+vanilla `CombatManager ActiveShip(DestroyShip)` lines when they occur after a
+controlled command for the same target id. This is deliberately labeled as
+post-command outcome evidence, not unique projectile/hit/kill attribution.

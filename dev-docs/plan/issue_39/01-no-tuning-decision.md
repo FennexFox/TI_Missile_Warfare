@@ -139,3 +139,33 @@ This follow-up adds a diagnostics-only target identity bridge:
 This still does not tune allocator heuristics. A new smoke run with this target
 identity bridge is required before #39 can reassess whether direct stamped
 launch/spend evidence identifies one bounded heuristic family to change.
+
+## Direct Correlation Smoke Success
+
+A fresh selected-group controlled smoke after the target identity bridge produced
+the first direct command-result launch/spend correlation evidence for #39:
+
+- selected ships: 3, within `selectedGroupMaxShips=3`;
+- command result rows: 4 total;
+- applied decisions: 3;
+- skipped decisions: 1, due to `perShipCommandCapReached`;
+- failed decisions: 0;
+- directly stamped `MissileWeapon.TryFire` launch rows: 18;
+- each applied command row had six direct launch rows and observed spent shots of
+  six;
+- the skipped command row had no direct launch attribution.
+
+This resolves the previous command-spend correlation blocker for selected-group
+controlled apply. The remaining #39 blocker is now outcome quality rather than
+command-spend attribution: the fitting loop still needs evidence about whether
+the allocated salvo was excessive, insufficient, aimed at the wrong target, or
+absorbed by point defense.
+
+A best-effort parser/report follow-up now records vanilla
+`CombatManager ActiveShip(DestroyShip)` lines as target outcome hints when they
+appear after a controlled command result for the same target id. These rows are
+labeled as post-command outcome evidence only; they are not unique hit,
+projectile, or kill attribution. Exact damage packet, hit, or destruction
+attribution would require additional reverse engineering of Terra Invicta combat
+internals and should remain out of scope for this #39 slice unless a stable hook
+is identified later.

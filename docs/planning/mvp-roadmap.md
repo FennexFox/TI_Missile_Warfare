@@ -254,3 +254,14 @@ launch rows used different target identity forms. The #39 diagnostics now add a
 launch-side `targetStateId` bridge and fitting-report fallback so the next fresh
 selected-group smoke can test direct command-result launch/spend correlation
 instead of relying on same-launcher/same-target line-window evidence.
+
+### Issue #39 direct correlation status
+
+The selected-group command-spend blocker is now resolved for the #39 diagnostic
+path: a fresh controlled smoke produced directly stamped `MissileWeapon.TryFire`
+rows for applied command results, while the skipped command had no direct launch
+attribution. The remaining blocker for heuristic tuning is outcome quality, not
+command-spend attribution. Parser/report tooling now records conservative
+post-command target destruction hints from vanilla `DestroyShip` log text, but
+exact hit/kill attribution remains out of scope until a stable combat outcome
+hook is identified.
