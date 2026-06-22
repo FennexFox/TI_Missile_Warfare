@@ -55,6 +55,9 @@ namespace MissileFireControl.Mod
             Settings.EnableControlledDryRunDiagnostics = GUILayout.Toggle(
                 Settings.EnableControlledDryRunDiagnostics,
                 "Enable controlled dry-run diagnostics (log-only)");
+            Settings.AllowCommandApply = GUILayout.Toggle(
+                Settings.AllowCommandApply,
+                "Allow controlled command apply (no live apply in this build)");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 

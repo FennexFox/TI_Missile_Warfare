@@ -42,6 +42,7 @@ CONTROLLED_DRY_RUN_RECORD_TYPES = {
     "dryRunExperiment",
     "dryRunIntent",
     "dryRunCommandCandidate",
+    "dryRunApplyGate",
     "dryRunResult",
 }
 BAD_CLASSIFICATIONS = {
@@ -852,8 +853,14 @@ def selected_command_scope_status(logs: list[FittingLogReport]) -> EvidenceSuffi
     candidates = sum(
         allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
     )
+    apply_gate_records = sum(
+        allocation_summary_value(log, "controlled_dry_run_apply_gate_records") for log in logs
+    )
     scope_violations = sum(
         allocation_summary_value(log, "controlled_dry_run_scope_violations") for log in logs
+    )
+    safety_gate_blocked = sum(
+        allocation_summary_value(log, "controlled_dry_run_safety_gate_blocked_commands") for log in logs
     )
     selected_counts = aggregate_allocation_counter(logs, "controlled_dry_run_selected_ship_counts")
     missing_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_missing_reason_counts")
@@ -899,7 +906,8 @@ def selected_command_scope_status(logs: list[FittingLogReport]) -> EvidenceSuffi
         scope="controlled command mapping",
         summary=(
             f"{visible_experiments}/{experiments} controlled dry-run experiments "
-            f"had visible selected/player scope; {scope_violations} scope violations."
+            f"had visible selected/player scope; {scope_violations} scope violations; "
+            f"{apply_gate_records} apply-gate records; {safety_gate_blocked} safety-gate blocks."
         ),
         limitations=limitations,
         evidence={
@@ -918,6 +926,9 @@ def dry_run_command_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyI
     candidates = sum(
         allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
     )
+    apply_gate_records = sum(
+        allocation_summary_value(log, "controlled_dry_run_apply_gate_records") for log in logs
+    )
     results = sum(allocation_summary_value(log, "controlled_dry_run_results") for log in logs)
     intended = sum(
         allocation_summary_value(log, "controlled_dry_run_intended_commands") for log in logs
@@ -931,16 +942,23 @@ def dry_run_command_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyI
     failed = sum(
         allocation_summary_value(log, "controlled_dry_run_failed_commands") for log in logs
     )
+    safety_gate_blocked = sum(
+        allocation_summary_value(log, "controlled_dry_run_safety_gate_blocked_commands") for log in logs
+    )
     classifications = aggregate_allocation_counter(
         logs,
         "controlled_dry_run_candidate_classification_counts",
     )
     reasons = aggregate_allocation_counter(logs, "controlled_dry_run_candidate_reason_counts")
+    gate_results = aggregate_allocation_counter(logs, "controlled_dry_run_apply_gate_result_counts")
+    gate_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_safety_gate_reason_counts")
 
     if experiments <= 0:
         status = "commandUnsafe"
     elif applied or failed:
         status = "commandUnsafe"
+    elif safety_gate_blocked:
+        status = "provisional"
     elif candidates <= 0:
         status = "provisional"
     elif classifications.get("eligible", 0):
@@ -957,6 +975,14 @@ def dry_run_command_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyI
         limitations.append("candidate classifications: " + count_dict_text(classifications))
     if reasons:
         limitations.append("candidate reasons: " + count_dict_text(reasons))
+    if apply_gate_records:
+        limitations.append(f"{apply_gate_records} apply-gate record(s) were emitted")
+    if safety_gate_blocked:
+        limitations.append(f"{safety_gate_blocked} command(s) were blocked by the safety gate")
+    if gate_results:
+        limitations.append("apply-gate results: " + count_dict_text(gate_results))
+    if gate_reasons:
+        limitations.append("safety-gate reasons: " + count_dict_text(gate_reasons))
     if applied:
         limitations.append(f"{applied} command(s) were applied")
     if failed:
@@ -968,13 +994,16 @@ def dry_run_command_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyI
         scope="controlled command mapping",
         summary=(
             f"{experiments} experiments, {intents} intents, {candidates} candidates, "
-            f"{results} results; intended/skipped/applied/failed commands: "
-            f"{intended}/{skipped}/{applied}/{failed}."
+            f"{apply_gate_records} apply-gate records, {results} results; "
+            f"intended/skipped/applied/failed/safety-gate-blocked commands: "
+            f"{intended}/{skipped}/{applied}/{failed}/{safety_gate_blocked}."
         ),
         limitations=limitations,
         evidence={
             "candidate_classifications": dict(sorted(classifications.items())),
             "candidate_reasons": dict(sorted(reasons.items())),
+            "apply_gate_results": dict(sorted(gate_results.items())),
+            "safety_gate_reasons": dict(sorted(gate_reasons.items())),
         },
     )
 
@@ -1265,6 +1294,9 @@ def controlled_dry_run_markdown_lines(logs: list[FittingLogReport]) -> list[str]
     candidates = sum(
         allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
     )
+    apply_gate_records = sum(
+        allocation_summary_value(log, "controlled_dry_run_apply_gate_records") for log in logs
+    )
     results = sum(allocation_summary_value(log, "controlled_dry_run_results") for log in logs)
     intended = sum(
         allocation_summary_value(log, "controlled_dry_run_intended_commands") for log in logs
@@ -1278,6 +1310,9 @@ def controlled_dry_run_markdown_lines(logs: list[FittingLogReport]) -> list[str]
     failed = sum(
         allocation_summary_value(log, "controlled_dry_run_failed_commands") for log in logs
     )
+    safety_gate_blocked = sum(
+        allocation_summary_value(log, "controlled_dry_run_safety_gate_blocked_commands") for log in logs
+    )
     scope_violations = sum(
         allocation_summary_value(log, "controlled_dry_run_scope_violations") for log in logs
     )
@@ -1286,6 +1321,8 @@ def controlled_dry_run_markdown_lines(logs: list[FittingLogReport]) -> list[str]
         "controlled_dry_run_candidate_classification_counts",
     )
     reasons = aggregate_allocation_counter(logs, "controlled_dry_run_candidate_reason_counts")
+    gate_results = aggregate_allocation_counter(logs, "controlled_dry_run_apply_gate_result_counts")
+    gate_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_safety_gate_reason_counts")
     scope_sources = aggregate_allocation_counter(logs, "controlled_dry_run_command_scope_source_counts")
     scope_missing = aggregate_allocation_counter(
         logs,
@@ -1295,11 +1332,19 @@ def controlled_dry_run_markdown_lines(logs: list[FittingLogReport]) -> list[str]
     selected_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_missing_reason_counts")
 
     return [
-        f"- experiments/intents/candidates/results: {experiments}/{intents}/{candidates}/{results}",
-        f"- intended/skipped/applied/failed commands: {intended}/{skipped}/{applied}/{failed}",
+        (
+            "- experiments/intents/candidates/apply-gates/results: "
+            f"{experiments}/{intents}/{candidates}/{apply_gate_records}/{results}"
+        ),
+        (
+            "- intended/skipped/applied/failed/safety-gate-blocked commands: "
+            f"{intended}/{skipped}/{applied}/{failed}/{safety_gate_blocked}"
+        ),
         f"- scope violations: {scope_violations}",
         f"- candidate classifications: {count_dict_text(classifications)}",
         f"- candidate reasons: {count_dict_text(reasons)}",
+        f"- apply-gate results: {count_dict_text(gate_results)}",
+        f"- safety-gate reasons: {count_dict_text(gate_reasons)}",
         f"- command-scope sources: {count_dict_text(scope_sources)}",
         f"- command-scope missing reasons: {count_dict_text(scope_missing)}",
         f"- selected ship counts: {count_dict_text(selected_counts)}",
@@ -1311,19 +1356,24 @@ def controlled_dry_run_one_line(log: FittingLogReport) -> str:
     """Return a compact per-log controlled dry-run summary."""
     experiments = allocation_summary_value(log, "controlled_dry_run_experiments")
     candidates = allocation_summary_value(log, "controlled_dry_run_command_candidates")
+    apply_gate_records = allocation_summary_value(log, "controlled_dry_run_apply_gate_records")
     applied = allocation_summary_value(log, "controlled_dry_run_applied_commands")
     failed = allocation_summary_value(log, "controlled_dry_run_failed_commands")
+    safety_gate_blocked = allocation_summary_value(log, "controlled_dry_run_safety_gate_blocked_commands")
     scope_violations = allocation_summary_value(log, "controlled_dry_run_scope_violations")
     classifications = aggregate_allocation_counter(
         [log],
         "controlled_dry_run_candidate_classification_counts",
     )
     reasons = aggregate_allocation_counter([log], "controlled_dry_run_candidate_reason_counts")
+    gate_reasons = aggregate_allocation_counter([log], "controlled_dry_run_safety_gate_reason_counts")
     return (
-        f"{experiments} experiments, {candidates} candidates, "
-        f"{applied} applied, {failed} failed, {scope_violations} scope violations"
+        f"{experiments} experiments, {candidates} candidates, {apply_gate_records} apply-gates, "
+        f"{applied} applied, {failed} failed, {safety_gate_blocked} safety-gate blocked, "
+        f"{scope_violations} scope violations"
         f"; classifications: {count_dict_text(classifications)}"
         f"; reasons: {count_dict_text(reasons)}"
+        f"; safety-gate reasons: {count_dict_text(gate_reasons)}"
     )
 
 

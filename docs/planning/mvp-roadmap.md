@@ -30,7 +30,9 @@ Current blocker:
 
 Current missing or provisional inputs:
 
-- live command-application hard-stop and apply-boundary reporting;
+- Issue #36 adds live command-application hard-stop and apply-boundary
+  reporting as diagnostics-only proof; fresh runtime evidence is still needed
+  before #37 can attempt a live command;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -204,8 +206,10 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Add the #36 live command-application hard-stop so eligible command plans can
-   reach a named apply boundary while still applying zero commands.
+1. Validate the #36 apply-gate hard stop in a fresh runtime smoke. If the
+   runtime still produces only `wouldSkip` candidates, keep that fail-closed
+   evidence and rely on deterministic fixture coverage for the gate-reachable
+   blocked path.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited

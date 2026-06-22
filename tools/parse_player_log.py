@@ -38,6 +38,7 @@ CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES = {
     "dryRunExperiment",
     "dryRunIntent",
     "dryRunCommandCandidate",
+    "dryRunApplyGate",
     "dryRunResult",
 }
 KNOWN_ALLOCATION_RECORD_TYPES = (
@@ -88,14 +89,18 @@ class AllocationBattleSummary:
     controlled_dry_run_experiments: int = 0
     controlled_dry_run_intents: int = 0
     controlled_dry_run_command_candidates: int = 0
+    controlled_dry_run_apply_gate_records: int = 0
     controlled_dry_run_results: int = 0
     controlled_dry_run_experiment_ids: list[str] = field(default_factory=list)
     controlled_dry_run_intended_commands: int = 0
     controlled_dry_run_skipped_commands: int = 0
     controlled_dry_run_applied_commands: int = 0
     controlled_dry_run_failed_commands: int = 0
+    controlled_dry_run_safety_gate_blocked_commands: int = 0
     controlled_dry_run_candidate_classification_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_candidate_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_dry_run_apply_gate_result_counts: dict[str, int] = field(default_factory=dict)
+    controlled_dry_run_safety_gate_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_command_scope_source_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_command_scope_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_scope_violations: int = 0
@@ -593,6 +598,8 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_dry_run_missing_reason_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_classification_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_reason_counts: Counter[str] = Counter()
+    controlled_dry_run_apply_gate_result_counts: Counter[str] = Counter()
+    controlled_dry_run_safety_gate_reason_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_source_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_missing_reason_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
@@ -600,6 +607,8 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_dry_run_skipped_commands = 0
     controlled_dry_run_applied_commands = 0
     controlled_dry_run_failed_commands = 0
+    controlled_dry_run_safety_gate_blocked_commands = 0
+    controlled_dry_run_result_safety_gate_blocked_commands = 0
     cycle_missing_input_counts: Counter[str] = Counter()
     cycle_target_counts: list[int] = []
     ammo_gate_budget_values: list[int | None] = []
@@ -838,11 +847,22 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if pairs.get("scopeViolation", "False").lower() == "true":
                         controlled_dry_run_scope_violations += 1
 
+                if record_type == "dryRunApplyGate":
+                    gate_result = pairs.get("gateResult", "unknown")
+                    controlled_dry_run_apply_gate_result_counts[gate_result] += 1
+                    block_reason = pairs.get("blockReason", "unknown")
+                    if gate_result == "blocked":
+                        controlled_dry_run_safety_gate_blocked_commands += 1
+                        controlled_dry_run_safety_gate_reason_counts[block_reason] += 1
+
                 if record_type == "dryRunResult":
                     controlled_dry_run_intended_commands += try_parse_int(pairs.get("intendedCommands")) or 0
                     controlled_dry_run_skipped_commands += try_parse_int(pairs.get("skippedCommands")) or 0
                     controlled_dry_run_applied_commands += try_parse_int(pairs.get("appliedCommands")) or 0
                     controlled_dry_run_failed_commands += try_parse_int(pairs.get("failedCommands")) or 0
+                    controlled_dry_run_result_safety_gate_blocked_commands += (
+                        try_parse_int(pairs.get("safetyGateBlockedCommands")) or 0
+                    )
 
                 status = pairs.get("status")
                 if status and record_type == "cycle":
@@ -1138,17 +1158,33 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         "dryRunCommandCandidate",
         0,
     )
+    allocation_summary.controlled_dry_run_apply_gate_records = allocation_record_type_counts.get(
+        "dryRunApplyGate",
+        0,
+    )
     allocation_summary.controlled_dry_run_results = allocation_record_type_counts.get("dryRunResult", 0)
     allocation_summary.controlled_dry_run_experiment_ids = sorted(controlled_dry_run_experiment_ids)
     allocation_summary.controlled_dry_run_intended_commands = controlled_dry_run_intended_commands
     allocation_summary.controlled_dry_run_skipped_commands = controlled_dry_run_skipped_commands
     allocation_summary.controlled_dry_run_applied_commands = controlled_dry_run_applied_commands
     allocation_summary.controlled_dry_run_failed_commands = controlled_dry_run_failed_commands
+    allocation_summary.controlled_dry_run_safety_gate_blocked_commands = (
+        max(
+            controlled_dry_run_safety_gate_blocked_commands,
+            controlled_dry_run_result_safety_gate_blocked_commands,
+        )
+    )
     allocation_summary.controlled_dry_run_candidate_classification_counts = dict(
         sorted(controlled_dry_run_candidate_classification_counts.items())
     )
     allocation_summary.controlled_dry_run_candidate_reason_counts = dict(
         sorted(controlled_dry_run_candidate_reason_counts.items())
+    )
+    allocation_summary.controlled_dry_run_apply_gate_result_counts = dict(
+        sorted(controlled_dry_run_apply_gate_result_counts.items())
+    )
+    allocation_summary.controlled_dry_run_safety_gate_reason_counts = dict(
+        sorted(controlled_dry_run_safety_gate_reason_counts.items())
     )
     allocation_summary.controlled_dry_run_command_scope_source_counts = dict(
         sorted(controlled_dry_run_command_scope_source_counts.items())
@@ -1267,11 +1303,13 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         summary.controlled_dry_run_experiments
         or summary.controlled_dry_run_intents
         or summary.controlled_dry_run_command_candidates
+        or summary.controlled_dry_run_apply_gate_records
         or summary.controlled_dry_run_results
     ):
         print(f"- controlled dry-run experiments: {summary.controlled_dry_run_experiments}")
         print(f"- controlled dry-run intents: {summary.controlled_dry_run_intents}")
         print(f"- controlled dry-run command candidates: {summary.controlled_dry_run_command_candidates}")
+        print(f"- controlled dry-run apply-gate records: {summary.controlled_dry_run_apply_gate_records}")
         print(f"- controlled dry-run results: {summary.controlled_dry_run_results}")
         print(
             "- controlled dry-run experiment ids: "
@@ -1281,6 +1319,10 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         print(f"- controlled dry-run skipped commands: {summary.controlled_dry_run_skipped_commands}")
         print(f"- controlled dry-run applied commands: {summary.controlled_dry_run_applied_commands}")
         print(f"- controlled dry-run failed commands: {summary.controlled_dry_run_failed_commands}")
+        print(
+            "- controlled dry-run safety-gate blocked commands: "
+            f"{summary.controlled_dry_run_safety_gate_blocked_commands}"
+        )
         if summary.controlled_dry_run_candidate_classification_counts:
             print(
                 "- controlled dry-run command classifications: "
@@ -1290,6 +1332,16 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- controlled dry-run command reasons: "
                 + format_count_dict(summary.controlled_dry_run_candidate_reason_counts)
+            )
+        if summary.controlled_dry_run_apply_gate_result_counts:
+            print(
+                "- controlled dry-run apply-gate results: "
+                + format_count_dict(summary.controlled_dry_run_apply_gate_result_counts)
+            )
+        if summary.controlled_dry_run_safety_gate_reason_counts:
+            print(
+                "- controlled dry-run safety-gate reasons: "
+                + format_count_dict(summary.controlled_dry_run_safety_gate_reason_counts)
             )
         if summary.controlled_dry_run_command_scope_source_counts:
             print(

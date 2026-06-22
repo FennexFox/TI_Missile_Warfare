@@ -52,9 +52,15 @@ panel trigger:
 - `EnableShadowAllocationDiagnostics`
 - `EnableControlledDryRunDiagnostics`
 
+The command-apply boundary has a separate default-off setting:
+
+- `AllowCommandApply`
+
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
 base diagnostics toggle. Controlled dry-run diagnostics also default to
-`false`. Shadow allocation and controlled dry-run diagnostics are
+`false`. `AllowCommandApply` also defaults to `false`; Issue #36 uses it only
+as an auditable hard-stop input and still performs no live command application.
+Shadow allocation and controlled dry-run diagnostics are
 diagnostics-only: they never apply assignments, never issue commands, never
 change fire mode, and never suppress or delay original game methods.
 
@@ -155,7 +161,8 @@ the UMM panel, the next shadow allocation cycle is tagged with a local
 [AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
 [AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
 [AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
-[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" result="dryRunOnly" resultReason="dryRunOnly"
+[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
+[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" safetyGateBlockedCommands="1" result="dryRunOnly" resultReason="blockedBySafetyToggle"
 ```
 
 The selected-scope probe is intentionally narrow. It looks for the verified
@@ -174,7 +181,17 @@ violation flag, launcher, weapon/module, target, assigned shot, and ammo/gate
 budget evidence. The rows do not call `SelectSalvoTargetCommand`,
 `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`,
 `SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
-report `appliedCommands="0"` for Issues #34 and #35.
+report `appliedCommands="0"` for Issues #34 through #36.
+
+Issue #36 routes only `eligible` candidates to a named
+`controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
+setting, the gate emits `recordType="dryRunApplyGate"` with
+`gateResult="blocked"`, `blockReason="blockedBySafetyToggle"`,
+`postState="notApplied"`, and `appliedCommands="0"`. This is still
+diagnostics-only; it records the hard stop before any live command API exists in
+the mod. If runtime logs do not naturally produce an eligible candidate, the
+synthetic `tools/fixtures/apply_gate_hard_stop.txt` fixture exercises the
+gate-reachable blocked path.
 
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
@@ -278,12 +295,14 @@ battle-level allocation report for before/after tuning comparisons.
 The parser separates current shadow cycles, allocations, rejections, and no-op
 records from controlled dry-run experiment rows and future controlled-apply
 records. Controlled dry-run rows are summarized by experiment count, experiment
-id, intent count, command-candidate count, intended/skipped/applied/failed
-command counts, candidate classification/reason counts, command-scope source
-and missing-reason counts, scope-violation count, selected ship counts, and
-selected-scope missing reasons. Future record types such as applied decisions,
-skipped decisions, and failed command applications are bucketed when they
-appear, but current logs are expected to show zero controlled-apply counts.
+id, intent count, command-candidate count, apply-gate count,
+intended/skipped/applied/failed/safety-gate-blocked command counts, candidate
+classification/reason counts, apply-gate result counts, safety-gate block reason
+counts, command-scope source and missing-reason counts, scope-violation count,
+selected ship counts, and selected-scope missing reasons. Future record types
+such as applied decisions, skipped decisions, and failed command applications
+are bucketed when they appear, but current logs are expected to show zero
+controlled-apply counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather
@@ -341,11 +360,11 @@ conservative buckets:
 - `ambiguous`
 
 Controlled dry-run rows such as `dryRunExperiment`, `dryRunIntent`,
-`dryRunCommandCandidate`, and `dryRunResult` are not allocation-quality rows.
-The fitting report summarizes them separately with experiment, candidate,
-classification, reason, command-scope, selected-scope, scope-violation, and
-applied/failed command counts instead of treating them as ambiguous allocation
-decisions.
+`dryRunCommandCandidate`, `dryRunApplyGate`, and `dryRunResult` are not
+allocation-quality rows. The fitting report summarizes them separately with
+experiment, candidate, apply-gate, classification, reason, command-scope,
+selected-scope, scope-violation, safety-gate-blocked, and applied/failed command
+counts instead of treating them as ambiguous allocation decisions.
 
 `command-safety no-op` means no allocation was made because no concrete
 launcher-selected target identity was visible. It is safe skip evidence, not
