@@ -265,3 +265,12 @@ command-spend attribution. Parser/report tooling now records conservative
 post-command target destruction hints from vanilla `DestroyShip` log text, but
 exact hit/kill attribution remains out of scope until a stable combat outcome
 hook is identified.
+
+### Issue #39 follow-up boundary
+
+The latest selected-group smokes show stable direct command-spend correlation and
+post-direct-launch target destruction hints. The current diagnostics PR does not
+need more instrumentation code. The next implementation candidate should be a
+separate focused heuristic/rule slice around same-target duplicate kill packages
+or target-level aggregate salvo caps, using the Ghost double kill-sized salvo as
+supporting evidence.

@@ -761,3 +761,19 @@ with direct launch evidence, preventing skipped same-target rows from inheriting
 a misleading outcome hint. The evidence remains conservative: target destruction
 after directly correlated launches is useful outcome-quality evidence, but still
 not exact projectile, hit, or kill attribution.
+
+## Issue #39 Sphinx/Ghost direct-correlation smoke follow-up
+
+A later controlled smoke provided another successful direct-correlation sample:
+Puebla spent six directly correlated shots on Sphinx before Sphinx appeared in
+vanilla `DestroyShip` text, while Friedland and Ramillies each spent eight
+directly correlated shots on Ghost before Ghost appeared in vanilla `DestroyShip`
+text. Repeated `perShipCommandCapReached` skipped rows had no direct launch
+attribution.
+
+This further confirms that the #39 command-spend attribution path is functioning
+and that post-direct-launch destruction hints can support outcome-quality review.
+The Ghost case is now a concrete tuning candidate for a later implementation
+slice: same-target duplicate kill packages or target-level aggregate salvo caps.
+No additional diagnostics code is needed for the current #39 evidence closeout;
+heuristic/rule changes should be handled separately from the instrumentation PR.

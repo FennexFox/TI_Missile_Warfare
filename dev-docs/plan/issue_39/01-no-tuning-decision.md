@@ -190,3 +190,33 @@ directly correlated launch evidence, so skipped same-target rows do not receive 
 misleading post-command destruction hint. The outcome remains conservative:
 post-direct-launch target destruction is useful quality evidence, but not unique
 projectile or kill attribution.
+
+## Additional Sphinx/Ghost Smoke Observation
+
+A later controlled smoke added another successful direct-correlation sample:
+
+- experiment `dryrun-20260622T224547798Z-1` selected one ship and applied one
+  command to Sphinx;
+- Puebla spent six directly correlated shots on Sphinx, and Sphinx later
+  appeared in vanilla `DestroyShip` text;
+- experiment `dryrun-20260622T224608094Z-2` selected three ships and applied two
+  commands to Ghost;
+- Friedland spent eight directly correlated shots on Ghost;
+- Ramillies spent eight directly correlated shots on Ghost;
+- Ghost later appeared in vanilla `DestroyShip` text;
+- twenty-eight skipped rows were `perShipCommandCapReached` and had no direct
+  launch attribution.
+
+This reinforces the current #39 state: the controlled command-spend evidence path
+is working, target outcome hints are useful after direct launches, and skipped
+rows remain causally separated. It also exposes the first concrete tuning
+candidate for a later implementation slice: same-target duplicate kill packages.
+In the Ghost case, two ships each committed a kill-sized salvo to the same target
+and the target was later destroyed. That is a candidate for a target-level
+aggregate salvo cap or duplicate kill-package suppression rule, but not a rule
+change in this diagnostics PR.
+
+Implementation boundary: no additional instrumentation code is required for the
+current #39 evidence closeout. A future PR should decide and implement at most one
+bounded heuristic/rule-family change, using these direct command-spend and
+post-direct-launch outcome hints as supporting evidence.
