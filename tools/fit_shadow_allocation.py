@@ -140,6 +140,8 @@ class ControlledCommandEvidence:
     assigned_shots: int | None
     direct_spent_shots: int | None
     ammo_gate_budget_shots: int | None
+    kill_size: int | None
+    saturation_size: int | None
     post_state: str
     observed_launch_count: int
     observed_ammo_delta: int | None
@@ -515,6 +517,8 @@ def controlled_command_rows(
                 assigned_shots=first_int(raw.get("missilesAssigned"), raw.get("assignedShots")),
                 direct_spent_shots=direct_spent_shots,
                 ammo_gate_budget_shots=first_int(raw.get("ammoGateBudgetShots")),
+                kill_size=first_int(raw.get("killSize")),
+                saturation_size=first_int(raw.get("saturationSize")),
                 post_state=str(raw.get("postState", "unknown")),
                 observed_launch_count=len(matching_launches),
                 observed_ammo_delta=sum(observed_deltas) if observed_deltas else None,
@@ -1617,6 +1621,9 @@ def format_markdown_report(report: AggregateReport) -> str:
     lines.extend(["", "## Controlled command result evidence", ""])
     lines.extend(controlled_command_evidence_markdown_lines(report.logs))
 
+    lines.extend(["", "## Controlled tuning candidates", ""])
+    lines.extend(controlled_tuning_candidate_markdown_lines(report.logs))
+
     lines.extend(["", "## Per-log summaries", ""])
     for log in report.logs:
         parser_reasons = "; ".join(log.parser_reasons) if log.parser_reasons else "none"
@@ -1874,6 +1881,104 @@ def controlled_command_evidence_markdown_lines(logs: list[FittingLogReport]) -> 
     if len(rows) > 20:
         lines.append(f"- table truncated to 20/{len(rows)} command rows")
     return lines
+
+
+def controlled_tuning_candidate_markdown_lines(logs: list[FittingLogReport]) -> list[str]:
+    """Return conservative controlled-evidence tuning candidate lines."""
+    rows = [row for log in logs for row in log.controlled_command_evidence]
+    applied_direct_rows = [
+        row
+        for row in rows
+        if row.get("command_result") == "applied"
+        and row.get("correlation") == "direct"
+        and command_spent(row) is not None
+    ]
+    grouped: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for row in applied_direct_rows:
+        grouped.setdefault(
+            (str(row.get("experiment_id", "unknown")), str(row.get("target", "unknown"))),
+            [],
+        ).append(row)
+
+    candidates: list[dict[str, object]] = []
+    for (experiment_id, target), target_rows in sorted(grouped.items()):
+        if len(target_rows) < 2:
+            continue
+        spent_values = [command_spent(row) or 0 for row in target_rows]
+        assigned_values = [optional_int(row.get("assigned_shots")) or 0 for row in target_rows]
+        kill_sizes = [
+            value
+            for value in (optional_int(row.get("kill_size")) for row in target_rows)
+            if value is not None and value > 0
+        ]
+        max_kill_size = max(kill_sizes) if kill_sizes else None
+        total_spent = sum(spent_values)
+        total_assigned = sum(assigned_values)
+        target_destroyed = any(row.get("target_outcome") == "destroyed" for row in target_rows)
+        duplicate_kill_sized_rows = (
+            sum(1 for row in target_rows if (command_spent(row) or 0) >= max_kill_size)
+            if max_kill_size is not None
+            else 0
+        )
+        if max_kill_size is not None and total_spent <= max_kill_size:
+            continue
+        candidates.append(
+            {
+                "experiment_id": experiment_id,
+                "target": target,
+                "commands": len(target_rows),
+                "total_assigned": total_assigned,
+                "total_spent": total_spent,
+                "max_kill_size": max_kill_size,
+                "duplicate_kill_sized_rows": duplicate_kill_sized_rows,
+                "target_destroyed": target_destroyed,
+                "launch_lines": sorted(
+                    line for row in target_rows for line in row.get("direct_launch_lines", [])
+                ),
+            }
+        )
+
+    if not candidates:
+        return [
+            "- no same-target duplicate kill-package candidate was detected from direct command-spend rows"
+        ]
+
+    lines = [
+        f"- same-target duplicate kill-package candidates: {len(candidates)}",
+        "- interpretation: these are tuning candidates only; they do not change allocator behavior.",
+        "",
+        "| experiment | target | direct commands | total assigned | total spent | max kill size | kill-sized commands | destroyed hint | direct launch lines |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for candidate in candidates[:20]:
+        lines.append(
+            "| {experiment} | {target} | {commands} | {assigned} | {spent} | {kill} | {kill_rows} | {destroyed} | {launch_lines} |".format(
+                experiment=markdown_cell(str(candidate["experiment_id"])),
+                target=markdown_cell(str(candidate["target"])),
+                commands=candidate["commands"],
+                assigned=candidate["total_assigned"],
+                spent=candidate["total_spent"],
+                kill=format_optional_int(candidate["max_kill_size"]),
+                kill_rows=candidate["duplicate_kill_sized_rows"],
+                destroyed="yes" if candidate["target_destroyed"] else "no",
+                launch_lines=markdown_cell(",".join(str(value) for value in candidate["launch_lines"])),
+            )
+        )
+    if len(candidates) > 20:
+        lines.append(f"- table truncated to 20/{len(candidates)} tuning candidates")
+    return lines
+
+
+def command_spent(row: dict[str, object]) -> int | None:
+    """Return direct command spend from command row or launch-side observed spent."""
+    return optional_int(row.get("direct_spent_shots")) or optional_int(
+        row.get("direct_observed_spent_shots")
+    )
+
+
+def optional_int(value: object) -> int | None:
+    """Return an integer when report values are numeric."""
+    return value if isinstance(value, int) else None
 
 
 def controlled_command_evidence_one_line(log: FittingLogReport) -> str:

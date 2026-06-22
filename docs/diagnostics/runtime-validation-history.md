@@ -777,3 +777,17 @@ The Ghost case is now a concrete tuning candidate for a later implementation
 slice: same-target duplicate kill packages or target-level aggregate salvo caps.
 No additional diagnostics code is needed for the current #39 evidence closeout;
 heuristic/rule changes should be handled separately from the instrumentation PR.
+
+## Issue #39 pre-tuning diagnostic closeout
+
+The fitting report now includes a report-only `Controlled tuning candidates`
+section. It groups directly correlated applied commands by experiment and target
+and flags same-target duplicate kill-package candidates when multiple direct
+commands spend on the same target and aggregate observed spend exceeds available
+kill-size evidence.
+
+This closes the useful diagnostics work before a heuristic change: command-spend
+correlation is validated, target identity bridging is validated, skipped rows are
+separated from applied direct launches, conservative post-direct-launch
+DestroyShip hints are available, and duplicate same-target kill-package evidence
+is now mechanically visible for the next focused rule-change PR.

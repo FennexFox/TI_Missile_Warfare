@@ -274,3 +274,11 @@ need more instrumentation code. The next implementation candidate should be a
 separate focused heuristic/rule slice around same-target duplicate kill packages
 or target-level aggregate salvo caps, using the Ghost double kill-sized salvo as
 supporting evidence.
+
+### Issue #39 pre-tuning diagnostic closeout
+
+Before the next heuristic/rule PR, #39 now exposes same-target duplicate
+kill-package candidates directly in the fitting report. The report-only section
+uses direct command-spend rows and available kill-size/outcome hints to identify
+candidate target-level aggregate salvo caps. The actual allocator behavior change
+remains a separate focused follow-up.

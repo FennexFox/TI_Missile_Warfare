@@ -220,3 +220,31 @@ Implementation boundary: no additional instrumentation code is required for the
 current #39 evidence closeout. A future PR should decide and implement at most one
 bounded heuristic/rule-family change, using these direct command-spend and
 post-direct-launch outcome hints as supporting evidence.
+
+## Final Pre-tuning Diagnostic Closeout
+
+Before moving to an actual heuristic/rule change, #39 now also makes the next
+candidate mechanically visible in the fitting report. The controlled report emits
+a `Controlled tuning candidates` section that groups directly correlated applied
+commands by experiment and target, then flags same-target duplicate kill-package
+candidates when multiple direct commands spend on the same target and total
+observed spend exceeds the target's available kill-size evidence.
+
+This is still report-only. It does not alter allocator behavior, command scope,
+missile spending, target choice, or any heuristic parameter. Its purpose is to
+make the next PR's precondition explicit: a future same-target aggregate salvo cap
+or duplicate kill-package suppression change should cite a report row produced
+from direct command-spend evidence and, where available, post-direct-launch
+DestroyShip outcome hints.
+
+With this diagnostic in place, #39 has done the useful pre-tuning work available
+without changing allocator behavior:
+
+- direct command-spend correlation is instrumented and validated;
+- target identity bridging is instrumented and validated;
+- skipped rows are causally separated from applied launch rows;
+- post-direct-launch target destruction hints are parsed conservatively;
+- skipped same-target rows cannot inherit destruction hints;
+- same-target duplicate kill-package candidates are now report-visible;
+- exact projectile/hit/kill attribution remains out of scope without a stable RE
+  hook.
