@@ -38,6 +38,12 @@ CLASSIFICATIONS = (
     "impossible",
     "ambiguous",
 )
+CONTROLLED_DRY_RUN_RECORD_TYPES = {
+    "dryRunExperiment",
+    "dryRunIntent",
+    "dryRunCommandCandidate",
+    "dryRunResult",
+}
 BAD_CLASSIFICATIONS = {
     "overkill",
     "underkill",
@@ -226,7 +232,7 @@ def classify_records(
     classified: list[AllocationRecord] = []
     for raw in raw_records:
         record_type = str(raw.get("recordType", "unknown"))
-        if record_type == "cycle":
+        if record_type == "cycle" or record_type in CONTROLLED_DRY_RUN_RECORD_TYPES:
             continue
 
         cycle_id = str(raw.get("cycleId", "unknown"))
@@ -518,16 +524,7 @@ def evidence_sufficiency_report(logs: list[FittingLogReport]) -> EvidenceSuffici
         relative_velocity_status(scoped_logs, total_cycles),
         missile_profile_status(total_cycles, missing_inputs),
         target_pd_status(scoped_logs, total_cycles, limitation_counts),
-        EvidenceSufficiencyInput(
-            name="selected-player command scope",
-            status="ready",
-            scope="command design",
-            summary=(
-                "Issue #21 verifies the tactical command panel's single selected "
-                "ship or group-selected ship list as the later command scope."
-            ),
-            limitations=["not exercised by the offline fitting wrapper"],
-        ),
+        selected_command_scope_status(scoped_logs),
         EvidenceSufficiencyInput(
             name="vanilla command granularity",
             status="commandUnsafe",
@@ -540,16 +537,7 @@ def evidence_sufficiency_report(logs: list[FittingLogReport]) -> EvidenceSuffici
                 "allocator-to-command mapping must not assume per-visible-module salvo control"
             ],
         ),
-        EvidenceSufficiencyInput(
-            name="dry-run command intent logging",
-            status="commandUnsafe",
-            scope="controlled command mapping",
-            summary=(
-                "Current selected-log fitting is observation-only and does not log "
-                "a selected-scope command intent."
-            ),
-            limitations=["required before live controlled command application"],
-        ),
+        dry_run_command_status(scoped_logs),
         observed_launch_delta_status(scoped_logs),
     ]
 
@@ -858,6 +846,139 @@ def target_pd_status(
     )
 
 
+def selected_command_scope_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyInput:
+    """Classify runtime command-scope evidence from controlled dry-run summaries."""
+    experiments = sum(allocation_summary_value(log, "controlled_dry_run_experiments") for log in logs)
+    candidates = sum(
+        allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
+    )
+    scope_violations = sum(
+        allocation_summary_value(log, "controlled_dry_run_scope_violations") for log in logs
+    )
+    selected_counts = aggregate_allocation_counter(logs, "controlled_dry_run_selected_ship_counts")
+    missing_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_missing_reason_counts")
+    scope_sources = aggregate_allocation_counter(logs, "controlled_dry_run_command_scope_source_counts")
+    scope_missing = aggregate_allocation_counter(
+        logs,
+        "controlled_dry_run_command_scope_missing_reason_counts",
+    )
+
+    visible_experiments = sum(
+        count for selected_count, count in selected_counts.items() if selected_count != "0"
+    )
+    if experiments <= 0:
+        status = "commandUnsafe"
+    elif scope_violations:
+        status = "commandUnsafe"
+    elif visible_experiments == experiments and candidates:
+        status = "ready"
+    elif visible_experiments:
+        status = "provisional"
+    else:
+        status = "commandUnsafe"
+
+    limitations: list[str] = []
+    if experiments <= 0:
+        limitations.append("no controlled dry-run experiments were observed")
+    if visible_experiments != experiments:
+        limitations.append(
+            f"{experiments - visible_experiments}/{experiments} experiments had no visible selected scope"
+        )
+    if missing_reasons:
+        limitations.append("selected-scope reasons: " + count_dict_text(missing_reasons))
+    if scope_sources:
+        limitations.append("command-scope sources: " + count_dict_text(scope_sources))
+    if scope_missing:
+        limitations.append("command-scope missing reasons: " + count_dict_text(scope_missing))
+    if scope_violations:
+        limitations.append(f"{scope_violations} scope violation(s) reported")
+
+    return EvidenceSufficiencyInput(
+        name="selected-player command scope",
+        status=status,
+        scope="controlled command mapping",
+        summary=(
+            f"{visible_experiments}/{experiments} controlled dry-run experiments "
+            f"had visible selected/player scope; {scope_violations} scope violations."
+        ),
+        limitations=limitations,
+        evidence={
+            "selected_ship_counts": dict(sorted(selected_counts.items())),
+            "selected_scope_missing_reasons": dict(sorted(missing_reasons.items())),
+            "command_scope_sources": dict(sorted(scope_sources.items())),
+            "command_scope_missing_reasons": dict(sorted(scope_missing.items())),
+        },
+    )
+
+
+def dry_run_command_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyInput:
+    """Classify controlled dry-run command intent and result evidence."""
+    experiments = sum(allocation_summary_value(log, "controlled_dry_run_experiments") for log in logs)
+    intents = sum(allocation_summary_value(log, "controlled_dry_run_intents") for log in logs)
+    candidates = sum(
+        allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
+    )
+    results = sum(allocation_summary_value(log, "controlled_dry_run_results") for log in logs)
+    intended = sum(
+        allocation_summary_value(log, "controlled_dry_run_intended_commands") for log in logs
+    )
+    skipped = sum(
+        allocation_summary_value(log, "controlled_dry_run_skipped_commands") for log in logs
+    )
+    applied = sum(
+        allocation_summary_value(log, "controlled_dry_run_applied_commands") for log in logs
+    )
+    failed = sum(
+        allocation_summary_value(log, "controlled_dry_run_failed_commands") for log in logs
+    )
+    classifications = aggregate_allocation_counter(
+        logs,
+        "controlled_dry_run_candidate_classification_counts",
+    )
+    reasons = aggregate_allocation_counter(logs, "controlled_dry_run_candidate_reason_counts")
+
+    if experiments <= 0:
+        status = "commandUnsafe"
+    elif applied or failed:
+        status = "commandUnsafe"
+    elif candidates <= 0:
+        status = "provisional"
+    elif classifications.get("eligible", 0):
+        status = "ready"
+    else:
+        status = "provisional"
+
+    limitations: list[str] = []
+    if experiments <= 0:
+        limitations.append("no controlled dry-run experiments were observed")
+    if candidates <= 0 and experiments > 0:
+        limitations.append("no command candidates were emitted")
+    if classifications:
+        limitations.append("candidate classifications: " + count_dict_text(classifications))
+    if reasons:
+        limitations.append("candidate reasons: " + count_dict_text(reasons))
+    if applied:
+        limitations.append(f"{applied} command(s) were applied")
+    if failed:
+        limitations.append(f"{failed} command(s) failed")
+
+    return EvidenceSufficiencyInput(
+        name="dry-run command intent logging",
+        status=status,
+        scope="controlled command mapping",
+        summary=(
+            f"{experiments} experiments, {intents} intents, {candidates} candidates, "
+            f"{results} results; intended/skipped/applied/failed commands: "
+            f"{intended}/{skipped}/{applied}/{failed}."
+        ),
+        limitations=limitations,
+        evidence={
+            "candidate_classifications": dict(sorted(classifications.items())),
+            "candidate_reasons": dict(sorted(reasons.items())),
+        },
+    )
+
+
 def observed_launch_delta_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyInput:
     """Classify observed launch/ammo delta evidence for command validation."""
     try_fire_rows = sum(int(log.parser_summary.get("missile_try_fire_count", 0)) for log in logs)
@@ -1051,6 +1172,9 @@ def format_markdown_report(report: AggregateReport) -> str:
     else:
         lines.append("- none")
 
+    lines.extend(["", "## Controlled dry-run command summary", ""])
+    lines.extend(controlled_dry_run_markdown_lines(report.logs))
+
     lines.extend(["", "## Per-log summaries", ""])
     for log in report.logs:
         parser_reasons = "; ".join(log.parser_reasons) if log.parser_reasons else "none"
@@ -1080,6 +1204,8 @@ def format_markdown_report(report: AggregateReport) -> str:
                     if log.limitation_counts
                     else "none"
                 ),
+                "- controlled dry-run: "
+                + controlled_dry_run_one_line(log),
                 "",
             ]
         )
@@ -1130,6 +1256,82 @@ def format_markdown_report(report: AggregateReport) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def controlled_dry_run_markdown_lines(logs: list[FittingLogReport]) -> list[str]:
+    """Return aggregate controlled dry-run Markdown lines."""
+    experiments = sum(allocation_summary_value(log, "controlled_dry_run_experiments") for log in logs)
+    intents = sum(allocation_summary_value(log, "controlled_dry_run_intents") for log in logs)
+    candidates = sum(
+        allocation_summary_value(log, "controlled_dry_run_command_candidates") for log in logs
+    )
+    results = sum(allocation_summary_value(log, "controlled_dry_run_results") for log in logs)
+    intended = sum(
+        allocation_summary_value(log, "controlled_dry_run_intended_commands") for log in logs
+    )
+    skipped = sum(
+        allocation_summary_value(log, "controlled_dry_run_skipped_commands") for log in logs
+    )
+    applied = sum(
+        allocation_summary_value(log, "controlled_dry_run_applied_commands") for log in logs
+    )
+    failed = sum(
+        allocation_summary_value(log, "controlled_dry_run_failed_commands") for log in logs
+    )
+    scope_violations = sum(
+        allocation_summary_value(log, "controlled_dry_run_scope_violations") for log in logs
+    )
+    classifications = aggregate_allocation_counter(
+        logs,
+        "controlled_dry_run_candidate_classification_counts",
+    )
+    reasons = aggregate_allocation_counter(logs, "controlled_dry_run_candidate_reason_counts")
+    scope_sources = aggregate_allocation_counter(logs, "controlled_dry_run_command_scope_source_counts")
+    scope_missing = aggregate_allocation_counter(
+        logs,
+        "controlled_dry_run_command_scope_missing_reason_counts",
+    )
+    selected_counts = aggregate_allocation_counter(logs, "controlled_dry_run_selected_ship_counts")
+    selected_reasons = aggregate_allocation_counter(logs, "controlled_dry_run_missing_reason_counts")
+
+    return [
+        f"- experiments/intents/candidates/results: {experiments}/{intents}/{candidates}/{results}",
+        f"- intended/skipped/applied/failed commands: {intended}/{skipped}/{applied}/{failed}",
+        f"- scope violations: {scope_violations}",
+        f"- candidate classifications: {count_dict_text(classifications)}",
+        f"- candidate reasons: {count_dict_text(reasons)}",
+        f"- command-scope sources: {count_dict_text(scope_sources)}",
+        f"- command-scope missing reasons: {count_dict_text(scope_missing)}",
+        f"- selected ship counts: {count_dict_text(selected_counts)}",
+        f"- selected-scope reasons: {count_dict_text(selected_reasons)}",
+    ]
+
+
+def controlled_dry_run_one_line(log: FittingLogReport) -> str:
+    """Return a compact per-log controlled dry-run summary."""
+    experiments = allocation_summary_value(log, "controlled_dry_run_experiments")
+    candidates = allocation_summary_value(log, "controlled_dry_run_command_candidates")
+    applied = allocation_summary_value(log, "controlled_dry_run_applied_commands")
+    failed = allocation_summary_value(log, "controlled_dry_run_failed_commands")
+    scope_violations = allocation_summary_value(log, "controlled_dry_run_scope_violations")
+    classifications = aggregate_allocation_counter(
+        [log],
+        "controlled_dry_run_candidate_classification_counts",
+    )
+    reasons = aggregate_allocation_counter([log], "controlled_dry_run_candidate_reason_counts")
+    return (
+        f"{experiments} experiments, {candidates} candidates, "
+        f"{applied} applied, {failed} failed, {scope_violations} scope violations"
+        f"; classifications: {count_dict_text(classifications)}"
+        f"; reasons: {count_dict_text(reasons)}"
+    )
+
+
+def count_dict_text(values: Counter[str] | dict[str, int]) -> str:
+    """Format a count dictionary for report text."""
+    if not values:
+        return "none"
+    return ", ".join(f"{key}: {value}" for key, value in sorted(values.items()))
 
 
 def markdown_cell(text: str) -> str:

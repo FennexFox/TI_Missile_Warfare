@@ -8,6 +8,11 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 import re
+import sys
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 import statistics
 
 

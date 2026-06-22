@@ -340,6 +340,13 @@ conservative buckets:
 - `impossible`
 - `ambiguous`
 
+Controlled dry-run rows such as `dryRunExperiment`, `dryRunIntent`,
+`dryRunCommandCandidate`, and `dryRunResult` are not allocation-quality rows.
+The fitting report summarizes them separately with experiment, candidate,
+classification, reason, command-scope, selected-scope, scope-violation, and
+applied/failed command counts instead of treating them as ambiguous allocation
+decisions.
+
 `command-safety no-op` means no allocation was made because no concrete
 launcher-selected target identity was visible. It is safe skip evidence, not
 allocation-quality evidence and not proof that vanilla had no missile target.

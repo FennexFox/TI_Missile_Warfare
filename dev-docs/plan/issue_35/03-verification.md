@@ -45,7 +45,7 @@
 
 ## Manual smoke tests
 
-- Runtime smoke not available in the repository alone. User should verify in game after deployment.
+- Runtime smoke completed against the live Terra Invicta `Player.log`.
 
 ## Rollback risks
 
@@ -53,7 +53,8 @@
 
 ## Progress
 
-- In progress; local validation completed, runtime smoke pending.
+- Complete. Local validation and live runtime smoke both pass the #35
+  diagnostics-only safety criteria.
 
 ## Decision log
 
@@ -65,4 +66,26 @@
 - Local fixture validation passes for eligible and skip-closed candidates.
 - `dotnet build TI_Missile_Fire_Control.sln` passes with zero warnings and zero
   errors.
-- Runtime in-game smoke has not been run in this repository pass.
+- Fitting report generation now keeps controlled dry-run rows out of allocation
+  quality classifications and reports dry-run command evidence separately.
+- Live logs at `Player.log` and `Player-prev.log` contained 9 controlled
+  dry-run experiments, 7 command candidates, 0 scope violations, 0 applied
+  commands, and 0 failed commands. All candidates skipped with
+  `reason="unsafeScope"` because command scope reported
+  `activePlayerUnavailable`.
+- The active-player fallback now reads `GameControl.control.activePlayer`.
+  A follow-up live log then changed the command-scope missing reason to
+  `nonPlayerOrAIControlled`, confirming that the active-player lookup path is
+  no longer missing and that non-player launcher candidates skip closed.
+- The selected-scope resolver now also checks the decompiled runtime HUD path
+  `GameControl.spaceCombat.combatHUD`.
+- A later live log confirmed that selected scope is visible through
+  `GameControl.spaceCombat.combatHUD.selectedFriendlyShipState` in runtime:
+  3 controlled dry-run experiments, 3 command candidates, 0 applied commands,
+  0 failed commands, and 0 scope violations. One experiment had
+  `selectedShipCount="1"` and skipped the allocator-motivated launcher with
+  `reason="outsidePlayerControlledScope"` because the launcher was not in the
+  selected command scope. The other two skipped as `nonPlayerOrAIControlled`.
+- `tools/parse_player_log.py` now configures stdout as UTF-8 so runtime ship
+  names containing non-ASCII characters do not crash parser output on Windows
+  code pages.

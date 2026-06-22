@@ -32,6 +32,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static readonly string[] CanvasControllerRootMemberNames =
         {
+            "combatHUD",
+            "CombatHUD",
             "spaceCombatCanvasController",
             "SpaceCombatCanvasController",
             "spaceCombatCanvas",
@@ -470,7 +472,6 @@ namespace MissileFireControl.Mod.Diagnostics
 
             if (!commandScope.ContainsShip(snapshot.Launcher.Id))
             {
-                candidate.ScopeViolation = true;
                 return candidate.Fail("wouldSkip", "outsidePlayerControlledScope");
             }
 
@@ -521,7 +522,12 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static object ActivePlayer()
         {
-            return ReadStaticMember("GameControl", "activePlayer")
+            object gameControl = ReadStaticMember("GameControl", "control")
+                ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "control");
+
+            return ReadMember(gameControl, "activePlayer")
+                ?? ReadMember(gameControl, "humanPlayer")
+                ?? ReadStaticMember("GameControl", "activePlayer")
                 ?? ReadStaticMember("GameControl", "humanPlayer")
                 ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "activePlayer")
                 ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "humanPlayer");
