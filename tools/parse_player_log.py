@@ -99,6 +99,7 @@ class AllocationBattleSummary:
     controlled_dry_run_safety_gate_blocked_commands: int = 0
     controlled_dry_run_candidate_classification_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_candidate_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_dry_run_candidate_source_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_apply_gate_result_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_safety_gate_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_command_scope_source_counts: dict[str, int] = field(default_factory=dict)
@@ -112,6 +113,7 @@ class AllocationBattleSummary:
     controlled_live_apply_failed: int = 0
     controlled_live_apply_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_live_apply_path_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_candidate_source_counts: dict[str, int] = field(default_factory=dict)
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
@@ -604,12 +606,14 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_dry_run_missing_reason_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_classification_counts: Counter[str] = Counter()
     controlled_dry_run_candidate_reason_counts: Counter[str] = Counter()
+    controlled_dry_run_candidate_source_counts: Counter[str] = Counter()
     controlled_dry_run_apply_gate_result_counts: Counter[str] = Counter()
     controlled_dry_run_safety_gate_reason_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_source_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_missing_reason_counts: Counter[str] = Counter()
     controlled_live_apply_reason_counts: Counter[str] = Counter()
     controlled_live_apply_path_counts: Counter[str] = Counter()
+    controlled_live_apply_candidate_source_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
     controlled_live_apply_attempts = 0
     controlled_live_apply_applied = 0
@@ -850,6 +854,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         pairs.get("classification", "unknown")
                     ] += 1
                     controlled_dry_run_candidate_reason_counts[pairs.get("reason", "unknown")] += 1
+                    candidate_source = pairs.get("candidateSource")
+                    if candidate_source:
+                        controlled_dry_run_candidate_source_counts[candidate_source] += 1
                     controlled_dry_run_command_scope_source_counts[
                         pairs.get("commandScopeSource", "unknown")
                     ] += 1
@@ -882,6 +889,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     controlled_live_apply_attempts += 1
                     controlled_live_apply_reason_counts[pairs.get("reason", "unknown")] += 1
                     controlled_live_apply_path_counts[pairs.get("commandPath", "unknown")] += 1
+                    candidate_source = pairs.get("candidateSource")
+                    if candidate_source:
+                        controlled_live_apply_candidate_source_counts[candidate_source] += 1
                     if record_type in APPLIED_ALLOCATION_RECORD_TYPES:
                         controlled_live_apply_applied += 1
                     elif record_type in SKIPPED_ALLOCATION_RECORD_TYPES:
@@ -1205,6 +1215,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_dry_run_candidate_reason_counts = dict(
         sorted(controlled_dry_run_candidate_reason_counts.items())
     )
+    allocation_summary.controlled_dry_run_candidate_source_counts = dict(
+        sorted(controlled_dry_run_candidate_source_counts.items())
+    )
     allocation_summary.controlled_dry_run_apply_gate_result_counts = dict(
         sorted(controlled_dry_run_apply_gate_result_counts.items())
     )
@@ -1230,6 +1243,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_live_apply_failed = controlled_live_apply_failed
     allocation_summary.controlled_live_apply_reason_counts = dict(sorted(controlled_live_apply_reason_counts.items()))
     allocation_summary.controlled_live_apply_path_counts = dict(sorted(controlled_live_apply_path_counts.items()))
+    allocation_summary.controlled_live_apply_candidate_source_counts = dict(
+        sorted(controlled_live_apply_candidate_source_counts.items())
+    )
     summary.allocation_summary = allocation_summary
     if sequences:
         ordered = sorted(sequences)
@@ -1364,6 +1380,11 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 "- controlled dry-run command reasons: "
                 + format_count_dict(summary.controlled_dry_run_candidate_reason_counts)
             )
+        if summary.controlled_dry_run_candidate_source_counts:
+            print(
+                "- controlled dry-run candidate sources: "
+                + format_count_dict(summary.controlled_dry_run_candidate_source_counts)
+            )
         if summary.controlled_dry_run_apply_gate_result_counts:
             print(
                 "- controlled dry-run apply-gate results: "
@@ -1409,6 +1430,11 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- controlled live apply paths: "
                 + format_count_dict(summary.controlled_live_apply_path_counts)
+            )
+        if summary.controlled_live_apply_candidate_source_counts:
+            print(
+                "- controlled live apply candidate sources: "
+                + format_count_dict(summary.controlled_live_apply_candidate_source_counts)
             )
     if summary.unknown_record_type_counts:
         print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")

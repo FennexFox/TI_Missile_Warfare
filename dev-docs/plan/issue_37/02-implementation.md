@@ -70,6 +70,7 @@
 - The result row uses existing parser-known record types: `appliedDecision`, `skippedDecision`, and `failedCommand`.
 - The live command path is invoked by reflection so `MissileFireControl.Core` remains independent of Terra Invicta and the mod project avoids compile-time game type coupling.
 - `dryRunResult` remains the aggregate controlled experiment result row, but it can now report nonzero `appliedCommands` for #37.
+- Follow-up runtime evidence showed the selected command ship can be idle while other ships continue producing allocator cycles. Command candidates now keep the selected command launcher separate from the allocator snapshot launcher, and rejected per-module package targets can still drive a selected-ship command when the selected ship reports command and missile-fire readiness.
 
 ## Outcomes / Retrospective
 
@@ -78,3 +79,4 @@
 - Added `appliedDecision` / `skippedDecision` / `failedCommand` controlled result logging with command path, reason, pre-state, post-state, applied count, and failed count.
 - Extended parser summaries with controlled live apply attempts, applied/skipped/failed counts, reason counts, and command path counts.
 - Added `tools/fixtures/first_live_apply.txt` to exercise the parser/report shape for one allowed and applied first-live command.
+- Updated controlled command candidate construction so `launcherId` is the exactly-one selected command ship, `allocatorLauncherId` is the ship that produced the current allocator cycle, and `candidateSource` distinguishes normal allocator allocations from selected-ship rejected-target fallback commands.

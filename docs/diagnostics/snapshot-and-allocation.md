@@ -173,8 +173,8 @@ the UMM panel, the next shadow allocation cycle is tagged with a local
 ```text
 [AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
 [AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
-[AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
-[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
+[AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." allocatorLauncherId="..." allocatorLauncher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
+[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." allocatorLauncherId="..." allocatorLauncher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
 [AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" safetyGateBlockedCommands="1" result="dryRunOnly" resultReason="blockedBySafetyToggle"
 ```
 
@@ -190,8 +190,12 @@ player-side combatant list.
 `dryRunCommandCandidate` rows classify the diagnostics-only command candidate as
 `eligible`, `wouldSkip`, or `wouldFail` under the resolved player-controlled
 command scope. They include command scope source, missing reason, scope
-violation flag, launcher, weapon/module, target, assigned shot, and ammo/gate
-budget evidence. The rows do not call `SelectSalvoTargetCommand`,
+violation flag, selected command launcher, allocator snapshot launcher,
+weapon/module, target, assigned shot, candidate source, and ammo/gate budget
+evidence. `launcherId` / `launcher` name the selected command ship;
+`allocatorLauncherId` / `allocatorLauncher` name the ship that produced the
+current projectile-fire allocation cycle. The rows do not call
+`SelectSalvoTargetCommand`,
 `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`,
 `SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
 report `appliedCommands="0"` for Issues #34 through #36.
@@ -211,7 +215,7 @@ an eligible candidate from exactly one selected command-panel ship can emit
 `gateResult="allowed"` and then one result row:
 
 ```text
-[AllocationLog] recordType="appliedDecision" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" commandIntent="salvoTargetRecommendationLiveApply" commandGranularity="shipAllSalvoCapableWeapons" commandPath="SelectSalvoTargetCommand.OnCommandExecute" result="applied" reason="none" exceptionType="none" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0"
+[AllocationLog] recordType="appliedDecision" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" commandIntent="salvoTargetRecommendationLiveApply" commandGranularity="shipAllSalvoCapableWeapons" commandPath="SelectSalvoTargetCommand.OnCommandExecute" candidateSource="allocatorAllocation" result="applied" reason="none" exceptionType="none" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." allocatorLauncherId="..." allocatorLauncher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0"
 ```
 
 If live preconditions fail after the gate, the row uses
@@ -222,17 +226,35 @@ the same cycle are skipped with `reason="oneAttemptAlreadyConsumed"`.
 
 For #37, a live attempt additionally requires exactly one selected command
 scope. The active-player launcher fallback remains useful diagnostics, but it
-is not eligible for first-live apply. Multi-ship selected groups remain future
-#38 scope, and broader fleet-wide controlled application remains future #43
-scope.
+is not eligible for first-live apply. The selected ship runtime object is kept
+through the command scope and re-checked for `CanPerformShipCommands()` and
+`AnyOffensiveMissileWeaponCanFire()` before the command is invoked. Multi-ship
+selected groups remain future #38 scope, and broader fleet-wide controlled
+application remains future #43 scope.
 
-If the next missile allocation candidate is for a different ship than the
-selected command-panel ship, the controlled experiment stays armed and logs that
-it is waiting for the selected ship to produce an eligible missile allocation
-candidate. Pressing the trigger again while an experiment is already armed does
-not replace it; the mod reports the pending experiment id instead. The
-experiment still consumes when it applies, fails, reaches the safety gate, or
-otherwise reaches a selected-ship command decision.
+If the current allocation cycle was emitted by a different ship, the controlled
+experiment can still command the exactly-one selected ship at the allocator's
+resolved target. This is logged with `candidateSource="allocatorAllocation"`
+when the allocator emitted an allocation, or
+`candidateSource="selectedShipRejectedTarget"` when the allocator rejected the
+target only because the observed firing module did not have enough
+`ammoGateBudgetShots` to form a useful package. In both cases, the live command
+still calls only `SelectSalvoTargetCommand.OnCommandExecute` for the selected
+ship and resolved target. Pressing the trigger again while an experiment is
+already armed does not replace it; the mod reports the pending experiment id
+instead. The experiment consumes when it applies, fails, reaches the safety
+gate, or otherwise reaches a selected-ship command decision.
+
+The 2026-06-22 Lake Maracaibo smoke showed why the selected command ship must be
+separate from the allocator snapshot launcher. The first controlled apply
+invoked the command for selected ship `Lake Maracaibo` id `276` and target
+`Persephone` id `280`. A second trigger stayed pending because Lake Maracaibo
+stopped emitting missile projectile-fire cycles after 15 missile shots, while
+other friendly ships continued to emit cycles. Late allocator cycles therefore
+reported only per-module `ammoGateBudgetShots="1"` or `"2"` rejections for
+other launchers, even though the selected ship had previously shown additional
+module ammo. New logs should use `launcherId` and `allocatorLauncherId` to make
+that distinction explicit.
 
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero

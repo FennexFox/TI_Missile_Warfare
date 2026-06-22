@@ -512,3 +512,32 @@ The expected live smoke must show one explicit experiment trigger, exactly one
 selected player missile ship, at most one applied or failed command result, no
 scope violations, no AI or unselected-player application, no unknown parser
 record types, and no MissileWarfare warnings/errors.
+
+## 2026-06-22 Issue #37 follow-up: selected command launcher vs allocator launcher
+
+A later Lake Maracaibo combat log confirmed that the first controlled apply
+reached `SelectSalvoTargetCommand.OnCommandExecute`, but also exposed a command
+scope limitation in the first #37 implementation:
+
+- selected command ship: `Lake Maracaibo` id `276`
+- first controlled target: `Persephone` id `280`
+- first controlled apply: one `appliedDecision`, one applied command, zero
+  failed commands
+- Lake Maracaibo missile `TryFire` rows: 15 total, five missile slots, each
+  observed from pre-fire ammo `15` down to `13`
+- other friendly ships continued to emit 75 missile `TryFire` rows each
+- second controlled experiment: stayed pending across cycles 226-240 because
+  the selected ship was no longer the projectile-fire launcher
+- late rejection reason: `not enough ammo/gate budget shots to form a useful
+  package`, with per-module `ammoGateBudgetShots` values of `1` or `2`
+
+The important conclusion is that `ammoGateBudgetShots` is per observed
+projectile-fire module, while `SelectSalvoTargetCommand` is ship-level and uses
+the command-panel selected ship. The controlled apply path now keeps the
+selected ship runtime object separately from the allocator snapshot launcher.
+New candidate/apply rows log `launcherId` as the selected command ship and
+`allocatorLauncherId` as the ship that produced the allocator cycle. When the
+allocator only rejects a target because the observed module budget is too small,
+an explicit controlled trigger may still issue the selected-ship command with
+`candidateSource="selectedShipRejectedTarget"`, provided the selected ship still
+reports `CanPerformShipCommands()` and `AnyOffensiveMissileWeaponCanFire()`.

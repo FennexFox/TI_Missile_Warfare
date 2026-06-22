@@ -208,10 +208,13 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Run the #37 first-live-apply smoke: select exactly one player missile ship,
-   enable controlled diagnostics and `AllowCommandApply`, trigger once, parse
-   the fresh log, and verify at most one applied/failed command with no scope
-   violations or MissileWarfare warnings/errors.
+1. Re-run the #37 controlled apply smoke with the selected-command-launcher
+   follow-up: select exactly one player missile ship, enable controlled
+   diagnostics and `AllowCommandApply`, trigger once or twice as needed, parse
+   the fresh log, and verify `launcherId` names the selected ship while
+   `allocatorLauncherId` names the cycle producer, with at most one
+   applied/failed command per trigger and no scope violations or MissileWarfare
+   warnings/errors.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited

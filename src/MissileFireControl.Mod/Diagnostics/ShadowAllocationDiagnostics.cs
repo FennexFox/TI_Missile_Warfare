@@ -168,7 +168,14 @@ namespace MissileFireControl.Mod.Diagnostics
                 allocationIndex++;
                 WriteTargetRecord("allocation", cycleId, snapshot, allocation, "reason", allocation.Reason);
                 WriteDryRunIntent(dryRun, cycleId, snapshot, allocation);
-                CommandCandidateDecision candidate = BuildCommandCandidate(cycleId, allocationIndex, snapshot, allocation, commandScope);
+                CommandCandidateDecision candidate = BuildCommandCandidate(
+                    cycleId,
+                    allocationIndex,
+                    snapshot,
+                    allocation,
+                    commandScope,
+                    "allocatorAllocation",
+                    false);
                 commandCandidates.Add(candidate);
                 WriteDryRunCommandCandidate(dryRun, candidate);
                 if (candidate.Classification == "eligible")
@@ -214,6 +221,49 @@ namespace MissileFireControl.Mod.Diagnostics
             foreach (TargetAllocation rejection in result.Rejections)
             {
                 WriteTargetRecord("rejection", cycleId, snapshot, rejection, "rejectionReason", rejection.Reason);
+            }
+
+            if (dryRun != null && commandCandidates.Count == 0 && result.Rejections.Count > 0)
+            {
+                CommandCandidateDecision candidate = BuildCommandCandidate(
+                    cycleId,
+                    1,
+                    snapshot,
+                    result.Rejections[0],
+                    commandScope,
+                    "selectedShipRejectedTarget",
+                    true);
+                commandCandidates.Add(candidate);
+                WriteDryRunCommandCandidate(dryRun, candidate);
+                if (candidate.Classification == "eligible")
+                {
+                    CommandApplyGateDecision gateDecision = EvaluateCommandApplyGate();
+                    if (gateDecision.Blocked)
+                    {
+                        safetyGateBlockedCommands++;
+                    }
+
+                    WriteDryRunApplyGate(dryRun, candidate, gateDecision);
+                    if (!gateDecision.Blocked)
+                    {
+                        liveAttemptConsumed = true;
+                        CommandApplyResult applyResult = TryApplyControlledCommand(candidate, snapshot);
+                        if (applyResult.AppliedCommands > 0)
+                        {
+                            appliedCommands += applyResult.AppliedCommands;
+                        }
+                        else if (applyResult.FailedCommands > 0)
+                        {
+                            liveFailedCommands += applyResult.FailedCommands;
+                        }
+                        else
+                        {
+                            liveSkippedCommands++;
+                        }
+
+                        WriteControlledApplyResult(dryRun, candidate, applyResult);
+                    }
+                }
             }
 
             if (result.Allocations.Count == 0 && result.Rejections.Count == 0)
@@ -366,6 +416,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "classification", candidate.Classification);
             AppendPair(builder, "reason", candidate.Reason);
             AppendPair(builder, "scopeViolation", candidate.ScopeViolation ? "True" : "False");
+            AppendPair(builder, "candidateSource", candidate.CandidateSource);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "commandScopeSource", candidate.CommandScopeSource);
@@ -373,6 +424,8 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
+            AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
@@ -403,10 +456,13 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "blockReason", gateDecision.Reason);
             AppendPair(builder, "controlledExperimentMode", gateDecision.ControlledExperimentMode ? "True" : "False");
             AppendPair(builder, "allowCommandApply", gateDecision.AllowCommandApply ? "True" : "False");
+            AppendPair(builder, "candidateSource", candidate.CandidateSource);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
+            AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
@@ -437,6 +493,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationLiveApply");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "commandPath", "SelectSalvoTargetCommand.OnCommandExecute");
+            AppendPair(builder, "candidateSource", candidate.CandidateSource);
             AppendPair(builder, "result", result.Result);
             AppendPair(builder, "reason", result.Reason);
             AppendPair(builder, "exceptionType", result.ExceptionType);
@@ -445,6 +502,8 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
+            AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
@@ -569,11 +628,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 return CommandApplyResult.Skipped("selectedSingleShipRequired");
             }
 
-            object launcher = snapshot.LauncherRuntimeObject;
+            object launcher = candidate.CommandLauncherRuntimeObject ?? snapshot.LauncherRuntimeObject;
             object target = snapshot.TargetRuntimeObject;
             if (launcher == null)
             {
-                return CommandApplyResult.Failed("launcherRuntimeObjectUnavailable");
+                return CommandApplyResult.Failed("commandLauncherRuntimeObjectUnavailable");
             }
 
             if (target == null)
@@ -847,6 +906,7 @@ namespace MissileFireControl.Mod.Diagnostics
             evidence.Ids.Add(snapshot.Launcher.Id);
             evidence.Names.Add(snapshot.Launcher.DisplayName);
             evidence.TeamIds.Add(snapshot.Launcher.TeamId);
+            evidence.RuntimeShips.Add(launcher);
             evidence.CommandAuthorityKnown = canPerformCommands.HasValue;
             evidence.CanPerformCommands = canPerformCommands.GetValueOrDefault();
             evidence.MissileCommandKnown = canFireMissiles.HasValue;
@@ -859,20 +919,29 @@ namespace MissileFireControl.Mod.Diagnostics
             int allocationIndex,
             ExtractedCombatSnapshot snapshot,
             TargetAllocation allocation,
-            CommandScopeEvidence commandScope)
+            CommandScopeEvidence commandScope,
+            string candidateSource,
+            bool allowRejectedTarget)
         {
+            string selectedLauncherId = commandScope == null || commandScope.Count != 1 ? null : commandScope.Ids[0];
+            string selectedLauncherName = commandScope == null || commandScope.Count != 1 ? null : commandScope.Names[0];
             CommandCandidateDecision candidate = new CommandCandidateDecision
             {
                 CycleId = cycleId,
                 CandidateId = "cycle-" + cycleId.ToString(CultureInfo.InvariantCulture)
-                    + "-allocation-" + allocationIndex.ToString(CultureInfo.InvariantCulture),
+                    + "-" + (allowRejectedTarget ? "rejected-target-" : "allocation-")
+                    + allocationIndex.ToString(CultureInfo.InvariantCulture),
+                CandidateSource = string.IsNullOrWhiteSpace(candidateSource) ? "allocatorAllocation" : candidateSource,
                 Classification = "eligible",
                 Reason = "none",
                 CommandScopeSource = commandScope == null ? "none" : commandScope.Source,
                 CommandScopeMissingReason = commandScope == null ? "playerControlledScopeUnavailable" : commandScope.MissingReason,
                 CommandScopeShipCount = commandScope == null ? 0 : commandScope.Count,
-                LauncherId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id,
-                LauncherName = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.DisplayName,
+                LauncherId = string.IsNullOrWhiteSpace(selectedLauncherId) ? "unknown" : selectedLauncherId,
+                LauncherName = string.IsNullOrWhiteSpace(selectedLauncherName) ? "unknown" : selectedLauncherName,
+                AllocatorLauncherId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id,
+                AllocatorLauncherName = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.DisplayName,
+                CommandLauncherRuntimeObject = commandScope == null ? null : commandScope.SingleRuntimeShip(),
                 WeaponId = snapshot == null || snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
                 MissileProfileId = snapshot == null || snapshot.Missile == null ? "unknown" : snapshot.Missile.Id,
                 TargetId = allocation == null ? "unknown" : allocation.TargetId,
@@ -901,11 +970,6 @@ namespace MissileFireControl.Mod.Diagnostics
                 return candidate.Fail("wouldSkip", "requiresSingleSelectedShip");
             }
 
-            if (!commandScope.ContainsShip(snapshot.Launcher.Id))
-            {
-                return candidate.Fail("wouldSkip", "outsidePlayerControlledScope");
-            }
-
             if (!HasConcreteToken(candidate.WeaponId))
             {
                 return candidate.Fail("wouldFail", "missingWeaponIdentity");
@@ -916,7 +980,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 return candidate.Fail("wouldFail", "missingTargetIdentity");
             }
 
-            if (candidate.AssignedShots <= 0 || candidate.AmmoGateBudgetShots < candidate.AssignedShots)
+            if (!allowRejectedTarget && (candidate.AssignedShots <= 0 || candidate.AmmoGateBudgetShots < candidate.AssignedShots))
             {
                 return candidate.Fail("wouldFail", "insufficientAmmo");
             }
@@ -1167,6 +1231,7 @@ namespace MissileFireControl.Mod.Diagnostics
             evidence.Ids.Add(id);
             evidence.Names.Add(GameObjectReader.Label(ship, "selectedShip"));
             evidence.TeamIds.Add(GameObjectReader.TeamId(ship));
+            evidence.RuntimeShips.Add(ship);
         }
 
         private static object UnwrapSelectedShip(object value)
@@ -1638,6 +1703,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public List<string> TeamIds { get; } = new List<string>();
 
+            public List<object> RuntimeShips { get; } = new List<object>();
+
             public HashSet<string> SeenIds { get; } = new HashSet<string>();
 
             public int Count => Ids.Count;
@@ -1655,6 +1722,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public List<string> TeamIds { get; } = new List<string>();
 
+            public List<object> RuntimeShips { get; } = new List<object>();
+
             public bool CommandAuthorityKnown { get; set; }
 
             public bool CanPerformCommands { get; set; }
@@ -1670,6 +1739,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 return HasConcreteToken(shipId) && Ids.Contains(shipId);
             }
 
+            public object SingleRuntimeShip()
+            {
+                return RuntimeShips.Count == 1 ? RuntimeShips[0] : null;
+            }
+
             public static CommandScopeEvidence FromSelectedScope(SelectedScopeEvidence selectedScope)
             {
                 CommandScopeEvidence evidence = new CommandScopeEvidence
@@ -1677,15 +1751,23 @@ namespace MissileFireControl.Mod.Diagnostics
                     Source = string.IsNullOrWhiteSpace(selectedScope.Source)
                         ? "selectedCommandPanel"
                         : selectedScope.Source,
-                    MissingReason = "none",
-                    CommandAuthorityKnown = true,
-                    CanPerformCommands = true,
-                    MissileCommandKnown = true,
-                    CanFireMissiles = true
+                    MissingReason = "none"
                 };
                 evidence.Ids.AddRange(selectedScope.Ids);
                 evidence.Names.AddRange(selectedScope.Names);
                 evidence.TeamIds.AddRange(selectedScope.TeamIds);
+                evidence.RuntimeShips.AddRange(selectedScope.RuntimeShips);
+
+                List<bool?> commandAuthority = evidence.RuntimeShips
+                    .Select(ship => TryReadBool(ship, "CanPerformShipCommands"))
+                    .ToList();
+                List<bool?> missileCommand = evidence.RuntimeShips
+                    .Select(ship => TryReadBool(ship, "AnyOffensiveMissileWeaponCanFire"))
+                    .ToList();
+                evidence.CommandAuthorityKnown = commandAuthority.Count > 0 && commandAuthority.All(value => value.HasValue);
+                evidence.CanPerformCommands = evidence.CommandAuthorityKnown && commandAuthority.All(value => value.GetValueOrDefault());
+                evidence.MissileCommandKnown = missileCommand.Count > 0 && missileCommand.All(value => value.HasValue);
+                evidence.CanFireMissiles = evidence.MissileCommandKnown && missileCommand.All(value => value.GetValueOrDefault());
                 return evidence;
             }
         }
@@ -1695,6 +1777,8 @@ namespace MissileFireControl.Mod.Diagnostics
             public int CycleId { get; set; }
 
             public string CandidateId { get; set; } = "unknown";
+
+            public string CandidateSource { get; set; } = "allocatorAllocation";
 
             public string Classification { get; set; } = "wouldSkip";
 
@@ -1711,6 +1795,12 @@ namespace MissileFireControl.Mod.Diagnostics
             public string LauncherId { get; set; } = "unknown";
 
             public string LauncherName { get; set; } = "unknown";
+
+            public string AllocatorLauncherId { get; set; } = "unknown";
+
+            public string AllocatorLauncherName { get; set; } = "unknown";
+
+            public object CommandLauncherRuntimeObject { get; set; }
 
             public string WeaponId { get; set; } = "unknown";
 
