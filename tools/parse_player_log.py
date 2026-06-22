@@ -106,6 +106,12 @@ class AllocationBattleSummary:
     controlled_dry_run_scope_violations: int = 0
     controlled_dry_run_selected_ship_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_attempts: int = 0
+    controlled_live_apply_applied: int = 0
+    controlled_live_apply_skipped: int = 0
+    controlled_live_apply_failed: int = 0
+    controlled_live_apply_reason_counts: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_path_counts: dict[str, int] = field(default_factory=dict)
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
@@ -602,7 +608,13 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_dry_run_safety_gate_reason_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_source_counts: Counter[str] = Counter()
     controlled_dry_run_command_scope_missing_reason_counts: Counter[str] = Counter()
+    controlled_live_apply_reason_counts: Counter[str] = Counter()
+    controlled_live_apply_path_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
+    controlled_live_apply_attempts = 0
+    controlled_live_apply_applied = 0
+    controlled_live_apply_skipped = 0
+    controlled_live_apply_failed = 0
     controlled_dry_run_intended_commands = 0
     controlled_dry_run_skipped_commands = 0
     controlled_dry_run_applied_commands = 0
@@ -863,6 +875,19 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     controlled_dry_run_result_safety_gate_blocked_commands += (
                         try_parse_int(pairs.get("safetyGateBlockedCommands")) or 0
                     )
+
+                if record_type in (
+                    APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
+                ) and pairs.get("experimentId"):
+                    controlled_live_apply_attempts += 1
+                    controlled_live_apply_reason_counts[pairs.get("reason", "unknown")] += 1
+                    controlled_live_apply_path_counts[pairs.get("commandPath", "unknown")] += 1
+                    if record_type in APPLIED_ALLOCATION_RECORD_TYPES:
+                        controlled_live_apply_applied += 1
+                    elif record_type in SKIPPED_ALLOCATION_RECORD_TYPES:
+                        controlled_live_apply_skipped += 1
+                    else:
+                        controlled_live_apply_failed += 1
 
                 status = pairs.get("status")
                 if status and record_type == "cycle":
@@ -1199,6 +1224,12 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_dry_run_missing_reason_counts = dict(
         sorted(controlled_dry_run_missing_reason_counts.items())
     )
+    allocation_summary.controlled_live_apply_attempts = controlled_live_apply_attempts
+    allocation_summary.controlled_live_apply_applied = controlled_live_apply_applied
+    allocation_summary.controlled_live_apply_skipped = controlled_live_apply_skipped
+    allocation_summary.controlled_live_apply_failed = controlled_live_apply_failed
+    allocation_summary.controlled_live_apply_reason_counts = dict(sorted(controlled_live_apply_reason_counts.items()))
+    allocation_summary.controlled_live_apply_path_counts = dict(sorted(controlled_live_apply_path_counts.items()))
     summary.allocation_summary = allocation_summary
     if sequences:
         ordered = sorted(sequences)
@@ -1363,6 +1394,21 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- controlled dry-run selected-scope reasons: "
                 + format_count_dict(summary.controlled_dry_run_missing_reason_counts)
+            )
+    if summary.controlled_live_apply_attempts:
+        print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")
+        print(f"- controlled live apply applied: {summary.controlled_live_apply_applied}")
+        print(f"- controlled live apply skipped: {summary.controlled_live_apply_skipped}")
+        print(f"- controlled live apply failed: {summary.controlled_live_apply_failed}")
+        if summary.controlled_live_apply_reason_counts:
+            print(
+                "- controlled live apply reasons: "
+                + format_count_dict(summary.controlled_live_apply_reason_counts)
+            )
+        if summary.controlled_live_apply_path_counts:
+            print(
+                "- controlled live apply paths: "
+                + format_count_dict(summary.controlled_live_apply_path_counts)
             )
     if summary.unknown_record_type_counts:
         print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")

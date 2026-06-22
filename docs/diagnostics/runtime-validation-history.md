@@ -486,3 +486,29 @@ Interpretation: #36 is validated as a diagnostics-only hard-stop proof. A
 real selected single-ship candidate reached the named apply gate and was blocked
 because command application was not explicitly allowed. No live command was
 applied. #37 remains the first behavior-changing slice.
+
+## Issue #37 first single-ship live controlled apply
+
+Issue #37 introduces the first behavior-changing controlled command path behind
+the #36 gate. The implementation keeps `AllowCommandApply` default-off and
+requires an explicitly armed controlled experiment plus exactly one selected
+command-panel ship before attempting any live command.
+
+The reviewed live path is the vanilla single-ship salvo target command:
+
+- `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState, CombatTargetableState)`
+- internally queues `SetCombatPrimaryTargetAction`
+- internally queues `SetWeaponModeAction(..., FireMode.Salvo)` for salvo-capable
+  weapons on that one ship
+
+Static fixture validation uses `tools/fixtures/first_live_apply.txt` to prove
+the parser recognizes one `gateResult="allowed"` row, one
+`recordType="appliedDecision"` row, one controlled live apply attempt, one
+applied command, zero skipped live attempts, zero failed live attempts, zero
+safety-gate blocks, and no unknown record types.
+
+Runtime smoke is still required before claiming a successful live game apply.
+The expected live smoke must show one explicit experiment trigger, exactly one
+selected player missile ship, at most one applied or failed command result, no
+scope violations, no AI or unselected-player application, no unknown parser
+record types, and no MissileWarfare warnings/errors.

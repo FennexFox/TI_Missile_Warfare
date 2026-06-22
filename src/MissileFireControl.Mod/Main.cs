@@ -43,7 +43,7 @@ namespace MissileFireControl.Mod
         private static void OnGUI(UnityModManager.ModEntry modEntry)
         {
             GUILayout.Label("MissileWarfare - scaffold build");
-            GUILayout.Label("No live launch behavior is changed yet.");
+            GUILayout.Label("Controlled command apply is default-off and requires an explicit one-shot trigger.");
 
             Settings.EnableDiagnostics = GUILayout.Toggle(Settings.EnableDiagnostics, "Enable diagnostic logging");
             Settings.EnableSnapshotDiagnostics = GUILayout.Toggle(
@@ -57,7 +57,7 @@ namespace MissileFireControl.Mod
                 "Enable controlled dry-run diagnostics (log-only)");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
-                "Allow controlled command apply (no live apply in this build)");
+                "Allow controlled command apply (single selected ship)");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 

@@ -99,7 +99,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 _pendingDryRun = new ControlledDryRunRequest(experimentId, requestedUtc);
             }
 
-            return "Controlled dry-run experiment armed: experimentId=" + experimentId + ". The next shadow allocation cycle will log diagnostics only.";
+            return "Controlled experiment armed: experimentId=" + experimentId + ". The next shadow allocation cycle can apply at most one command when command apply is explicitly allowed.";
         }
 
         private static bool ShouldLog()
@@ -152,6 +152,10 @@ namespace MissileFireControl.Mod.Diagnostics
 
             int allocationIndex = 0;
             int safetyGateBlockedCommands = 0;
+            int appliedCommands = 0;
+            int liveSkippedCommands = 0;
+            int liveFailedCommands = 0;
+            bool liveAttemptConsumed = false;
             foreach (TargetAllocation allocation in result.Allocations)
             {
                 allocationIndex++;
@@ -169,6 +173,34 @@ namespace MissileFireControl.Mod.Diagnostics
                     }
 
                     WriteDryRunApplyGate(dryRun, candidate, gateDecision);
+                    if (!gateDecision.Blocked)
+                    {
+                        CommandApplyResult applyResult;
+                        if (liveAttemptConsumed)
+                        {
+                            applyResult = CommandApplyResult.Skipped("oneAttemptAlreadyConsumed");
+                        }
+                        else
+                        {
+                            liveAttemptConsumed = true;
+                            applyResult = TryApplyControlledCommand(candidate, snapshot);
+                        }
+
+                        if (applyResult.AppliedCommands > 0)
+                        {
+                            appliedCommands += applyResult.AppliedCommands;
+                        }
+                        else if (applyResult.FailedCommands > 0)
+                        {
+                            liveFailedCommands += applyResult.FailedCommands;
+                        }
+                        else
+                        {
+                            liveSkippedCommands++;
+                        }
+
+                        WriteControlledApplyResult(dryRun, candidate, applyResult);
+                    }
                 }
             }
 
@@ -195,10 +227,12 @@ namespace MissileFireControl.Mod.Diagnostics
                 dryRun,
                 cycleId,
                 commandCandidates.Count(candidate => candidate.Classification == "eligible"),
-                commandCandidates.Count(candidate => candidate.Classification == "wouldSkip"),
-                commandCandidates.Count(candidate => candidate.Classification == "wouldFail"),
+                commandCandidates.Count(candidate => candidate.Classification == "wouldSkip") + liveSkippedCommands,
+                commandCandidates.Count(candidate => candidate.Classification == "wouldFail") + liveFailedCommands,
                 safetyGateBlockedCommands,
-                safetyGateBlockedCommands > 0 ? "blockedBySafetyToggle" : "dryRunOnly");
+                appliedCommands,
+                ControlledResultStatus(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands),
+                ControlledResultReason(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands));
         }
 
         private static ControlledDryRunRequest ConsumePendingControlledDryRun()
@@ -328,8 +362,47 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
             AppendPair(builder, "preStateVisible", "candidateIdentity");
-            AppendPair(builder, "postState", gateDecision.Blocked ? "notApplied" : "notAppliedNoLivePath");
+            AppendPair(builder, "postState", gateDecision.Blocked ? "notApplied" : "pendingLiveAttempt");
             AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteControlledApplyResult(
+            ControlledDryRunRequest request,
+            CommandCandidateDecision candidate,
+            CommandApplyResult result)
+        {
+            if (request == null || candidate == null || result == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", result.RecordType);
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandIntent", "salvoTargetRecommendationLiveApply");
+            AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
+            AppendPair(builder, "commandPath", "SelectSalvoTargetCommand.OnCommandExecute");
+            AppendPair(builder, "result", result.Result);
+            AppendPair(builder, "reason", result.Reason);
+            AppendPair(builder, "exceptionType", result.ExceptionType);
+            AppendPair(builder, "commandScopeSource", candidate.CommandScopeSource);
+            AppendPair(builder, "commandScopeMissingReason", candidate.CommandScopeMissingReason);
+            AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "launcherId", candidate.LauncherId);
+            AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "weaponId", candidate.WeaponId);
+            AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
+            AppendPair(builder, "targetId", candidate.TargetId);
+            AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
+            AppendPair(builder, "preStateVisible", result.PreStateVisible);
+            AppendPair(builder, "postState", result.PostState);
+            AppendPair(builder, "appliedCommands", result.AppliedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "failedCommands", result.FailedCommands.ToString(CultureInfo.InvariantCulture));
             Log.Info("[AllocationLog] " + builder);
         }
 
@@ -370,6 +443,29 @@ namespace MissileFireControl.Mod.Diagnostics
             int safetyGateBlockedCommands,
             string resultReason)
         {
+            WriteDryRunResult(
+                request,
+                cycleId,
+                intendedCommands,
+                skippedCommands,
+                failedCommands,
+                safetyGateBlockedCommands,
+                0,
+                "dryRunOnly",
+                resultReason);
+        }
+
+        private static void WriteDryRunResult(
+            ControlledDryRunRequest request,
+            int cycleId,
+            int intendedCommands,
+            int skippedCommands,
+            int failedCommands,
+            int safetyGateBlockedCommands,
+            int appliedCommands,
+            string result,
+            string resultReason)
+        {
             if (request == null)
             {
                 return;
@@ -381,10 +477,10 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "intendedCommands", intendedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "skippedCommands", skippedCommands.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "appliedCommands", "0");
+            AppendPair(builder, "appliedCommands", appliedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "failedCommands", failedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "safetyGateBlockedCommands", safetyGateBlockedCommands.ToString(CultureInfo.InvariantCulture));
-            AppendPair(builder, "result", "dryRunOnly");
+            AppendPair(builder, "result", result ?? "dryRunOnly");
             AppendPair(builder, "resultReason", resultReason ?? "dryRunOnly");
             Log.Info("[AllocationLog] " + builder);
         }
@@ -403,10 +499,180 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return new CommandApplyGateDecision(
-                "allowedDryRunOnly",
-                "applyPathNotImplemented",
+                "allowed",
+                "none",
                 controlledExperimentMode,
                 allowCommandApply);
+        }
+
+        private static CommandApplyResult TryApplyControlledCommand(CommandCandidateDecision candidate, ExtractedCombatSnapshot snapshot)
+        {
+            if (candidate == null || snapshot == null)
+            {
+                return CommandApplyResult.Failed("candidateOrSnapshotUnavailable");
+            }
+
+            if (!IsSingleSelectedCommandScope(candidate))
+            {
+                return CommandApplyResult.Skipped("selectedSingleShipRequired");
+            }
+
+            object launcher = snapshot.LauncherRuntimeObject;
+            object target = snapshot.TargetRuntimeObject;
+            if (launcher == null)
+            {
+                return CommandApplyResult.Failed("launcherRuntimeObjectUnavailable");
+            }
+
+            if (target == null)
+            {
+                return CommandApplyResult.Failed("targetRuntimeObjectUnavailable");
+            }
+
+            if (!SameLoggedIdentity(launcher, candidate.LauncherId, "launcher"))
+            {
+                return CommandApplyResult.Failed("launcherIdentityMismatch");
+            }
+
+            if (!SameLoggedIdentity(target, candidate.TargetId, "target"))
+            {
+                return CommandApplyResult.Failed("targetIdentityMismatch");
+            }
+
+            Type commandType = ResolveType("SelectSalvoTargetCommand");
+            if (commandType == null)
+            {
+                return CommandApplyResult.Failed("commandTypeUnavailable");
+            }
+
+            MethodInfo executeMethod = FindCompatibleMethod(commandType, "OnCommandExecute", launcher, target);
+            if (executeMethod == null)
+            {
+                return CommandApplyResult.Failed("commandMethodUnavailable");
+            }
+
+            object command;
+            try
+            {
+                command = Activator.CreateInstance(commandType);
+            }
+            catch (Exception ex)
+            {
+                return CommandApplyResult.Failed("commandCreateFailed", ex.GetType().Name);
+            }
+
+            try
+            {
+                executeMethod.Invoke(command, new[] { launcher, target });
+            }
+            catch (TargetInvocationException ex)
+            {
+                return CommandApplyResult.Failed(
+                    "commandInvocationFailed",
+                    ex.InnerException == null ? ex.GetType().Name : ex.InnerException.GetType().Name);
+            }
+            catch (Exception ex)
+            {
+                return CommandApplyResult.Failed("commandInvocationFailed", ex.GetType().Name);
+            }
+
+            return CommandApplyResult.Applied();
+        }
+
+        private static MethodInfo FindCompatibleMethod(Type type, string methodName, object firstArgument, object secondArgument)
+        {
+            if (type == null || firstArgument == null || secondArgument == null)
+            {
+                return null;
+            }
+
+            Type firstType = firstArgument.GetType();
+            Type secondType = secondArgument.GetType();
+            return type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(method =>
+                {
+                    if (method.Name != methodName)
+                    {
+                        return false;
+                    }
+
+                    ParameterInfo[] parameters = method.GetParameters();
+                    return parameters.Length == 2
+                        && parameters[0].ParameterType.IsAssignableFrom(firstType)
+                        && parameters[1].ParameterType.IsAssignableFrom(secondType);
+                });
+        }
+
+        private static bool SameLoggedIdentity(object runtimeObject, string loggedId, string fallbackPrefix)
+        {
+            string runtimeId = GameObjectReader.StableId(runtimeObject, fallbackPrefix);
+            return HasConcreteToken(runtimeId) && string.Equals(runtimeId, loggedId, StringComparison.Ordinal);
+        }
+
+        private static bool IsSingleSelectedCommandScope(CommandCandidateDecision candidate)
+        {
+            return candidate != null
+                && candidate.CommandScopeShipCount == 1
+                && IsSelectedCommandScopeSource(candidate.CommandScopeSource);
+        }
+
+        private static bool IsSelectedCommandScopeSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source) || source == "activePlayerLauncher" || source == "none")
+            {
+                return false;
+            }
+
+            return source.IndexOf("selectedFriendlyShip", StringComparison.OrdinalIgnoreCase) >= 0
+                || source.IndexOf("groupSelectedFriendlyShips", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string ControlledResultStatus(
+            int appliedCommands,
+            int skippedCommands,
+            int failedCommands,
+            int safetyGateBlockedCommands)
+        {
+            if (appliedCommands > 0)
+            {
+                return "firstLiveApply";
+            }
+
+            if (failedCommands > 0)
+            {
+                return "firstLiveApplyFailed";
+            }
+
+            if (skippedCommands > 0)
+            {
+                return "firstLiveApplySkipped";
+            }
+
+            return safetyGateBlockedCommands > 0 ? "dryRunOnly" : "dryRunOnly";
+        }
+
+        private static string ControlledResultReason(
+            int appliedCommands,
+            int skippedCommands,
+            int failedCommands,
+            int safetyGateBlockedCommands)
+        {
+            if (appliedCommands > 0)
+            {
+                return "applied";
+            }
+
+            if (failedCommands > 0)
+            {
+                return "commandApplyFailed";
+            }
+
+            if (skippedCommands > 0)
+            {
+                return "commandApplySkipped";
+            }
+
+            return safetyGateBlockedCommands > 0 ? "blockedBySafetyToggle" : "dryRunOnly";
         }
 
         private static CommandScopeEvidence ResolveCommandScope(SelectedScopeEvidence selectedScope, ExtractedCombatSnapshot snapshot)
@@ -540,6 +806,16 @@ namespace MissileFireControl.Mod.Diagnostics
             if (commandScope == null || commandScope.Count == 0)
             {
                 return candidate.Fail("wouldSkip", ScopeUnavailableReason(commandScope));
+            }
+
+            if (!IsSelectedCommandScopeSource(candidate.CommandScopeSource))
+            {
+                return candidate.Fail("wouldSkip", "selectedScopeRequired");
+            }
+
+            if (commandScope.Count != 1)
+            {
+                return candidate.Fail("wouldSkip", "requiresSingleSelectedShip");
             }
 
             if (!commandScope.ContainsShip(snapshot.Launcher.Id))
@@ -1119,15 +1395,27 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static object ReadStaticMember(string typeName, string memberName)
         {
-            Type type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType(typeName, throwOnError: false))
-                .FirstOrDefault(candidate => candidate != null);
+            Type type = ResolveType(typeName);
             if (type == null)
             {
                 return null;
             }
 
             return ReadMember(type, null, memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        }
+
+        private static Type ResolveType(string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName))
+            {
+                return null;
+            }
+
+            string terraInvictaTypeName = "PavonisInteractive.TerraInvicta." + typeName;
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType(typeName, throwOnError: false)
+                    ?? assembly.GetType(terraInvictaTypeName, throwOnError: false))
+                .FirstOrDefault(candidate => candidate != null);
         }
 
         private static object ReadMember(object instance, string memberName)
@@ -1384,6 +1672,89 @@ namespace MissileFireControl.Mod.Diagnostics
             public bool AllowCommandApply { get; }
 
             public bool Blocked => Result == "blocked";
+        }
+
+        private sealed class CommandApplyResult
+        {
+            private CommandApplyResult(
+                string recordType,
+                string result,
+                string reason,
+                string exceptionType,
+                string preStateVisible,
+                string postState,
+                int appliedCommands,
+                int failedCommands)
+            {
+                RecordType = recordType;
+                Result = result;
+                Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
+                ExceptionType = string.IsNullOrWhiteSpace(exceptionType) ? "none" : exceptionType;
+                PreStateVisible = string.IsNullOrWhiteSpace(preStateVisible) ? "unknown" : preStateVisible;
+                PostState = string.IsNullOrWhiteSpace(postState) ? "unknown" : postState;
+                AppliedCommands = appliedCommands;
+                FailedCommands = failedCommands;
+            }
+
+            public string RecordType { get; }
+
+            public string Result { get; }
+
+            public string Reason { get; }
+
+            public string ExceptionType { get; }
+
+            public string PreStateVisible { get; }
+
+            public string PostState { get; }
+
+            public int AppliedCommands { get; }
+
+            public int FailedCommands { get; }
+
+            public static CommandApplyResult Applied()
+            {
+                return new CommandApplyResult(
+                    "appliedDecision",
+                    "applied",
+                    "none",
+                    "none",
+                    "runtimeObjects",
+                    "commandInvoked",
+                    1,
+                    0);
+            }
+
+            public static CommandApplyResult Skipped(string reason)
+            {
+                return new CommandApplyResult(
+                    "skippedDecision",
+                    "skipped",
+                    reason,
+                    "none",
+                    "candidateIdentity",
+                    "notApplied",
+                    0,
+                    0);
+            }
+
+            public static CommandApplyResult Failed(string reason)
+            {
+                return Failed(reason, "none");
+            }
+
+            public static CommandApplyResult Failed(string reason, string exceptionType)
+            {
+                return new CommandApplyResult(
+                    "failedCommand",
+                    "failed",
+                    reason,
+                    exceptionType,
+                    "candidateIdentity",
+                    "notApplied",
+                    0,
+                    1);
+            }
         }
     }
 }

@@ -17,9 +17,13 @@ loaded/chambered source, and it is not valid without the paired module-keyed
 ammo and gate evidence documented in
 [`readiness-semantics.md`](../research/readiness-semantics.md).
 
-Shadow allocation output is still diagnostics-first. It validates schema,
-parser behavior, and recommendation math when required inputs are visible; it
-does not apply commands.
+Shadow allocation output remains diagnostics-first by default. It validates
+schema, parser behavior, and recommendation math when required inputs are
+visible. Issue #37 adds one explicitly triggered, default-off exception: when
+controlled dry-run diagnostics are enabled, a controlled experiment is armed,
+`AllowCommandApply=True`, and exactly one selected player missile ship produces
+an eligible candidate, the mod may attempt one reviewed vanilla salvo-target
+command and then stop.
 
 ## Runtime source
 
@@ -58,11 +62,16 @@ The command-apply boundary has a separate default-off setting:
 
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
 base diagnostics toggle. Controlled dry-run diagnostics also default to
-`false`. `AllowCommandApply` also defaults to `false`; Issue #36 uses it only
-as an auditable hard-stop input and still performs no live command application.
-Shadow allocation and controlled dry-run diagnostics are
-diagnostics-only: they never apply assignments, never issue commands, never
-change fire mode, and never suppress or delay original game methods.
+`false`. `AllowCommandApply` also defaults to `false`.
+
+When `AllowCommandApply=False`, the #36 hard stop remains active and controlled
+experiments are diagnostics-only. When `AllowCommandApply=True`, Issue #37 can
+perform at most one live command attempt for the next explicitly armed
+controlled experiment. The reviewed command path is
+`SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState,
+CombatTargetableState)`, which queues the vanilla primary-target and salvo mode
+actions through the game player-action runner. The mod does not directly mutate
+ammo, cooldowns, projectile physics, or AI behavior.
 
 ## Snapshot mapping
 
@@ -197,6 +206,26 @@ the mod. If runtime logs do not naturally produce an eligible candidate, the
 synthetic `tools/fixtures/apply_gate_hard_stop.txt` fixture exercises the
 gate-reachable blocked path.
 
+Issue #37 changes only the gate-allowed case. With `AllowCommandApply=True`,
+an eligible candidate from exactly one selected command-panel ship can emit
+`gateResult="allowed"` and then one result row:
+
+```text
+[AllocationLog] recordType="appliedDecision" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" commandIntent="salvoTargetRecommendationLiveApply" commandGranularity="shipAllSalvoCapableWeapons" commandPath="SelectSalvoTargetCommand.OnCommandExecute" result="applied" reason="none" exceptionType="none" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0"
+```
+
+If live preconditions fail after the gate, the row uses
+`recordType="skippedDecision"` or `recordType="failedCommand"` with a concrete
+`reason`, `appliedCommands="0"`, and `postState="notApplied"`. Each controlled
+experiment consumes at most one live attempt; additional eligible candidates in
+the same cycle are skipped with `reason="oneAttemptAlreadyConsumed"`.
+
+For #37, a live attempt additionally requires exactly one selected command
+scope. The active-player launcher fallback remains useful diagnostics, but it
+is not eligible for first-live apply. Multi-ship selected groups remain future
+#38 scope, and broader fleet-wide controlled application remains future #43
+scope.
+
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
 applied or failed commands. In that smoke, selected command-panel scope was not
@@ -297,16 +326,15 @@ safely formed.
 battle-level allocation report for before/after tuning comparisons.
 
 The parser separates current shadow cycles, allocations, rejections, and no-op
-records from controlled dry-run experiment rows and future controlled-apply
+records from controlled dry-run experiment rows and controlled-apply result
 records. Controlled dry-run rows are summarized by experiment count, experiment
 id, intent count, command-candidate count, apply-gate count,
 intended/skipped/applied/failed/safety-gate-blocked command counts, candidate
 classification/reason counts, apply-gate result counts, safety-gate block reason
 counts, command-scope source and missing-reason counts, scope-violation count,
-selected ship counts, and selected-scope missing reasons. Future record types
-such as applied decisions, skipped decisions, and failed command applications
-are bucketed when they appear, but current logs are expected to show zero
-controlled-apply counts.
+selected ship counts, and selected-scope missing reasons. Controlled live apply
+rows with an `experimentId` are summarized separately by attempts, applied,
+skipped, failed, reason counts, and command path counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather

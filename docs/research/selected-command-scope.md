@@ -95,6 +95,16 @@ Issue #21 verifies selected-player command scope sufficiently for #22 dry-run co
 
 #22 should not invoke `SelectSalvoTargetCommand`, `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`, `SetWeaponModeAction`, or equivalent live actions. #23 remains the first place to consider a tightly gated live smoke.
 
+## Handoff to #37
+
+Issue #37 uses only the single selected command-panel ship path for the first
+behavior-changing attempt. `activePlayerLauncher` fallback evidence and
+group-selected scope remain useful diagnostics, but they are not sufficient for
+the #37 live apply boundary unless the resolved command scope contains exactly
+one selected ship. The live command path is the reviewed single-ship
+`SelectSalvoTargetCommand.OnCommandExecute` path; group and fleet paths remain
+future scope expansion.
+
 ## Non-goals confirmed
 
 No source changes, parser changes, Harmony patches, command invocations, target assignment mutations, weapon-mode mutations, ammo mutations, cooldown mutations, projectile mutations, AI-control mutations, or manual-control changes are needed for #21.
