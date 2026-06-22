@@ -26,12 +26,12 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static readonly string[] SelectedScopeMemberNames =
         {
+            "groupSelectedFriendlyShips",
+            "GroupSelectedFriendlyShips",
             "selectedFriendlyShipState",
             "selectedFriendlyShip",
-            "groupSelectedFriendlyShips",
             "SelectedFriendlyShipState",
-            "SelectedFriendlyShip",
-            "GroupSelectedFriendlyShips"
+            "SelectedFriendlyShip"
         };
 
         private static readonly string[] CanvasControllerRootMemberNames =
