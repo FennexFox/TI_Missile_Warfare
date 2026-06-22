@@ -23,11 +23,14 @@ Current blocker:
 - Issue #34 runtime smoke validated the dry-run envelope but did not resolve
   selected command-panel scope in that runtime context. The probe failed closed
   with explicit `selectedScopeUnavailable` evidence and zero applied commands.
+- Issue #35 runtime smoke validates command-candidate reporting, selected-scope
+  visibility through the combat HUD path, non-player skip-closed behavior,
+  outside-selected-scope skip-closed behavior, zero scope violations, and zero
+  applied commands.
 
 Current missing or provisional inputs:
 
-- command resolvability and player-controlled command-scope safety reporting
-  for the dry-run envelope;
+- live command-application hard-stop and apply-boundary reporting;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -152,8 +155,8 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending command resolvability, player-controlled command-scope
-safety reporting, and live command-application safety work.
+Status: blocked pending live command-application hard-stop and later
+single-ship apply-boundary safety work.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -162,11 +165,12 @@ command application still must let vanilla combat enforce the final legal launch
 result.
 
 Future #6 design should continue from the Issue #34 dry-run envelope and the
-#35 scope resolver: log the audited player-controlled command scope, selected or
-otherwise verified player missile ship identity, visible weapon/module identity,
-`ammoGateBudgetShots` and its evidence source, the allocator recommendation
-that motivated the command, command intent and target, skipped/failure reason,
-and observed ammo delta or launch evidence when available.
+#35 command-resolvability report: preserve the audited player-controlled command
+scope, selected or otherwise verified player missile ship identity, visible
+weapon/module identity, `ammoGateBudgetShots` and its evidence source, the
+allocator recommendation that motivated the command, command intent and target,
+skipped/failure reason, and observed ammo delta or launch evidence when
+available.
 
 Additional gate: vanilla salvo target command granularity is ship-level and all
 salvo-capable weapons on that ship, not one visible missile module. The Issue
@@ -200,8 +204,8 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Implement #35 command resolvability and player-controlled command-scope
-   safety reporting on top of the #34 dry-run envelope.
+1. Add the #36 live command-application hard-stop so eligible command plans can
+   reach a named apply boundary while still applying zero commands.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited

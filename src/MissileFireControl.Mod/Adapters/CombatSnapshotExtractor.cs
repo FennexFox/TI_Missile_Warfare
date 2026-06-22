@@ -14,7 +14,9 @@ namespace MissileFireControl.Mod.Adapters
         }
 
         public string Source { get; set; }
+        public object LauncherRuntimeObject { get; set; }
         public ShipSnapshot Launcher { get; set; }
+        public object TargetRuntimeObject { get; set; }
         public ShipSnapshot Target { get; set; }
         public string TargetIdentitySource { get; set; }
         public MissileProfile Missile { get; set; }
@@ -83,7 +85,9 @@ namespace MissileFireControl.Mod.Adapters
             ExtractedCombatSnapshot snapshot = new ExtractedCombatSnapshot
             {
                 Source = "TISpaceCombatProjectileState.Fire(missile)",
+                LauncherRuntimeObject = launcher,
                 Launcher = ExtractShip(launcher, "launcher"),
+                TargetRuntimeObject = targetObject,
                 Target = targetObject == null ? null : ExtractShip(targetObject, "target"),
                 TargetIdentitySource = targetIdentitySource,
                 Missile = ExtractMissileProfile(missileTemplate),
