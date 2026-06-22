@@ -73,22 +73,22 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             if (!Main.IsEnabled())
             {
-                return "Controlled dry-run experiment not armed: mod is disabled.";
+                return "Controlled command experiment not armed: mod is disabled.";
             }
 
             if (Main.Settings == null || !Main.Settings.EnableDiagnostics)
             {
-                return "Controlled dry-run experiment not armed: diagnostics are disabled.";
+                return "Controlled command experiment not armed: diagnostics are disabled.";
             }
 
             if (!Main.Settings.EnableShadowAllocationDiagnostics)
             {
-                return "Controlled dry-run experiment not armed: shadow allocation diagnostics are disabled.";
+                return "Controlled command experiment not armed: shadow allocation diagnostics are disabled.";
             }
 
             if (!Main.Settings.EnableControlledDryRunDiagnostics)
             {
-                return "Controlled dry-run experiment not armed: controlled dry-run diagnostics are disabled.";
+                return "Controlled command experiment not armed: controlled command experiment diagnostics are disabled.";
             }
 
             string requestedUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
@@ -96,6 +96,11 @@ namespace MissileFireControl.Mod.Diagnostics
             string experimentId = "dryrun-" + compactUtc + "-" + Interlocked.Increment(ref _experimentSequence).ToString(CultureInfo.InvariantCulture);
             lock (DryRunLock)
             {
+                if (_pendingDryRun != null)
+                {
+                    return "Controlled command experiment already armed: experimentId=" + _pendingDryRun.ExperimentId + ". Waiting for the selected ship to produce an eligible missile allocation candidate.";
+                }
+
                 _pendingDryRun = new ControlledDryRunRequest(experimentId, requestedUtc);
             }
 
@@ -139,6 +144,7 @@ namespace MissileFireControl.Mod.Diagnostics
             if (!canAllocate)
             {
                 WriteNoOp(cycleId, snapshot, "missing required allocation inputs");
+                RequeueIfWaitingForSelectedCandidate(dryRun, "missing required allocation inputs");
                 WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, "missing required allocation inputs");
                 return;
             }
@@ -146,6 +152,7 @@ namespace MissileFireControl.Mod.Diagnostics
             if (result == null)
             {
                 WriteNoOp(cycleId, snapshot, "allocation result unavailable");
+                RequeueIfWaitingForSelectedCandidate(dryRun, "allocation result unavailable");
                 WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, "allocation result unavailable");
                 return;
             }
@@ -213,14 +220,28 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 string noOpReason = NoOpReason(snapshot);
                 WriteNoOp(cycleId, snapshot, noOpReason);
+                RequeueIfWaitingForSelectedCandidate(dryRun, noOpReason);
                 WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, noOpReason);
                 return;
             }
 
             if (commandCandidates.Count == 0)
             {
+                RequeueIfWaitingForSelectedCandidate(dryRun, "no command candidate emitted");
                 WriteDryRunResult(dryRun, cycleId, 0, result.Allocations.Count == 0 ? 1 : 0, 0, 0, "dryRunOnly");
                 return;
+            }
+
+            bool waitingForSelectedCandidate = ShouldWaitForSelectedCandidate(
+                dryRun,
+                commandCandidates,
+                appliedCommands,
+                liveFailedCommands,
+                safetyGateBlockedCommands);
+            if (waitingForSelectedCandidate)
+            {
+                RequeueControlledDryRun(dryRun);
+                Log.Info("Controlled command experiment still armed: experimentId=" + dryRun.ExperimentId + ". Waiting for the selected ship to produce an eligible missile allocation candidate.");
             }
 
             WriteDryRunResult(
@@ -231,8 +252,12 @@ namespace MissileFireControl.Mod.Diagnostics
                 commandCandidates.Count(candidate => candidate.Classification == "wouldFail") + liveFailedCommands,
                 safetyGateBlockedCommands,
                 appliedCommands,
-                ControlledResultStatus(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands),
-                ControlledResultReason(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands));
+                waitingForSelectedCandidate
+                    ? "waitingForSelectedCandidate"
+                    : ControlledResultStatus(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands),
+                waitingForSelectedCandidate
+                    ? "waitingForSelectedLauncherCandidate"
+                    : ControlledResultReason(appliedCommands, liveSkippedCommands, liveFailedCommands, safetyGateBlockedCommands));
         }
 
         private static ControlledDryRunRequest ConsumePendingControlledDryRun()
@@ -253,6 +278,33 @@ namespace MissileFireControl.Mod.Diagnostics
                 ControlledDryRunRequest request = _pendingDryRun;
                 _pendingDryRun = null;
                 return request;
+            }
+        }
+
+        private static void RequeueIfWaitingForSelectedCandidate(ControlledDryRunRequest request, string reason)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            RequeueControlledDryRun(request);
+            Log.Info("Controlled command experiment still armed: experimentId=" + request.ExperimentId + ". Waiting for the selected ship to produce an eligible missile allocation candidate. Last cycle reason=" + (reason ?? "unknown") + ".");
+        }
+
+        private static void RequeueControlledDryRun(ControlledDryRunRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            lock (DryRunLock)
+            {
+                if (_pendingDryRun == null)
+                {
+                    _pendingDryRun = request;
+                }
             }
         }
 
@@ -673,6 +725,37 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return safetyGateBlockedCommands > 0 ? "blockedBySafetyToggle" : "dryRunOnly";
+        }
+
+        private static bool ShouldWaitForSelectedCandidate(
+            ControlledDryRunRequest request,
+            List<CommandCandidateDecision> candidates,
+            int appliedCommands,
+            int failedCommands,
+            int safetyGateBlockedCommands)
+        {
+            if (request == null || appliedCommands > 0 || failedCommands > 0 || safetyGateBlockedCommands > 0)
+            {
+                return false;
+            }
+
+            if (candidates == null || candidates.Count == 0)
+            {
+                return true;
+            }
+
+            return candidates.All(candidate =>
+                candidate != null
+                && candidate.Classification == "wouldSkip"
+                && IsWaitForSelectedCandidateReason(candidate.Reason));
+        }
+
+        private static bool IsWaitForSelectedCandidateReason(string reason)
+        {
+            return reason == "outsidePlayerControlledScope"
+                || reason == "selectedScopeRequired"
+                || reason == "requiresSingleSelectedShip"
+                || reason == "unsafeScope";
         }
 
         private static CommandScopeEvidence ResolveCommandScope(SelectedScopeEvidence selectedScope, ExtractedCombatSnapshot snapshot)

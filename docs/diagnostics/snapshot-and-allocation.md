@@ -226,6 +226,14 @@ is not eligible for first-live apply. Multi-ship selected groups remain future
 #38 scope, and broader fleet-wide controlled application remains future #43
 scope.
 
+If the next missile allocation candidate is for a different ship than the
+selected command-panel ship, the controlled experiment stays armed and logs that
+it is waiting for the selected ship to produce an eligible missile allocation
+candidate. Pressing the trigger again while an experiment is already armed does
+not replace it; the mod reports the pending experiment id instead. The
+experiment still consumes when it applies, fails, reaches the safety gate, or
+otherwise reaches a selected-ship command decision.
+
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
 applied or failed commands. In that smoke, selected command-panel scope was not

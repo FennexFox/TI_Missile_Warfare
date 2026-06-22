@@ -54,7 +54,7 @@ namespace MissileFireControl.Mod
                 "Enable shadow allocation diagnostics (log-only)");
             Settings.EnableControlledDryRunDiagnostics = GUILayout.Toggle(
                 Settings.EnableControlledDryRunDiagnostics,
-                "Enable controlled dry-run diagnostics (log-only)");
+                "Enable controlled command experiment diagnostics");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
                 "Allow controlled command apply (single selected ship)");
@@ -75,7 +75,7 @@ namespace MissileFireControl.Mod
                 Log.Info("Diagnostic ping from UMM panel.");
             }
 
-            if (GUILayout.Button("Trigger controlled dry-run experiment"))
+            if (GUILayout.Button("Trigger controlled command experiment"))
             {
                 Log.Info(ShadowAllocationDiagnostics.RequestControlledDryRun());
             }
