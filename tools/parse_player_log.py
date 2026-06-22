@@ -29,8 +29,10 @@ APPLIED_ALLOCATION_RECORD_TYPES = {"applied", "appliedDecision", "applied-decisi
 SKIPPED_ALLOCATION_RECORD_TYPES = {"skipped", "skippedDecision", "skipped-decision"}
 FAILED_ALLOCATION_RECORD_TYPES = {"failed", "failedCommand", "commandFailed", "command-failed"}
 SHADOW_ALLOCATION_RECORD_TYPES = {"cycle", "allocation", "rejection", "noOp"}
+CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES = {"dryRunExperiment", "dryRunIntent", "dryRunResult"}
 KNOWN_ALLOCATION_RECORD_TYPES = (
     SHADOW_ALLOCATION_RECORD_TYPES
+    | CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES
     | APPLIED_ALLOCATION_RECORD_TYPES
     | SKIPPED_ALLOCATION_RECORD_TYPES
     | FAILED_ALLOCATION_RECORD_TYPES
@@ -73,6 +75,16 @@ class AllocationBattleSummary:
     applied_decisions: int = 0
     skipped_decisions: int = 0
     failed_command_applications: int = 0
+    controlled_dry_run_experiments: int = 0
+    controlled_dry_run_intents: int = 0
+    controlled_dry_run_results: int = 0
+    controlled_dry_run_experiment_ids: list[str] = field(default_factory=list)
+    controlled_dry_run_intended_commands: int = 0
+    controlled_dry_run_skipped_commands: int = 0
+    controlled_dry_run_applied_commands: int = 0
+    controlled_dry_run_failed_commands: int = 0
+    controlled_dry_run_selected_ship_counts: dict[str, int] = field(default_factory=dict)
+    controlled_dry_run_missing_reason_counts: dict[str, int] = field(default_factory=dict)
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
@@ -560,6 +572,13 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_rejection_reason_counts: Counter[str] = Counter()
     allocation_no_op_reason_counts: Counter[str] = Counter()
     allocation_assigned_shots_counts: Counter[str] = Counter()
+    controlled_dry_run_experiment_ids: set[str] = set()
+    controlled_dry_run_selected_ship_counts: Counter[str] = Counter()
+    controlled_dry_run_missing_reason_counts: Counter[str] = Counter()
+    controlled_dry_run_intended_commands = 0
+    controlled_dry_run_skipped_commands = 0
+    controlled_dry_run_applied_commands = 0
+    controlled_dry_run_failed_commands = 0
     cycle_missing_input_counts: Counter[str] = Counter()
     cycle_target_counts: list[int] = []
     ammo_gate_budget_values: list[int | None] = []
@@ -773,8 +792,25 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 record_type = pairs.get("recordType", "unknown")
                 allocation_record_type_counts[record_type] += 1
 
+                if record_type in CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES:
+                    experiment_id = pairs.get("experimentId")
+                    if experiment_id:
+                        controlled_dry_run_experiment_ids.add(experiment_id)
+
+                if record_type == "dryRunExperiment":
+                    controlled_dry_run_selected_ship_counts[pairs.get("selectedShipCount", "unknown")] += 1
+                    controlled_dry_run_missing_reason_counts[
+                        pairs.get("selectedScopeMissingReason", "unknown")
+                    ] += 1
+
+                if record_type == "dryRunResult":
+                    controlled_dry_run_intended_commands += try_parse_int(pairs.get("intendedCommands")) or 0
+                    controlled_dry_run_skipped_commands += try_parse_int(pairs.get("skippedCommands")) or 0
+                    controlled_dry_run_applied_commands += try_parse_int(pairs.get("appliedCommands")) or 0
+                    controlled_dry_run_failed_commands += try_parse_int(pairs.get("failedCommands")) or 0
+
                 status = pairs.get("status")
-                if status:
+                if status and record_type == "cycle":
                     allocation_status_counts[status] += 1
 
                 missing = pairs.get("missingInputs")
@@ -1024,7 +1060,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.allocation_assigned_shots_counts = dict(
         sorted(allocation_assigned_shots_counts.items(), key=sort_numeric_text_count)
     )
-    summary.allocation_summary = build_allocation_battle_summary(
+    allocation_summary = build_allocation_battle_summary(
         allocation_record_type_counts,
         allocation_status_counts,
         allocation_rejection_reason_counts,
@@ -1061,6 +1097,21 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
         cycle_pd_capability_missing_reason_counts,
         cycle_pd_capability_limitation_counts,
     )
+    allocation_summary.controlled_dry_run_experiments = allocation_record_type_counts.get("dryRunExperiment", 0)
+    allocation_summary.controlled_dry_run_intents = allocation_record_type_counts.get("dryRunIntent", 0)
+    allocation_summary.controlled_dry_run_results = allocation_record_type_counts.get("dryRunResult", 0)
+    allocation_summary.controlled_dry_run_experiment_ids = sorted(controlled_dry_run_experiment_ids)
+    allocation_summary.controlled_dry_run_intended_commands = controlled_dry_run_intended_commands
+    allocation_summary.controlled_dry_run_skipped_commands = controlled_dry_run_skipped_commands
+    allocation_summary.controlled_dry_run_applied_commands = controlled_dry_run_applied_commands
+    allocation_summary.controlled_dry_run_failed_commands = controlled_dry_run_failed_commands
+    allocation_summary.controlled_dry_run_selected_ship_counts = dict(
+        sorted(controlled_dry_run_selected_ship_counts.items(), key=sort_numeric_text_count)
+    )
+    allocation_summary.controlled_dry_run_missing_reason_counts = dict(
+        sorted(controlled_dry_run_missing_reason_counts.items())
+    )
+    summary.allocation_summary = allocation_summary
     if sequences:
         ordered = sorted(sequences)
         summary.first_seq = ordered[0]
@@ -1160,6 +1211,32 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
     print(f"- applied decisions: {summary.applied_decisions}")
     print(f"- skipped decisions: {summary.skipped_decisions}")
     print(f"- failed command applications: {summary.failed_command_applications}")
+    if (
+        summary.controlled_dry_run_experiments
+        or summary.controlled_dry_run_intents
+        or summary.controlled_dry_run_results
+    ):
+        print(f"- controlled dry-run experiments: {summary.controlled_dry_run_experiments}")
+        print(f"- controlled dry-run intents: {summary.controlled_dry_run_intents}")
+        print(f"- controlled dry-run results: {summary.controlled_dry_run_results}")
+        print(
+            "- controlled dry-run experiment ids: "
+            + (", ".join(summary.controlled_dry_run_experiment_ids) or "none")
+        )
+        print(f"- controlled dry-run intended commands: {summary.controlled_dry_run_intended_commands}")
+        print(f"- controlled dry-run skipped commands: {summary.controlled_dry_run_skipped_commands}")
+        print(f"- controlled dry-run applied commands: {summary.controlled_dry_run_applied_commands}")
+        print(f"- controlled dry-run failed commands: {summary.controlled_dry_run_failed_commands}")
+        if summary.controlled_dry_run_selected_ship_counts:
+            print(
+                "- controlled dry-run selected ship counts: "
+                + format_count_dict(summary.controlled_dry_run_selected_ship_counts)
+            )
+        if summary.controlled_dry_run_missing_reason_counts:
+            print(
+                "- controlled dry-run selected-scope reasons: "
+                + format_count_dict(summary.controlled_dry_run_missing_reason_counts)
+            )
     if summary.unknown_record_type_counts:
         print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")
     print(

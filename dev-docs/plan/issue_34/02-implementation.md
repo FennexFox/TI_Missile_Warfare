@@ -73,12 +73,21 @@
 
 ## Progress
 
-- Not started.
+- Complete.
 
 ## Decision log
 
-- No implementation decisions recorded yet.
+- The trigger arms exactly one pending dry-run experiment and the next shadow
+  allocation cycle consumes it.
+- Selected-scope evidence is best-effort reflection against the verified
+  command-panel selection members; unavailable or empty scope is logged
+  explicitly instead of falling back to broad combatant lists.
+- Dry-run command counts are emitted only in `dryRunResult` rows and always
+  report `appliedCommands="0"`.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Added the disabled-by-default setting, UMM trigger, dry-run experiment rows,
+  parser grouping, and synthetic parser fixture.
+- Targeted parser smoke, ruff, compileall, and `dotnet build` passed before the
+  phase commit.

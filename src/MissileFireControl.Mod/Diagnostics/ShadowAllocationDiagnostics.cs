@@ -16,6 +16,33 @@ namespace MissileFireControl.Mod.Diagnostics
     internal static class ShadowAllocationDiagnostics
     {
         private static int _cycleSequence;
+        private static int _experimentSequence;
+        private static readonly object DryRunLock = new object();
+        private static ControlledDryRunRequest _pendingDryRun;
+
+        private static readonly string[] SelectedScopeMemberNames =
+        {
+            "selectedFriendlyShipState",
+            "selectedFriendlyShip",
+            "groupSelectedFriendlyShips",
+            "SelectedFriendlyShipState",
+            "SelectedFriendlyShip",
+            "GroupSelectedFriendlyShips"
+        };
+
+        private static readonly string[] CanvasControllerRootMemberNames =
+        {
+            "spaceCombatCanvasController",
+            "SpaceCombatCanvasController",
+            "spaceCombatCanvas",
+            "SpaceCombatCanvas",
+            "canvasController",
+            "CanvasController",
+            "canvas",
+            "Canvas",
+            "controller",
+            "Controller"
+        };
 
         public static void LogProjectileFireShadowAllocation(
             object projectile,
@@ -38,6 +65,39 @@ namespace MissileFireControl.Mod.Diagnostics
             }
         }
 
+        public static string RequestControlledDryRun()
+        {
+            if (!Main.IsEnabled())
+            {
+                return "Controlled dry-run experiment not armed: mod is disabled.";
+            }
+
+            if (Main.Settings == null || !Main.Settings.EnableDiagnostics)
+            {
+                return "Controlled dry-run experiment not armed: diagnostics are disabled.";
+            }
+
+            if (!Main.Settings.EnableShadowAllocationDiagnostics)
+            {
+                return "Controlled dry-run experiment not armed: shadow allocation diagnostics are disabled.";
+            }
+
+            if (!Main.Settings.EnableControlledDryRunDiagnostics)
+            {
+                return "Controlled dry-run experiment not armed: controlled dry-run diagnostics are disabled.";
+            }
+
+            string requestedUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+            string compactUtc = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture);
+            string experimentId = "dryrun-" + compactUtc + "-" + Interlocked.Increment(ref _experimentSequence).ToString(CultureInfo.InvariantCulture);
+            lock (DryRunLock)
+            {
+                _pendingDryRun = new ControlledDryRunRequest(experimentId, requestedUtc);
+            }
+
+            return "Controlled dry-run experiment armed: experimentId=" + experimentId + ". The next shadow allocation cycle will log diagnostics only.";
+        }
+
         private static bool ShouldLog()
         {
             return Main.IsEnabled()
@@ -49,6 +109,7 @@ namespace MissileFireControl.Mod.Diagnostics
         private static void LogShadowCycle(ExtractedCombatSnapshot snapshot)
         {
             int cycleId = Interlocked.Increment(ref _cycleSequence);
+            ControlledDryRunRequest dryRun = ConsumePendingControlledDryRun();
             List<string> missingInputs = MissingInputs(snapshot);
             bool canAllocate = snapshot != null
                 && HasConcreteIdentity(snapshot.Launcher, "launcher")
@@ -63,22 +124,29 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             WriteCycleRecord(cycleId, snapshot, result, missingInputs, canAllocate);
+            if (dryRun != null)
+            {
+                WriteDryRunExperimentRecord(dryRun, cycleId, snapshot, missingInputs, canAllocate);
+            }
 
             if (!canAllocate)
             {
                 WriteNoOp(cycleId, snapshot, "missing required allocation inputs");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, "missing required allocation inputs");
                 return;
             }
 
             if (result == null)
             {
                 WriteNoOp(cycleId, snapshot, "allocation result unavailable");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, "allocation result unavailable");
                 return;
             }
 
             foreach (TargetAllocation allocation in result.Allocations)
             {
                 WriteTargetRecord("allocation", cycleId, snapshot, allocation, "reason", allocation.Reason);
+                WriteDryRunIntent(dryRun, cycleId, snapshot, allocation);
             }
 
             foreach (TargetAllocation rejection in result.Rejections)
@@ -88,8 +156,291 @@ namespace MissileFireControl.Mod.Diagnostics
 
             if (result.Allocations.Count == 0 && result.Rejections.Count == 0)
             {
-                WriteNoOp(cycleId, snapshot, NoOpReason(snapshot));
+                string noOpReason = NoOpReason(snapshot);
+                WriteNoOp(cycleId, snapshot, noOpReason);
+                WriteDryRunResult(dryRun, cycleId, 0, 1, noOpReason);
+                return;
             }
+
+            int skippedCommands = result.Allocations.Count == 0 ? 1 : 0;
+            WriteDryRunResult(dryRun, cycleId, result.Allocations.Count, skippedCommands, "dryRunOnly");
+        }
+
+        private static ControlledDryRunRequest ConsumePendingControlledDryRun()
+        {
+            lock (DryRunLock)
+            {
+                if (_pendingDryRun == null)
+                {
+                    return null;
+                }
+
+                if (Main.Settings == null || !Main.Settings.EnableControlledDryRunDiagnostics)
+                {
+                    _pendingDryRun = null;
+                    return null;
+                }
+
+                ControlledDryRunRequest request = _pendingDryRun;
+                _pendingDryRun = null;
+                return request;
+            }
+        }
+
+        private static void WriteDryRunExperimentRecord(
+            ControlledDryRunRequest request,
+            int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            List<string> missingInputs,
+            bool canAllocate)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            SelectedScopeEvidence selectedScope = CaptureSelectedScopeEvidence();
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", "dryRunExperiment");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "requestedUtc", request.RequestedUtc);
+            AppendPair(builder, "sourceHook", snapshot == null ? "unknown" : snapshot.Source);
+            AppendPair(builder, "status", canAllocate ? "evaluated" : "skipped");
+            AppendPair(builder, "selectedScopeVisible", selectedScope.Count > 0 ? "True" : "False");
+            AppendPair(builder, "selectedScopeSource", selectedScope.Source);
+            AppendPair(builder, "selectedScopeMissingReason", selectedScope.MissingReason);
+            AppendPair(builder, "selectedShipCount", selectedScope.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedShipIds", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.Ids.ToArray()));
+            AppendPair(builder, "selectedShipNames", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.Names.ToArray()));
+            AppendPair(builder, "selectedShipTeams", selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.TeamIds.ToArray()));
+            AppendPair(builder, "targetId", snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.Id);
+            AppendPair(builder, "target", snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.DisplayName);
+            AppendPair(builder, "missingInputs", missingInputs == null || missingInputs.Count == 0 ? "none" : string.Join(",", missingInputs.ToArray()));
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteDryRunIntent(
+            ControlledDryRunRequest request,
+            int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            TargetAllocation allocation)
+        {
+            if (request == null || allocation == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", "dryRunIntent");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "decisionType", "allocation");
+            AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
+            AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
+            AppendPair(builder, "launcherId", snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id);
+            AppendPair(builder, "launcher", snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.DisplayName);
+            AppendPair(builder, "targetId", allocation.TargetId);
+            AppendPair(builder, "target", allocation.TargetName);
+            AppendPair(builder, "intendedShots", allocation.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "reason", allocation.Reason ?? "unknown");
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteDryRunResult(
+            ControlledDryRunRequest request,
+            int cycleId,
+            int intendedCommands,
+            int skippedCommands,
+            string resultReason)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", "dryRunResult");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "intendedCommands", intendedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "skippedCommands", skippedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "appliedCommands", "0");
+            AppendPair(builder, "failedCommands", "0");
+            AppendPair(builder, "result", "dryRunOnly");
+            AppendPair(builder, "resultReason", resultReason ?? "dryRunOnly");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static SelectedScopeEvidence CaptureSelectedScopeEvidence()
+        {
+            SelectedScopeEvidence evidence = new SelectedScopeEvidence();
+            foreach (SelectedScopeCandidate candidate in SelectedScopeCandidates())
+            {
+                if (candidate.Value == null)
+                {
+                    continue;
+                }
+
+                bool sawCandidate = AddSelectedShipEvidence(candidate.Value, evidence);
+                if (!sawCandidate)
+                {
+                    evidence.Source = candidate.Source;
+                    evidence.MissingReason = "selectedScopeEmpty";
+                    continue;
+                }
+
+                evidence.Source = candidate.Source;
+                evidence.MissingReason = evidence.Count == 0 ? "selectedScopeEmpty" : "none";
+                return evidence;
+            }
+
+            if (string.IsNullOrWhiteSpace(evidence.Source))
+            {
+                evidence.Source = "none";
+            }
+
+            if (string.IsNullOrWhiteSpace(evidence.MissingReason))
+            {
+                evidence.MissingReason = "selectedScopeUnavailable";
+            }
+
+            return evidence;
+        }
+
+        private static IEnumerable<SelectedScopeCandidate> SelectedScopeCandidates()
+        {
+            foreach (string memberName in SelectedScopeMemberNames)
+            {
+                object value = ReadStaticMember("SpaceCombatCanvasController", memberName)
+                    ?? ReadStaticMember("PavonisInteractive.TerraInvicta.SpaceCombatCanvasController", memberName);
+                yield return new SelectedScopeCandidate("SpaceCombatCanvasController." + memberName, value);
+            }
+
+            foreach (string rootMemberName in new[] { "instance", "Instance", "current", "Current" })
+            {
+                object controller = ReadStaticMember("SpaceCombatCanvasController", rootMemberName)
+                    ?? ReadStaticMember("PavonisInteractive.TerraInvicta.SpaceCombatCanvasController", rootMemberName);
+                foreach (SelectedScopeCandidate candidate in SelectedScopeCandidatesFromRoot("SpaceCombatCanvasController." + rootMemberName, controller))
+                {
+                    yield return candidate;
+                }
+            }
+
+            object spaceCombat = ReadStaticMember("GameControl", "spaceCombat")
+                ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", "spaceCombat");
+            foreach (SelectedScopeCandidate candidate in SelectedScopeCandidatesFromRoot("GameControl.spaceCombat", spaceCombat))
+            {
+                yield return candidate;
+            }
+
+            foreach (string rootMemberName in CanvasControllerRootMemberNames)
+            {
+                object controller = ReadStaticMember("GameControl", rootMemberName)
+                    ?? ReadStaticMember("PavonisInteractive.TerraInvicta.GameControl", rootMemberName);
+                foreach (SelectedScopeCandidate candidate in SelectedScopeCandidatesFromRoot("GameControl." + rootMemberName, controller))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<SelectedScopeCandidate> SelectedScopeCandidatesFromRoot(string rootName, object root)
+        {
+            if (root == null)
+            {
+                yield break;
+            }
+
+            foreach (string memberName in SelectedScopeMemberNames)
+            {
+                yield return new SelectedScopeCandidate(rootName + "." + memberName, ReadMember(root, memberName));
+            }
+
+            foreach (string controllerMemberName in CanvasControllerRootMemberNames)
+            {
+                object controller = ReadMember(root, controllerMemberName);
+                if (controller == null || ReferenceEquals(controller, root))
+                {
+                    continue;
+                }
+
+                foreach (string memberName in SelectedScopeMemberNames)
+                {
+                    yield return new SelectedScopeCandidate(rootName + "." + controllerMemberName + "." + memberName, ReadMember(controller, memberName));
+                }
+            }
+        }
+
+        private static bool AddSelectedShipEvidence(object value, SelectedScopeEvidence evidence)
+        {
+            if (value == null)
+            {
+                return false;
+            }
+
+            if (value is string)
+            {
+                return false;
+            }
+
+            bool sawCandidate = false;
+            if (value is IEnumerable enumerable)
+            {
+                foreach (object item in enumerable)
+                {
+                    sawCandidate = true;
+                    AddSelectedShip(item, evidence);
+                }
+
+                return sawCandidate;
+            }
+
+            sawCandidate = true;
+            AddSelectedShip(value, evidence);
+            return sawCandidate;
+        }
+
+        private static void AddSelectedShip(object value, SelectedScopeEvidence evidence)
+        {
+            object ship = UnwrapSelectedShip(value);
+            if (ship == null)
+            {
+                return;
+            }
+
+            string id = GameObjectReader.StableId(ship, "selectedShip");
+            if (!evidence.SeenIds.Add(id))
+            {
+                return;
+            }
+
+            evidence.Ids.Add(id);
+            evidence.Names.Add(GameObjectReader.Label(ship, "selectedShip"));
+            evidence.TeamIds.Add(GameObjectReader.TeamId(ship));
+        }
+
+        private static object UnwrapSelectedShip(object value)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            object unwrapped = GameObjectReader.ReadFirstMember(
+                value,
+                "selectedFriendlyShipState",
+                "shipState",
+                "ShipState",
+                "spaceShipState",
+                "SpaceShipState",
+                "combatTargetableState",
+                "CombatTargetableState",
+                "state",
+                "State");
+            return unwrapped ?? value;
         }
 
         private static AllocationRequest BuildRequest(ExtractedCombatSnapshot snapshot)
@@ -488,6 +839,49 @@ namespace MissileFireControl.Mod.Diagnostics
             builder.Append("=\"");
             builder.Append(GameObjectReader.Clean(value));
             builder.Append('"');
+        }
+
+        private sealed class ControlledDryRunRequest
+        {
+            public ControlledDryRunRequest(string experimentId, string requestedUtc)
+            {
+                ExperimentId = experimentId;
+                RequestedUtc = requestedUtc;
+            }
+
+            public string ExperimentId { get; }
+
+            public string RequestedUtc { get; }
+        }
+
+        private sealed class SelectedScopeCandidate
+        {
+            public SelectedScopeCandidate(string source, object value)
+            {
+                Source = source;
+                Value = value;
+            }
+
+            public string Source { get; }
+
+            public object Value { get; }
+        }
+
+        private sealed class SelectedScopeEvidence
+        {
+            public string Source { get; set; } = "none";
+
+            public string MissingReason { get; set; } = "selectedScopeUnavailable";
+
+            public List<string> Ids { get; } = new List<string>();
+
+            public List<string> Names { get; } = new List<string>();
+
+            public List<string> TeamIds { get; } = new List<string>();
+
+            public HashSet<string> SeenIds { get; } = new HashSet<string>();
+
+            public int Count => Ids.Count;
         }
     }
 }
