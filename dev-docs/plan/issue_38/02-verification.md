@@ -69,4 +69,15 @@
   - `python -m ruff check tools\fit_shadow_allocation.py tools\parse_player_log.py`
   - `python -m compileall tools`
   - `python tools\parse_player_log.py tools\fixtures\selected_group_controlled_apply.txt --require-launchlogs --require-snapshots`
-- Manual runtime smoke was not run in this environment.
+- Manual runtime smoke was run on the latest `Player.log` written 2026-06-23
+  06:03 local time. Parser verdict was `OK`: the selected group source was
+  `GameControl.spaceCombat.combatHUD.groupSelectedFriendlyShips`, selected ship
+  count was 3, selected ships were `Shiloh#276`, `Carrhae#278`, and
+  `Puebla#279`, two controlled experiments applied six commands total, four
+  post-gate rows skipped with `perShipCommandCapReached`, failed commands were
+  zero, scope violations were zero, same-team missile target snapshots were
+  zero, parser suspicious patterns were none, and MissileWarfare issues were
+  none.
+- Remaining runtime limitation: controlled command result rows still report
+  `missilesSpent` as `unknown`; launch pre/post ammo deltas are visible in
+  LaunchLog rows but are not directly correlated back to each command result.
