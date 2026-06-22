@@ -47,7 +47,7 @@
 
 ## Known Risks And Assumptions
 
-- The latest #35 runtime smoke did not observe a real eligible candidate, so #36 must include deterministic fixture coverage for the gate-reachable path.
-- Runtime smoke may still produce only `wouldSkip` candidates; that remains useful fail-closed evidence but does not replace the fixture.
+- Deterministic fixture coverage exercises the gate-reachable path.
+- Fresh #36 runtime smoke on 2026-06-22 observed one eligible selected-ship candidate reaching `controlledCommandApplyGate` and being blocked by `blockedBySafetyToggle` with zero applied commands.
 - `AllowCommandApply` is an explicit safety toggle only. This issue does not implement live command application, even if that setting is manually enabled.
 - #37 remains the first behavior-changing slice.

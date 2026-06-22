@@ -442,3 +442,47 @@ defaulted no-op path. The fixture fitting report correctly classified observed
 target PD evidence as `provisional`; the aggregate readiness verdict remained
 `Not ready` because fixtures are synthetic and do not count as real combat
 evidence.
+
+## Issue #36 apply-gate hard stop
+
+Issue #36 adds the final diagnostics-only hard stop before any live command
+application. It introduces the default-off `AllowCommandApply` setting, emits a
+named `controlledCommandApplyGate` row for eligible controlled dry-run command
+candidates, and keeps `appliedCommands="0"` in the current build.
+
+Static fixture validation used
+`tools/fixtures/apply_gate_hard_stop.txt` to prove a gate-reachable candidate is
+blocked by `blockedBySafetyToggle` with zero applied commands.
+
+Fresh runtime smoke on the active `Player.log` written 2026-06-22 15:19 local
+time validated the same path in a real combat:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 169, no sequence gaps
+- MissileWeapon.TryFire rows: 46
+- SnapshotLog entries: 46
+- target identity: 46/46 snapshots, all `targetIdentitySource=tryFireTarget`
+- target velocity: 46/46 cycles from `tryFireTargetDamageableVelocity`
+- observed target PD evidence: 46/46 cycles with
+  `pdEvidenceQuality=observedTemplateCapability`
+- shadow cycles: 46 evaluated, 0 skipped
+- allocations: 46
+- controlled dry-run experiments: 1
+- controlled dry-run command candidates: 1
+- candidate classification: `eligible: 1`
+- selected command scope: one selected ship, `El Alamein` id `276`
+- candidate launcher: `El Alamein` id `276`
+- target: `Centaur` id `277`
+- apply-gate records: 1
+- apply-gate result: `blocked: 1`
+- safety-gate reason: `blockedBySafetyToggle: 1`
+- `safetyGateBlockedCommands`: 1
+- applied commands: 0
+- failed commands: 0
+- scope violations: 0
+
+Interpretation: #36 is validated as a diagnostics-only hard-stop proof. A
+real selected single-ship candidate reached the named apply gate and was blocked
+because command application was not explicitly allowed. No live command was
+applied. #37 remains the first behavior-changing slice.

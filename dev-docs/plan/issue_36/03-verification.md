@@ -53,7 +53,8 @@
 
 ## Decision log
 
-- Deterministic fixture validation is the committed #36 proof for the gate-reachable path because no fresh runtime smoke was run in this environment.
+- Deterministic fixture validation remains committed coverage for the gate-reachable path.
+- Fresh runtime smoke on 2026-06-22 is now the primary real-log #36 safety proof.
 
 ## Outcomes / Retrospective
 
@@ -65,4 +66,4 @@
 - Existing controlled dry-run and command-resolvability fixtures still parse OK.
 - `python tools\fit_shadow_allocation.py --input tools\fixtures --output artifacts\shadow-fitting\issue_36_fixtures`: passed; readiness remains `Not ready` because fixtures are synthetic and no real selected combat log was analyzed.
 - `dotnet build TI_Missile_Fire_Control.sln`: passed with 0 warnings and 0 errors.
-- Manual runtime smoke was not run; next runtime validation should leave command application disabled and confirm zero applied commands in a fresh player log.
+- Manual runtime smoke on 2026-06-22 parsed `OK`: 46 evaluated shadow cycles, 46/46 snapshots with `targetIdentitySource=tryFireTarget`, one controlled dry-run experiment, one eligible command candidate, one `dryRunApplyGate` row with `gateResult="blocked"` and `blockReason="blockedBySafetyToggle"`, `safetyGateBlockedCommands="1"`, zero applied commands, zero failed commands, and zero scope violations.
