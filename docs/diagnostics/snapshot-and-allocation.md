@@ -274,6 +274,17 @@ showed same-team target evidence. Controlled live apply must now wait for a
 selected-team allocator candidate against a hostile target instead of applying
 that enemy allocator cycle.
 
+The immediate post-fix Cape St. George/Yayoi/Taiho smoke showed the intended
+runtime behavior. Two enemy allocator cycles from `Yayoi` team `50` toward
+friendly `Verdun` team `47` classified as `wouldSkip` with
+`allocatorLauncherOutsideSelectedTeam` and left the controlled experiment armed.
+The later selected-ship cycle from `Cape St. George` team `47` toward hostile
+`Taiho` team `50` classified as `eligible`, reached `gateResult="allowed"`, and
+emitted one `appliedDecision` through `SelectSalvoTargetCommand.OnCommandExecute`.
+The parser verdict was `OK`, with one applied command, zero failed commands,
+zero scope violations, zero same-team missile target snapshots, and no
+suspicious patterns.
+
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
 applied or failed commands. In that smoke, selected command-panel scope was not

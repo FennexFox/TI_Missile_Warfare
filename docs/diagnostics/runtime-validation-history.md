@@ -566,3 +566,38 @@ classify as `hostileTargetRequired`, and the experiment waits for a later
 selected-team hostile candidate instead of applying. The parser now fails logs
 with same-team missile target snapshots so this condition is not reported as a
 clean smoke.
+
+Post-fix runtime smoke on the latest `Player.log` validated the intended guard
+and recovery path:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 1,790, no sequence gaps or duplicates
+- MissileWeapon.TryFire rows: 252
+- SnapshotLog entries: 252
+- AllocationLog entries: 518: 252 `cycle`, 216 `allocation`, 36 `rejection`,
+  three `dryRunExperiment`, three `dryRunIntent`, three
+  `dryRunCommandCandidate`, one `dryRunApplyGate`, one `appliedDecision`, and
+  three `dryRunResult` rows
+- controlled dry-run command candidates: three total, with two `wouldSkip` and
+  one `eligible`
+- skipped candidate reason: `allocatorLauncherOutsideSelectedTeam: 2`
+- selected command ship: `Cape St. George` id `276`, team `47`
+- skipped allocator launcher: enemy `Yayoi` id `285`, team `50`, targeting
+  friendly `Verdun` id `278`, team `47`
+- applied candidate: selected `Cape St. George` team `47` targeting hostile
+  `Taiho` id `280`, team `50`
+- apply gate: one `allowed` result with `AllowCommandApply=True`
+- live apply: one `appliedDecision` through
+  `SelectSalvoTargetCommand.OnCommandExecute`
+- applied commands: one
+- failed commands: zero
+- scope violations: zero
+- same-team missile target snapshots: zero
+- parser suspicious patterns: none
+
+Interpretation: the post-fix log matches the intended #37 containment behavior.
+Enemy allocator / friendly-target candidates wait without applying, and the
+first selected-team hostile candidate can apply exactly one single-ship vanilla
+salvo-target command. This is still selected single-ship evidence only; it does
+not validate selected-group or fleet-wide allocation.
