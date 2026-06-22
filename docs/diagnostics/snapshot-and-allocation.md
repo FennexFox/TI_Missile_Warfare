@@ -85,31 +85,35 @@ snapshot count fields.
 ## Target identity semantics
 
 Launcher-selected target identity probing is conservative. The projectile-state
-fire hook does not receive the live `MissileController.target` object.
-`MissileWeapon` passes that target to the Unity controller immediately after the
-state fire call.
+fire hook does not receive the live `MissileController.target` object, but the
+paired `MissileWeapon.TryFire` prefix can observe the live weapon `target`
+before the projectile fire hook runs on the same thread.
 
-The snapshot extractor checks the launcher/carrier for `combatPrimaryTarget` or
-related primary-target members. Candidate target wrappers are unwrapped through
-members such as `combatTargetableState`, `GetCombatantState`,
+The snapshot extractor first checks the launcher/carrier for
+`combatPrimaryTarget` or related primary-target members. If no launcher priority
+target is visible, it falls back to the live `MissileWeapon.TryFire` target from
+the same-thread readiness handoff. Candidate target wrappers are unwrapped
+through members such as `combatTargetableState`, `GetCombatantState`,
 `GetTargetableState`, `ShipState`, and `WeaponCarrierState` when present.
 
 `targetIdentitySource=launcher` means launcher/carrier primary-target or
-focus-fire identity. It is not proof of the actual in-flight missile guidance
-target. For projectile/controller guidance target coverage, add a separate
-observation point around `MissileWeapon.target` or `MissileController.target`.
+focus-fire identity. `targetIdentitySource=tryFireTarget` means the identity was
+derived from the live `MissileWeapon.target` observed immediately before the
+projectile fire hook.
 
 If no concrete launcher-selected identity is visible, `targetId`, `target`, and
 `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and
 `missing=targetIdentity` remains valid.
 
-This missing field means the current hook could not observe a launcher-selected
-priority target. It does not prove vanilla combat had no target. Decompiled
-source review shows `SelectSalvoTargetCommand` sets `combatPrimaryTarget`
-through `SetCombatPrimaryTargetAction`, `ClearTargetCommand` is valid only when
-that primary target exists, and `MissileWeapon.TryFire` still fires through a
-live `base.target` object. Fighting without a player-set priority target is
-therefore compatible with `targetIdentitySource=none` in this diagnostic schema.
+This missing field means neither a launcher-selected priority target nor a
+same-thread `MissileWeapon.TryFire` target could be normalized into a concrete
+combat target identity. It does not prove vanilla combat had no target.
+Decompiled source review shows `SelectSalvoTargetCommand` sets
+`combatPrimaryTarget` through `SetCombatPrimaryTargetAction`, while
+`MissileWeapon.TryFire` still fires through a live `base.target` object. Fighting
+without a player-set priority target is therefore compatible with
+`targetIdentitySource=tryFireTarget`; it should not require enabling combat AI
+control just to expose allocator target identity.
 
 ## SnapshotLog schema
 

@@ -359,7 +359,9 @@ namespace MissileFireControl.Mod.Diagnostics
                 HasTargetVelocity = observation.HasTargetVelocity,
                 TargetVelocityKps = observation.TargetVelocityKps,
                 TargetVelocityEvidenceSource = observation.TargetVelocityEvidenceSource,
-                TargetVelocityMissingReason = observation.TargetVelocityMissingReason
+                TargetVelocityMissingReason = observation.TargetVelocityMissingReason,
+                TargetRuntimeObject = observation.TargetRuntimeObject,
+                TargetIdentityEvidenceSource = observation.TargetRuntimeObject == null ? "unknown" : "tryFireTarget"
             };
         }
 
@@ -430,6 +432,7 @@ namespace MissileFireControl.Mod.Diagnostics
             TryFireObservation observation)
         {
             object target = ReadMember(weapon, "target");
+            observation.TargetRuntimeObject = target;
             if (target == null)
             {
                 observation.HasTargetVelocity = false;
@@ -880,6 +883,8 @@ namespace MissileFireControl.Mod.Diagnostics
             public string TargetVelocityEvidenceSource { get; set; }
 
             public string TargetVelocityMissingReason { get; set; }
+
+            public object TargetRuntimeObject { get; set; }
         }
     }
 }
