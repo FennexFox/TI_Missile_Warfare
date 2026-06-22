@@ -53,12 +53,17 @@
 
 ## Progress
 
-- Not started.
+- Complete.
 
 ## Decision log
 
-- No decisions recorded yet.
+- Durable docs describe #34 as diagnostics-only and keep live command
+  application blocked.
+- Runtime smoke was not run in this repository-only pass; the fixture proves
+  parser grouping, not in-game selected-scope visibility.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Updated diagnostics and roadmap docs.
+- Ran parser fixture validation, fitting fixture validation, layout check,
+  ruff, compileall, and `dotnet build`.

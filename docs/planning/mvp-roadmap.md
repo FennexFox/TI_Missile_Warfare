@@ -4,7 +4,11 @@ This roadmap records durable issue-sized work. Temporary per-PR plans belong und
 
 ## Current milestone state
 
-The project has enough diagnostics to observe missile launches and shadow allocation inputs, and Issue #21 verifies the selected-player command scope for later dry-run command-intent logging. It is still not ready for live controlled command application.
+The project has enough diagnostics to observe missile launches and shadow
+allocation inputs, Issue #21 verifies the selected-player command scope for
+later command work, and Issue #34 adds a diagnostics-only controlled dry-run
+experiment envelope. It is still not ready for live controlled command
+application.
 
 Current blocker:
 
@@ -21,7 +25,8 @@ Current blocker:
 
 Current missing or provisional inputs:
 
-- dry-run command-intent logging for the verified selected-player scope;
+- command resolvability and selected-scope safety reporting for the dry-run
+  envelope;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -146,8 +151,8 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending dry-run command-intent logging and live
-command-application safety work.
+Status: blocked pending command resolvability, selected-scope safety reporting,
+and live command-application safety work.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -155,16 +160,17 @@ the selected-player command path for later dry-run logging, but controlled
 command application still must let vanilla combat enforce the final legal launch
 result.
 
-Future #6 design should log selected player ship identity, visible weapon/module
-identity, `ammoGateBudgetShots` and its evidence source, the allocator
-recommendation that motivated the command, command intent and target,
-skipped/failure reason, and observed ammo delta or launch evidence when
-available.
+Future #6 design should continue from the Issue #34 dry-run envelope: log
+selected player ship identity, visible weapon/module identity,
+`ammoGateBudgetShots` and its evidence source, the allocator recommendation
+that motivated the command, command intent and target, skipped/failure reason,
+and observed ammo delta or launch evidence when available.
 
 Additional gate: vanilla salvo target command granularity is ship-level and all
-salvo-capable weapons on that ship, not one visible missile module. Later #22
-dry-run logs must make that broader granularity explicit before #23 considers a
-minimal live smoke.
+salvo-capable weapons on that ship, not one visible missile module. The Issue
+#34 dry-run logs make that broader granularity explicit, but later command
+resolvability and safety reports must still prove whether a concrete live
+command can be safely attempted.
 
 Acceptance criteria once unblocked:
 
@@ -189,8 +195,8 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Implement #22 dry-run command-intent logging from the verified selected ship
-   and group-selected ship scopes.
+1. Implement #35 command resolvability and selected-scope safety reporting on
+   top of the #34 dry-run envelope.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited
