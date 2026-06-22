@@ -12,7 +12,11 @@ import shutil
 
 from parse_player_log import (
     ALLOCATION_RE,
+    APPLIED_ALLOCATION_RECORD_TYPES,
+    FAILED_ALLOCATION_RECORD_TYPES,
+    LAUNCH_RE,
     LogSummary,
+    SKIPPED_ALLOCATION_RECORD_TYPES,
     logger_verdict,
     parse_log,
     parse_pairs,
@@ -45,6 +49,11 @@ CONTROLLED_DRY_RUN_RECORD_TYPES = {
     "dryRunApplyGate",
     "dryRunResult",
 }
+CONTROLLED_COMMAND_RESULT_RECORD_TYPES = (
+    APPLIED_ALLOCATION_RECORD_TYPES
+    | SKIPPED_ALLOCATION_RECORD_TYPES
+    | FAILED_ALLOCATION_RECORD_TYPES
+)
 BAD_CLASSIFICATIONS = {
     "overkill",
     "underkill",
@@ -59,6 +68,7 @@ REQUIRED_EVIDENCE_FIELDS = (
     "AllocationLog",
     "shadow allocation cycles",
 )
+CONTROLLED_COMMAND_LAUNCH_CORRELATION_MAX_LINES = 12
 
 
 @dataclass
@@ -79,6 +89,55 @@ class AllocationRecord:
     classification: str
     limitations: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class LaunchEvidenceRecord:
+    line: int
+    seq: str
+    utc: str
+    launcher: str
+    launcher_id: str
+    target: str
+    target_id: str
+    experiment_id: str
+    command_result_id: str
+    controlled_command_correlation: str
+    controlled_command_observed_spent_shots: int | None
+    pre_fire_remaining: int | None
+    post_fire_remaining: int | None
+    ammo_delta: int | None
+
+
+@dataclass
+class ControlledCommandEvidence:
+    line: int
+    record_type: str
+    experiment_id: str
+    cycle_id: str
+    candidate_id: str
+    command_result_id: str
+    command_intent: str
+    command_result: str
+    reason: str
+    selected_ship: str
+    allocator_launcher: str
+    target: str
+    command_path: str
+    assigned_shots: int | None
+    direct_spent_shots: int | None
+    ammo_gate_budget_shots: int | None
+    post_state: str
+    observed_launch_count: int
+    observed_ammo_delta: int | None
+    observed_launch_lines: list[int] = field(default_factory=list)
+    observed_launch_sequences: list[str] = field(default_factory=list)
+    direct_launch_count: int = 0
+    direct_launch_lines: list[int] = field(default_factory=list)
+    direct_launch_sequences: list[str] = field(default_factory=list)
+    direct_observed_spent_shots: int | None = None
+    correlation: str = "none"
+    limitations: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -109,6 +168,7 @@ class FittingLogReport:
     classification_counts: dict[str, int]
     limitation_counts: dict[str, int]
     representative_records: list[dict[str, object]]
+    controlled_command_evidence: list[dict[str, object]]
     parser_summary: dict[str, object]
 
 
@@ -216,6 +276,211 @@ def scan_allocation_records(path: Path) -> tuple[dict[str, CycleContext], list[d
     return cycles, records
 
 
+def first_int(*values: object) -> int | None:
+    """Return the first parseable integer from diagnostic text values."""
+    for value in values:
+        parsed = try_parse_int(str(value)) if value is not None else None
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def first_known_text(*values: object) -> str:
+    """Return the first non-empty diagnostic text value that is not unknown/none."""
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"unknown", "none", "null"}:
+            return text
+    return "unknown"
+
+
+def compact_entity(name: str | None, entity_id: str | None, team: str | None = None) -> str:
+    """Return a compact entity key for command evidence tables."""
+    clean_name = name or "unknown"
+    clean_id = entity_id or "unknown"
+    suffix = f"[team={team}]" if team else ""
+    return f"{clean_name}#{clean_id}{suffix}"
+
+
+def id_from_engine_ref(text: str | None) -> str:
+    """Extract a stable id from common Terra Invicta diagnostic object refs."""
+    if not text:
+        return "unknown"
+
+    hash_match = re.search(r"#(?P<id>[A-Za-z0-9_.-]+)", text)
+    if hash_match:
+        return hash_match.group("id")
+
+    colon_match = re.search(r":(?P<id>[A-Za-z0-9_.-]+)$", text)
+    if colon_match:
+        return colon_match.group("id")
+
+    return "unknown"
+
+
+def scan_launch_evidence(path: Path) -> list[LaunchEvidenceRecord]:
+    """Read MissileWeapon.TryFire rows for command-result correlation."""
+    launch_records: list[LaunchEvidenceRecord] = []
+    with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            launch = LAUNCH_RE.match(raw_line.rstrip("\r\n"))
+            if launch is None:
+                continue
+
+            pairs = parse_pairs(launch.group("pairs"))
+            if pairs.get("hook") != "MissileWeapon.TryFire":
+                continue
+
+            pre_fire_remaining = try_parse_int(pairs.get("preFireRemaining"))
+            post_fire_remaining = try_parse_int(pairs.get("postFireRemaining"))
+            ammo_delta = (
+                pre_fire_remaining - post_fire_remaining
+                if pre_fire_remaining is not None and post_fire_remaining is not None
+                else None
+            )
+            launcher = pairs.get("launcher", "unknown")
+            target = pairs.get("target", "unknown")
+            launch_records.append(
+                LaunchEvidenceRecord(
+                    line=line_number,
+                    seq=pairs.get("seq", "unknown"),
+                    utc=pairs.get("utc", "unknown"),
+                    launcher=launcher,
+                    launcher_id=first_known_text(pairs.get("launcherId"), id_from_engine_ref(launcher)),
+                    target=target,
+                    target_id=first_known_text(pairs.get("targetId"), id_from_engine_ref(target)),
+                    experiment_id=pairs.get("experimentId", "none"),
+                    command_result_id=pairs.get("commandResultId", "none"),
+                    controlled_command_correlation=pairs.get("controlledCommandCorrelation", "none"),
+                    controlled_command_observed_spent_shots=try_parse_int(
+                        pairs.get("controlledCommandObservedSpentShots")
+                    ),
+                    pre_fire_remaining=pre_fire_remaining,
+                    post_fire_remaining=post_fire_remaining,
+                    ammo_delta=ammo_delta,
+                )
+            )
+
+    return launch_records
+
+
+def controlled_command_rows(
+    raw_records: list[dict[str, str | int]],
+    launch_records: list[LaunchEvidenceRecord],
+) -> list[ControlledCommandEvidence]:
+    """Correlate controlled command results with directly logged and nearby launch evidence."""
+    command_records = [
+        raw
+        for raw in raw_records
+        if str(raw.get("recordType", "unknown")) in CONTROLLED_COMMAND_RESULT_RECORD_TYPES
+        and raw.get("experimentId")
+    ]
+    command_lines = [int(raw["line"]) for raw in command_records]
+
+    rows: list[ControlledCommandEvidence] = []
+    for index, raw in enumerate(command_records):
+        line = int(raw["line"])
+        next_command_line = command_lines[index + 1] if index + 1 < len(command_lines) else None
+        correlation_limit_line = line + CONTROLLED_COMMAND_LAUNCH_CORRELATION_MAX_LINES
+        if next_command_line is not None:
+            correlation_limit_line = min(correlation_limit_line, next_command_line)
+        launcher_id = str(raw.get("launcherId", "unknown"))
+        target_id = str(raw.get("targetId", "unknown"))
+        matching_launches = [
+            launch
+            for launch in launch_records
+            if launch.line > line
+            and launch.line < correlation_limit_line
+            and launch.launcher_id == launcher_id
+            and launch.target_id == target_id
+        ]
+        command_result_id = str(raw.get("commandResultId", "unknown"))
+        direct_launches = [
+            launch
+            for launch in launch_records
+            if launch.command_result_id == command_result_id
+            and launch.experiment_id == str(raw.get("experimentId", "unknown"))
+            and launch.controlled_command_correlation == "directRuntimeContext"
+        ]
+        observed_deltas = [launch.ammo_delta for launch in matching_launches if launch.ammo_delta is not None]
+        direct_deltas = [launch.ammo_delta for launch in direct_launches if launch.ammo_delta is not None]
+        direct_spent_shots = first_int(raw.get("missilesSpent"))
+        direct_observed_spent_shots = max(
+            (
+                value
+                for value in (launch.controlled_command_observed_spent_shots for launch in direct_launches)
+                if value is not None
+            ),
+            default=None,
+        )
+
+        limitations: list[str] = []
+        if direct_spent_shots is None and direct_observed_spent_shots is None:
+            limitations.append("command result spentShots field is unknown")
+        if direct_launches:
+            limitations.append("launch evidence is stamped with the applied controlled command context")
+        elif matching_launches:
+            limitations.append(
+                "launch evidence is same-launcher/same-target and immediate-line-bounded, not causally stamped"
+            )
+        else:
+            limitations.append("no same-launcher/same-target launch in the immediate post-command window")
+        if str(raw.get("result", "")).lower() == "skipped" and matching_launches:
+            limitations.append("skipped command also has nearby launch evidence, so attribution is ambiguous")
+
+        rows.append(
+            ControlledCommandEvidence(
+                line=line,
+                record_type=str(raw.get("recordType", "unknown")),
+                experiment_id=str(raw.get("experimentId", "unknown")),
+                cycle_id=str(raw.get("cycleId", "unknown")),
+                candidate_id=str(raw.get("candidateId", "unknown")),
+                command_result_id=command_result_id,
+                command_intent=str(raw.get("commandIntent", "unknown")),
+                command_result=str(raw.get("result", "unknown")),
+                reason=str(raw.get("reason", "unknown")),
+                selected_ship=compact_entity(
+                    str(raw.get("launcher", "unknown")),
+                    launcher_id,
+                    str(raw.get("launcherTeam", "unknown")),
+                ),
+                allocator_launcher=compact_entity(
+                    str(raw.get("allocatorLauncher", "unknown")),
+                    str(raw.get("allocatorLauncherId", "unknown")),
+                    str(raw.get("allocatorLauncherTeam", "unknown")),
+                ),
+                target=compact_entity(str(raw.get("target", "unknown")), target_id, str(raw.get("targetTeam", "unknown"))),
+                command_path=str(raw.get("commandPath", "unknown")),
+                assigned_shots=first_int(raw.get("missilesAssigned"), raw.get("assignedShots")),
+                direct_spent_shots=direct_spent_shots,
+                ammo_gate_budget_shots=first_int(raw.get("ammoGateBudgetShots")),
+                post_state=str(raw.get("postState", "unknown")),
+                observed_launch_count=len(matching_launches),
+                observed_ammo_delta=sum(observed_deltas) if observed_deltas else None,
+                observed_launch_lines=[launch.line for launch in matching_launches],
+                observed_launch_sequences=[launch.seq for launch in matching_launches],
+                direct_launch_count=len(direct_launches),
+                direct_launch_lines=[launch.line for launch in direct_launches],
+                direct_launch_sequences=[launch.seq for launch in direct_launches],
+                direct_observed_spent_shots=(
+                    direct_observed_spent_shots
+                    if direct_observed_spent_shots is not None
+                    else sum(direct_deltas) if direct_deltas else None
+                ),
+                correlation=(
+                    "direct"
+                    if direct_launches
+                    else "line-window-heuristic" if matching_launches else "uncorrelated"
+                ),
+                limitations=limitations,
+            )
+        )
+
+    return rows
+
+
 def classify_records(
     cycles: dict[str, CycleContext],
     raw_records: list[dict[str, str | int]],
@@ -233,7 +498,11 @@ def classify_records(
     classified: list[AllocationRecord] = []
     for raw in raw_records:
         record_type = str(raw.get("recordType", "unknown"))
-        if record_type == "cycle" or record_type in CONTROLLED_DRY_RUN_RECORD_TYPES:
+        if (
+            record_type == "cycle"
+            or record_type in CONTROLLED_DRY_RUN_RECORD_TYPES
+            or record_type in CONTROLLED_COMMAND_RESULT_RECORD_TYPES
+        ):
             continue
 
         cycle_id = str(raw.get("cycleId", "unknown"))
@@ -421,7 +690,9 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
     )
     has_evidence, missing_evidence = required_evidence(summary)
     cycles, raw_records = scan_allocation_records(path)
+    launch_records = scan_launch_evidence(path)
     classified_records = classify_records(cycles, raw_records)
+    command_evidence = controlled_command_rows(raw_records, launch_records)
     classification_counts = Counter(record.classification for record in classified_records)
     limitation_counts = Counter(
         limitation for record in classified_records for limitation in record.limitations
@@ -452,6 +723,7 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
         classification_counts=dict(sorted(classification_counts.items())),
         limitation_counts=dict(sorted(limitation_counts.items())),
         representative_records=representative_records,
+        controlled_command_evidence=[asdict(record) for record in command_evidence],
         parser_summary=asdict(summary),
     )
 
@@ -540,6 +812,7 @@ def evidence_sufficiency_report(logs: list[FittingLogReport]) -> EvidenceSuffici
         ),
         dry_run_command_status(scoped_logs),
         observed_launch_delta_status(scoped_logs),
+        controlled_command_correlation_status(scoped_logs),
     ]
 
     command_blockers = [
@@ -1039,6 +1312,77 @@ def observed_launch_delta_status(logs: list[FittingLogReport]) -> EvidenceSuffic
     )
 
 
+def controlled_command_correlation_status(logs: list[FittingLogReport]) -> EvidenceSufficiencyInput:
+    """Classify command-result rows against direct spend and nearby launch evidence."""
+    rows = [row for log in logs for row in log.controlled_command_evidence]
+    result_counts = Counter(str(row.get("command_result", "unknown")) for row in rows)
+    correlation_counts = Counter(str(row.get("correlation", "unknown")) for row in rows)
+    direct_spent_rows = sum(
+        1
+        for row in rows
+        if row.get("direct_spent_shots") is not None or row.get("direct_observed_spent_shots") is not None
+    )
+    direct_correlated_rows = sum(1 for row in rows if row.get("correlation") == "direct")
+    heuristic_rows = sum(1 for row in rows if row.get("correlation") == "line-window-heuristic")
+    uncorrelated_rows = sum(1 for row in rows if row.get("correlation") == "uncorrelated")
+    applied_observed_delta = sum(
+        int(row["observed_ammo_delta"])
+        for row in rows
+        if row.get("command_result") == "applied" and row.get("observed_ammo_delta") is not None
+    )
+    skipped_observed_delta = sum(
+        int(row["observed_ammo_delta"])
+        for row in rows
+        if row.get("command_result") == "skipped" and row.get("observed_ammo_delta") is not None
+    )
+
+    if not rows:
+        status = "unknown"
+    elif direct_correlated_rows == len(rows) and direct_spent_rows == len(rows):
+        status = "ready"
+    elif direct_correlated_rows or heuristic_rows:
+        status = "provisional"
+    else:
+        status = "unknown"
+
+    limitations: list[str] = []
+    if rows and direct_spent_rows != len(rows):
+        limitations.append(f"{len(rows) - direct_spent_rows}/{len(rows)} command rows lack direct spentShots")
+    if direct_correlated_rows:
+        limitations.append(
+            f"{direct_correlated_rows}/{len(rows)} command rows have launch evidence stamped with commandResultId"
+        )
+    if heuristic_rows:
+        limitations.append(
+            f"{heuristic_rows}/{len(rows)} command rows only have same-launcher/same-target launch evidence in the immediate post-command window"
+        )
+    if uncorrelated_rows:
+        limitations.append(f"{uncorrelated_rows}/{len(rows)} command rows are uncorrelated")
+    if skipped_observed_delta:
+        limitations.append(
+            f"skipped command rows also have observed ammo delta {skipped_observed_delta}, so nearby launch evidence is not causal command-spend proof"
+        )
+
+    return EvidenceSufficiencyInput(
+        name="controlled command result correlation",
+        status=status,
+        scope="post-command validation design",
+        summary=(
+            f"{direct_spent_rows}/{len(rows)} command result rows have direct spent evidence; "
+            f"{direct_correlated_rows}/{len(rows)} are directly correlated, "
+            f"{heuristic_rows}/{len(rows)} are line-window correlated, "
+            f"{uncorrelated_rows}/{len(rows)} are uncorrelated. "
+            f"Observed ammo deltas by result: applied={applied_observed_delta}, "
+            f"skipped={skipped_observed_delta}."
+        ),
+        limitations=limitations,
+        evidence={
+            "command_results": dict(sorted(result_counts.items())),
+            "correlation": dict(sorted(correlation_counts.items())),
+        },
+    )
+
+
 def aggregate_report(input_path: Path, output_path: Path, logs: list[FittingLogReport]) -> AggregateReport:
     """Build aggregate report data."""
     classification_counts = Counter()
@@ -1204,6 +1548,9 @@ def format_markdown_report(report: AggregateReport) -> str:
     lines.extend(["", "## Controlled dry-run command summary", ""])
     lines.extend(controlled_dry_run_markdown_lines(report.logs))
 
+    lines.extend(["", "## Controlled command result evidence", ""])
+    lines.extend(controlled_command_evidence_markdown_lines(report.logs))
+
     lines.extend(["", "## Per-log summaries", ""])
     for log in report.logs:
         parser_reasons = "; ".join(log.parser_reasons) if log.parser_reasons else "none"
@@ -1235,6 +1582,8 @@ def format_markdown_report(report: AggregateReport) -> str:
                 ),
                 "- controlled dry-run: "
                 + controlled_dry_run_one_line(log),
+                "- controlled command evidence: "
+                + controlled_command_evidence_one_line(log),
                 "",
             ]
         )
@@ -1282,6 +1631,10 @@ def format_markdown_report(report: AggregateReport) -> str:
             "- Controlled live command readiness remains separate from the fitting",
             "  baseline and requires command-intent, command-mapping, and live-safety",
             "  gates before Issue #6 can apply commands.",
+            "- Controlled command result correlation treats immediate line-bounded",
+            "  launch rows as observation evidence only. It is not direct command-spend proof",
+            "  unless the command result row itself reports numeric spent shots or",
+            "  a future diagnostic stamps launch evidence with the command result.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1375,6 +1728,107 @@ def controlled_dry_run_one_line(log: FittingLogReport) -> str:
         f"; reasons: {count_dict_text(reasons)}"
         f"; safety-gate reasons: {count_dict_text(gate_reasons)}"
     )
+
+
+def controlled_command_evidence_markdown_lines(logs: list[FittingLogReport]) -> list[str]:
+    """Return aggregate controlled command evidence Markdown lines."""
+    rows = [row for log in logs for row in log.controlled_command_evidence]
+    if not rows:
+        return ["- no controlled command result rows were found"]
+
+    result_counts = Counter(str(row.get("command_result", "unknown")) for row in rows)
+    correlation_counts = Counter(str(row.get("correlation", "unknown")) for row in rows)
+    direct_spent_rows = sum(
+        1
+        for row in rows
+        if row.get("direct_spent_shots") is not None or row.get("direct_observed_spent_shots") is not None
+    )
+    observed_rows = sum(1 for row in rows if int(row.get("observed_launch_count", 0)) > 0)
+    direct_rows = sum(1 for row in rows if row.get("correlation") == "direct")
+    heuristic_rows = sum(1 for row in rows if row.get("correlation") == "line-window-heuristic")
+    uncorrelated_rows = sum(1 for row in rows if row.get("correlation") == "uncorrelated")
+    applied_delta = sum(
+        int(row["observed_ammo_delta"])
+        for row in rows
+        if row.get("command_result") == "applied" and row.get("observed_ammo_delta") is not None
+    )
+    skipped_delta = sum(
+        int(row["observed_ammo_delta"])
+        for row in rows
+        if row.get("command_result") == "skipped" and row.get("observed_ammo_delta") is not None
+    )
+    lines = [
+        f"- command result rows: {len(rows)} ({count_dict_text(result_counts)})",
+        f"- direct spent evidence rows: {direct_spent_rows}/{len(rows)}",
+        f"- correlation buckets: direct={direct_rows}, line-window-heuristic={heuristic_rows}, uncorrelated={uncorrelated_rows} ({count_dict_text(correlation_counts)})",
+        f"- rows with same-launcher/same-target launch evidence in the immediate window: {observed_rows}/{len(rows)}",
+        f"- observed ammo delta by command result: applied={applied_delta}, skipped={skipped_delta}",
+        "",
+        "| line | experiment | command result id | ship | allocator | target | result | assigned | spent | direct launches | window launches | observed delta | correlation |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows[:20]:
+        spent = row.get("direct_spent_shots")
+        if spent is None:
+            spent = row.get("direct_observed_spent_shots")
+        observed_delta = row.get("observed_ammo_delta")
+        lines.append(
+            "| {line} | {experiment} | {command_result_id} | {ship} | {allocator} | {target} | {result} | "
+            "{assigned} | {spent} | {direct_launches} | {launches} | {delta} | {correlation} |".format(
+                line=row.get("line", "unknown"),
+                experiment=markdown_cell(str(row.get("experiment_id", "unknown"))),
+                command_result_id=markdown_cell(str(row.get("command_result_id", "unknown"))),
+                ship=markdown_cell(str(row.get("selected_ship", "unknown"))),
+                allocator=markdown_cell(str(row.get("allocator_launcher", "unknown"))),
+                target=markdown_cell(str(row.get("target", "unknown"))),
+                result=markdown_cell(
+                    f"{row.get('command_result', 'unknown')}:{row.get('reason', 'unknown')}"
+                ),
+                assigned=format_optional_int(row.get("assigned_shots")),
+                spent=format_optional_int(spent),
+                direct_launches=markdown_cell(
+                    f"{row.get('direct_launch_count', 0)} @ "
+                    + ",".join(str(value) for value in row.get("direct_launch_lines", []))
+                ),
+                launches=markdown_cell(
+                    f"{row.get('observed_launch_count', 0)} @ "
+                    + ",".join(str(value) for value in row.get("observed_launch_lines", []))
+                ),
+                delta=format_optional_int(observed_delta),
+                correlation=markdown_cell(str(row.get("correlation", "unknown"))),
+            )
+        )
+    if len(rows) > 20:
+        lines.append(f"- table truncated to 20/{len(rows)} command rows")
+    return lines
+
+
+def controlled_command_evidence_one_line(log: FittingLogReport) -> str:
+    """Return a compact per-log controlled command evidence summary."""
+    rows = log.controlled_command_evidence
+    if not rows:
+        return "none"
+    result_counts = Counter(str(row.get("command_result", "unknown")) for row in rows)
+    direct_spent_rows = sum(
+        1
+        for row in rows
+        if row.get("direct_spent_shots") is not None or row.get("direct_observed_spent_shots") is not None
+    )
+    observed_rows = sum(1 for row in rows if int(row.get("observed_launch_count", 0)) > 0)
+    direct_rows = sum(1 for row in rows if row.get("correlation") == "direct")
+    heuristic_rows = sum(1 for row in rows if row.get("correlation") == "line-window-heuristic")
+    uncorrelated_rows = sum(1 for row in rows if row.get("correlation") == "uncorrelated")
+    return (
+        f"{len(rows)} rows ({count_dict_text(result_counts)}); "
+        f"direct spent evidence {direct_spent_rows}/{len(rows)}; "
+        f"direct/heuristic/uncorrelated {direct_rows}/{heuristic_rows}/{uncorrelated_rows}; "
+        f"nearby launch evidence {observed_rows}/{len(rows)}"
+    )
+
+
+def format_optional_int(value: object) -> str:
+    """Format optional integer-like report values."""
+    return "unknown" if value is None else str(value)
 
 
 def count_dict_text(values: Counter[str] | dict[str, int]) -> str:

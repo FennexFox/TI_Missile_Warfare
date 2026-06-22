@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -12,10 +13,70 @@ namespace MissileFireControl.Mod.Diagnostics
 {
     internal static class CombatLaunchDiagnostics
     {
+        private const int MaxControlledCommandContexts = 16;
+        private const int MaxControlledCommandLaunchMatches = 16;
+
         private static int _sequence;
+        private static readonly object ControlledCommandContextLock = new object();
+        private static readonly List<ControlledCommandLaunchContext> ControlledCommandContexts =
+            new List<ControlledCommandLaunchContext>();
 
         [ThreadStatic]
         private static ReadinessEvidenceSnapshot _currentMissileTryFireReadiness;
+
+        public static void RegisterControlledCommandContext(
+            string commandResultId,
+            string experimentId,
+            string candidateId,
+            string launcherId,
+            string launcherName,
+            string targetId,
+            string targetName,
+            int assignedShots)
+        {
+            if (!HasConcreteToken(commandResultId)
+                || !HasConcreteToken(experimentId)
+                || !HasConcreteToken(launcherId)
+                || !HasConcreteToken(targetId))
+            {
+                return;
+            }
+
+            lock (ControlledCommandContextLock)
+            {
+                ControlledCommandContexts.RemoveAll(context => string.Equals(context.CommandResultId, commandResultId, StringComparison.Ordinal));
+                ControlledCommandContexts.Add(new ControlledCommandLaunchContext
+                {
+                    CommandResultId = commandResultId,
+                    ExperimentId = experimentId,
+                    CandidateId = Clean(candidateId),
+                    LauncherId = launcherId,
+                    LauncherName = Clean(launcherName),
+                    TargetId = targetId,
+                    TargetName = Clean(targetName),
+                    AssignedShots = assignedShots,
+                    RegisteredUtc = DateTime.UtcNow
+                });
+
+                while (ControlledCommandContexts.Count > MaxControlledCommandContexts)
+                {
+                    ControlledCommandContexts.RemoveAt(0);
+                }
+            }
+        }
+
+        public static void ClearControlledCommandContext(string commandResultId)
+        {
+            if (!HasConcreteToken(commandResultId))
+            {
+                return;
+            }
+
+            lock (ControlledCommandContextLock)
+            {
+                ControlledCommandContexts.RemoveAll(context => string.Equals(context.CommandResultId, commandResultId, StringComparison.Ordinal));
+            }
+        }
 
         public static void OnShipFireWeaponPostfix(object __instance, object[] __args)
         {
@@ -70,20 +131,32 @@ namespace MissileFireControl.Mod.Diagnostics
 
             WriteLaunchLine("MissileWeapon.TryFire", builder =>
             {
+                TryFireObservation observation = __state as TryFireObservation;
                 object weaponData = ReadMember(__instance, "weaponData");
                 object weaponTemplate = ReadMember(__instance, "weaponTemplate");
                 object combatant = ReadMember(__instance, "combatant");
                 object launcher = ReadMember(combatant, "WeaponCarrierState");
+                object target = ReadMember(__instance, "target");
 
                 AppendPair(builder, "weapon", DescribeWeapon(__instance));
                 AppendPair(builder, "launcher", Describe(launcher));
-                AppendPair(builder, "target", Describe(ReadMember(__instance, "target")));
+                AppendPair(builder, "launcherId", StableIdOrUnknown(launcher, "launcher"));
+                AppendPair(builder, "target", Describe(target));
+                AppendPair(builder, "targetId", StableIdOrUnknown(target, "target"));
                 AppendPair(builder, "targetedPosition", DescribeVector(ReadMember(__instance, "targetedPosition")));
-                AppendPreFireTargetVelocityEvidence(builder, __state as TryFireObservation);
+                AppendPreFireTargetVelocityEvidence(builder, observation);
                 AppendPair(builder, "fireMode", Describe(ReadMember(__instance, "currentFireMode")));
                 AppendPair(builder, "currentTime", Describe(GetArg(__args, 0)));
-                AppendPreFireWeaponAmmoEvidence(builder, __state as TryFireObservation);
-                AppendLiveWeaponAmmoEvidence(builder, __instance, launcher, weaponData, weaponTemplate, GetArg(__args, 0));
+                AppendPreFireWeaponAmmoEvidence(builder, observation);
+                string postFireRemaining = AppendLiveWeaponAmmoEvidence(
+                    builder,
+                    __instance,
+                    launcher,
+                    weaponData,
+                    weaponTemplate,
+                    GetArg(__args, 0));
+                AppendVisibleAmmoDelta(builder, observation, postFireRemaining);
+                AppendControlledCommandContext(builder, launcher, target, observation, postFireRemaining);
                 AppendPair(builder, "battle", BattleContext());
             });
             _currentMissileTryFireReadiness = null;
@@ -230,7 +303,7 @@ namespace MissileFireControl.Mod.Diagnostics
             return Describe(defaultFireMode);
         }
 
-        private static void AppendLiveWeaponAmmoEvidence(
+        private static string AppendLiveWeaponAmmoEvidence(
             StringBuilder builder,
             object weapon,
             object launcher,
@@ -238,11 +311,13 @@ namespace MissileFireControl.Mod.Diagnostics
             object weaponTemplate,
             object currentTime)
         {
+            string postFireRemainingText = "unknown";
             object postFireRemaining;
             if (TryReadAmmoByModule(launcher, weaponData, out postFireRemaining))
             {
                 AppendPair(builder, "ammoEvidenceSource", "shipAmmoByWeaponData");
                 AppendPair(builder, "postFireRemaining", Describe(postFireRemaining));
+                postFireRemainingText = Describe(postFireRemaining);
             }
             else
             {
@@ -259,6 +334,122 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "salvoShots", Describe(ReadMember(weaponTemplate, "salvo_shots")));
             AppendPair(builder, "intraSalvoCooldownS", Describe(ReadMember(weaponTemplate, "intraSalvoCooldown_s")));
             AppendCapacityEvidence(builder, launcher, weaponTemplate);
+            return postFireRemainingText;
+        }
+
+        private static void AppendVisibleAmmoDelta(
+            StringBuilder builder,
+            TryFireObservation observation,
+            string postFireRemaining)
+        {
+            int delta;
+            if (TryAmmoDelta(observation, postFireRemaining, out delta))
+            {
+                AppendPair(builder, "visibleAmmoDelta", delta.ToString(CultureInfo.InvariantCulture));
+                AppendPair(builder, "visibleAmmoDeltaEvidenceSource", "tryFirePrePostAmmo");
+                return;
+            }
+
+            AppendPair(builder, "visibleAmmoDelta", "unknown");
+            AppendPair(builder, "visibleAmmoDeltaEvidenceSource", "unavailable");
+        }
+
+        private static void AppendControlledCommandContext(
+            StringBuilder builder,
+            object launcher,
+            object target,
+            TryFireObservation observation,
+            string postFireRemaining)
+        {
+            string launcherId = StableIdOrUnknown(launcher, "launcher");
+            string targetId = StableIdOrUnknown(target, "target");
+            ControlledCommandLaunchMatch match = FindControlledCommandContext(launcherId, targetId, observation, postFireRemaining);
+            AppendPair(builder, "experimentId", match.ExperimentId);
+            AppendPair(builder, "commandResultId", match.CommandResultId);
+            AppendPair(builder, "candidateId", match.CandidateId);
+            AppendPair(builder, "controlledCommandCorrelation", match.Correlation);
+            AppendPair(builder, "controlledCommandCorrelationReason", match.Reason);
+            AppendPair(builder, "commandAssignedShots", match.AssignedShots < 0 ? "unknown" : match.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "controlledCommandObservedSpentShots", match.ObservedSpentShots < 0 ? "unknown" : match.ObservedSpentShots.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static ControlledCommandLaunchMatch FindControlledCommandContext(
+            string launcherId,
+            string targetId,
+            TryFireObservation observation,
+            string postFireRemaining)
+        {
+            if (!HasConcreteToken(launcherId) || !HasConcreteToken(targetId))
+            {
+                return ControlledCommandLaunchMatch.None("launcherOrTargetIdentityUnavailable");
+            }
+
+            int ammoDelta;
+            bool hasAmmoDelta = TryAmmoDelta(observation, postFireRemaining, out ammoDelta);
+            lock (ControlledCommandContextLock)
+            {
+                // Prefer the newest matching controlled command context so repeated
+                // same-launcher/same-target diagnostics do not attribute launches
+                // to a stale earlier command result.
+                ControlledCommandLaunchContext context = ControlledCommandContexts
+                    .Where(candidate =>
+                        string.Equals(candidate.LauncherId, launcherId, StringComparison.Ordinal)
+                        && string.Equals(candidate.TargetId, targetId, StringComparison.Ordinal)
+                        && candidate.AssociatedLaunchCount < MaxControlledCommandLaunchMatches
+                        && (candidate.AssignedShots < 0 || candidate.ObservedSpentShots < candidate.AssignedShots))
+                    .OrderByDescending(candidate => candidate.RegisteredUtc)
+                    .FirstOrDefault();
+
+                if (context == null)
+                {
+                    return ControlledCommandLaunchMatch.None("noMatchingAppliedControlledCommandContext");
+                }
+
+                context.AssociatedLaunchCount++;
+                if (hasAmmoDelta && ammoDelta > 0)
+                {
+                    context.ObservedSpentShots += ammoDelta;
+                }
+
+                int observedSpentShots = context.ObservedSpentShots;
+                if (context.AssignedShots >= 0 && observedSpentShots >= context.AssignedShots)
+                {
+                    ControlledCommandContexts.Remove(context);
+                }
+
+                return new ControlledCommandLaunchMatch
+                {
+                    ExperimentId = context.ExperimentId,
+                    CommandResultId = context.CommandResultId,
+                    CandidateId = context.CandidateId,
+                    Correlation = "directRuntimeContext",
+                    Reason = hasAmmoDelta ? "sameLauncherTargetWithPrePostAmmoDelta" : "sameLauncherTargetNoNumericAmmoDelta",
+                    AssignedShots = context.AssignedShots,
+                    ObservedSpentShots = hasAmmoDelta || observedSpentShots > 0
+                        ? observedSpentShots
+                        : -1
+                };
+            }
+        }
+
+        private static bool TryAmmoDelta(TryFireObservation observation, string postFireRemaining, out int delta)
+        {
+            delta = 0;
+            if (observation == null || observation.AmmoEvidenceSource != "shipAmmoByWeaponData")
+            {
+                return false;
+            }
+
+            int preFire;
+            int postFire;
+            if (!int.TryParse(observation.Remaining, NumberStyles.Integer, CultureInfo.InvariantCulture, out preFire)
+                || !int.TryParse(postFireRemaining, NumberStyles.Integer, CultureInfo.InvariantCulture, out postFire))
+            {
+                return false;
+            }
+
+            delta = preFire - postFire;
+            return true;
         }
 
         private static TryFireObservation CaptureTryFireObservation(object weapon, object currentTime)
@@ -781,6 +972,22 @@ namespace MissileFireControl.Mod.Diagnostics
             return Clean(typeName);
         }
 
+        private static string StableIdOrUnknown(object value, string fallbackPrefix)
+        {
+            string id = GameObjectReader.StableId(value, fallbackPrefix);
+            return HasConcreteToken(id) ? id : "unknown";
+        }
+
+        private static bool HasConcreteToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return !value.StartsWith("unknown", StringComparison.Ordinal);
+        }
+
         private static string DescribeCount(object value)
         {
             if (value == null)
@@ -885,6 +1092,56 @@ namespace MissileFireControl.Mod.Diagnostics
             public string TargetVelocityMissingReason { get; set; }
 
             public object TargetRuntimeObject { get; set; }
+        }
+
+        private sealed class ControlledCommandLaunchContext
+        {
+            public string CommandResultId { get; set; }
+
+            public string ExperimentId { get; set; }
+
+            public string CandidateId { get; set; }
+
+            public string LauncherId { get; set; }
+
+            public string LauncherName { get; set; }
+
+            public string TargetId { get; set; }
+
+            public string TargetName { get; set; }
+
+            public int AssignedShots { get; set; }
+
+            public int ObservedSpentShots { get; set; }
+
+            public int AssociatedLaunchCount { get; set; }
+
+            public DateTime RegisteredUtc { get; set; }
+        }
+
+        private sealed class ControlledCommandLaunchMatch
+        {
+            public string ExperimentId { get; set; } = "none";
+
+            public string CommandResultId { get; set; } = "none";
+
+            public string CandidateId { get; set; } = "none";
+
+            public string Correlation { get; set; } = "none";
+
+            public string Reason { get; set; } = "unknown";
+
+            public int AssignedShots { get; set; } = -1;
+
+            public int ObservedSpentShots { get; set; } = -1;
+
+            public static ControlledCommandLaunchMatch None(string reason)
+            {
+                return new ControlledCommandLaunchMatch
+                {
+                    Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason
+                };
+            }
         }
     }
 }

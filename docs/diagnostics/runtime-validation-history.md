@@ -665,3 +665,36 @@ Remaining limitation: controlled result rows still report command-result
 `missilesSpent` as `unknown`. LaunchLog pre/post ammo deltas are visible
 elsewhere in the log, but they are not yet directly correlated back to each
 controlled command result row.
+
+## Issue #39 controlled-correlation instrumentation attempt
+
+Issue #39 reviewed the #38 selected-group controlled evidence as the first
+selected-group learning-loop checkpoint. The selected-group smoke is sufficient
+to show bounded command behavior: two controlled experiment ids, three selected
+ships, six applied commands, four `perShipCommandCapReached` skips, zero failed
+commands, zero scope violations, zero same-team missile target snapshots, no
+parser suspicious patterns, and no MissileWarfare issues.
+
+The regenerated pre-instrumentation #39 fitting artifact includes a controlled
+command result evidence table tied to experiment id, selected ship, allocator
+launcher, target, command result, and immediate same-launcher/same-target launch
+evidence where visible. It found 10 command result rows: six applied and four
+skipped. Direct command-result `missilesSpent` remained numeric on 0/10 rows.
+All 10 rows had one immediate same-launcher/same-target `MissileWeapon.TryFire`
+ammo delta, but the skipped rows also accounted for four observed deltas. That
+means nearby launch evidence is visible, but it is not causal command-spend
+proof.
+
+#39 now adds diagnostics-only correlation support for fresh runtime evidence:
+controlled apply-gate/result rows log `commandResultId`, successful applied
+commands register a matching launch context, and later `MissileWeapon.TryFire`
+rows can report `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots` when
+the launcher/target context matches.
+
+No allocator parameters changed. The old controlled log still has 0/10 directly
+stamped rows and 10/10 line-window heuristic rows, so it remains insufficient to
+justify a heuristic/rule/parameter-family change. A fresh instrumented
+selected-group controlled run is required before #39 can decide whether one
+specific heuristic family should be tuned or whether a final no-tuning/blocker
+decision is warranted.

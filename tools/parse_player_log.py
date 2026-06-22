@@ -203,6 +203,9 @@ class LogSummary:
     missile_try_fire_pre_fire_ammo_source_counts: dict[str, int] = field(default_factory=dict)
     missile_try_fire_pre_post_ammo_delta_counts: dict[str, int] = field(default_factory=dict)
     missile_try_fire_pre_post_ammo_numeric_count: int = 0
+    controlled_command_launch_context_rows: int = 0
+    controlled_command_launch_correlation_counts: dict[str, int] = field(default_factory=dict)
+    controlled_command_launch_observed_spent_numeric_count: int = 0
     snapshot_log_count: int = 0
     snapshot_source_counts: dict[str, int] = field(default_factory=dict)
     snapshot_missing_counts: dict[str, int] = field(default_factory=dict)
@@ -610,6 +613,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     missile_try_fire_pre_fire_field_counts: Counter[str] = Counter()
     missile_try_fire_pre_fire_ammo_source_counts: Counter[str] = Counter()
     missile_try_fire_pre_post_ammo_delta_counts: Counter[str] = Counter()
+    controlled_command_launch_correlation_counts: Counter[str] = Counter()
+    controlled_command_launch_context_rows = 0
+    controlled_command_launch_observed_spent_numeric_count = 0
     snapshot_source_counts: Counter[str] = Counter()
     snapshot_missing_counts: Counter[str] = Counter()
     snapshot_ammo_gate_budget_shots_counts: Counter[str] = Counter()
@@ -788,6 +794,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         summary.missile_try_fire_pre_post_ammo_numeric_count += 1
                         delta = pre_fire_remaining - post_fire_remaining
                         missile_try_fire_pre_post_ammo_delta_counts[str(delta)] += 1
+                    controlled_correlation = pairs.get("controlledCommandCorrelation")
+                    command_result_id = pairs.get("commandResultId")
+                    if controlled_correlation or command_result_id:
+                        controlled_command_launch_correlation_counts[
+                            controlled_correlation or "unknown"
+                        ] += 1
+                    if command_result_id and command_result_id not in {"none", "unknown"}:
+                        controlled_command_launch_context_rows += 1
+                    if try_parse_int(pairs.get("controlledCommandObservedSpentShots")) is not None:
+                        controlled_command_launch_observed_spent_numeric_count += 1
 
                 if summary.first_launch_line is None:
                     summary.first_launch_line = line_number
@@ -992,11 +1008,7 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         controlled_live_apply_counts_by_ship[ship_key]["failed"] += 1
 
                     assigned_shots = first_parse_int(pairs.get("missilesAssigned"), pairs.get("assignedShots"))
-                    spent_shots = first_parse_int(
-                        pairs.get("missilesSpent"),
-                        pairs.get("visibleAmmoDelta"),
-                        pairs.get("ammoDelta"),
-                    )
+                    spent_shots = first_parse_int(pairs.get("missilesSpent"))
                     if assigned_shots is not None:
                         controlled_live_apply_assigned_shots_by_ship[ship_key] += assigned_shots
                     if spent_shots is None:
@@ -1173,6 +1185,13 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     )
     summary.missile_try_fire_pre_post_ammo_delta_counts = dict(
         sorted(missile_try_fire_pre_post_ammo_delta_counts.items(), key=lambda item: int(item[0]))
+    )
+    summary.controlled_command_launch_context_rows = controlled_command_launch_context_rows
+    summary.controlled_command_launch_correlation_counts = dict(
+        sorted(controlled_command_launch_correlation_counts.items())
+    )
+    summary.controlled_command_launch_observed_spent_numeric_count = (
+        controlled_command_launch_observed_spent_numeric_count
     )
     summary.snapshot_source_counts = dict(sorted(snapshot_source_counts.items()))
     summary.snapshot_missing_counts = dict(sorted(snapshot_missing_counts.items()))
@@ -1758,6 +1777,15 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
                 print("    preFireRemaining - postFireRemaining:")
                 for delta, count in summary.missile_try_fire_pre_post_ammo_delta_counts.items():
                     print(f"      {delta}: {count}")
+            if summary.controlled_command_launch_correlation_counts:
+                print("    controlled command launch correlation:")
+                print(f"      stamped rows: {summary.controlled_command_launch_context_rows}")
+                print(
+                    "      numeric controlled observed spent rows: "
+                    f"{summary.controlled_command_launch_observed_spent_numeric_count}"
+                )
+                for correlation, count in summary.controlled_command_launch_correlation_counts.items():
+                    print(f"      {correlation}: {count}")
 
     print(f"SnapshotLog entries: {summary.snapshot_log_count}")
     if summary.snapshot_log_count:

@@ -12,7 +12,10 @@ allocator / friendly-target candidates wait, and the first selected-team hostile
 candidate can apply exactly one vanilla salvo-target command. Issue #38 expands
 that path to a small explicitly selected player missile group with one attempt
 per selected ship and three attempts per trigger. The path remains default-off
-and is still not fleet-wide allocation.
+and is still not fleet-wide allocation. Issue #39 is continuing as a controlled
+evidence fitting loop: selected-group safety evidence exists, but fresh
+instrumented command-result-to-launch/spend correlation is still required before
+any heuristic/rule/parameter-family change is justified.
 
 Current blocker:
 
@@ -38,9 +41,16 @@ Current missing or provisional inputs:
 - Issue #37 adds and runtime-smoke-validates a first live command path only for
   one explicitly selected player missile ship and one resolved hostile target
   from a selected-team allocator cycle;
-- Issue #38 adds selected-group scaffolding and parser reporting for two to
-  three explicitly selected player missile ships, but still needs fresh runtime
-  smoke before it can be treated as validated combat evidence;
+- Issue #38 selected-group runtime smoke passed for two controlled experiments,
+  three selected ships, six applied commands, four
+  `perShipCommandCapReached` skips, zero failed commands, zero scope
+  violations, zero same-team missile target snapshots, and no MissileWarfare
+  issues;
+- Issue #39 adds diagnostics-only `commandResultId` launch correlation support,
+  but the existing #38 log predates those fields and still does not justify
+  heuristic tuning because direct command-result missile spend, causal
+  launch/outcome correlation, target mismatch, overkill, and under-saturation
+  outcome evidence are not available;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -165,9 +175,10 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending later selected-group runtime validation and fleet-wide
-scope expansion. #37 supplies selected-single-ship live smoke evidence only, and
-#38 is the selected-group safety/fitting rung before #43 fleet-wide eligibility.
+Status: blocked pending fleet-wide scope expansion and stronger controlled
+outcome evidence. #37 supplies selected-single-ship live smoke evidence, #38
+supplies selected-group safety evidence, and #39 is adding controlled
+command-result-to-launch/spend diagnostics before any heuristic tuning decision.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -216,18 +227,21 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Validate the #38 selected-group rung with fresh runtime smoke before using it
-   for #39 evidence review or #43 fleet-wide planning. The smoke should preserve
-   the same checks as #37 while adding group attribution: `launcherId` names one
-   selected ship, `allocatorLauncherId` names the selected-group cycle producer,
-   `targetTeam` differs from `launcherTeam`, per-ship and per-trigger caps hold,
-   and there are no scope violations, same-team missile target snapshots, or
-   MissileWarfare warnings/errors.
-2. Re-run selected-log fitting after the Issue #29 PD capability schema is
+1. Run a fresh selected-group controlled smoke with the #39 `commandResultId`
+   instrumentation, then regenerate
+   `artifacts\shadow-fitting\heuristic_tuning_controlled` and reassess whether
+   directly stamped spend/launch evidence identifies one bounded heuristic
+   family to tune.
+2. Implement #44's experiment corpus and parameter ledger so future fitting
+   loops preserve controlled-live and shadow-replay provenance without treating
+   shadow replay as causal combat proof.
+3. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited
    classifications.
-3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+4. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-4. Expand controlled apply only through the planned #38 selected subgroup and
-   #43 fleet-wide rungs after #37 evidence is understood.
+5. Expand controlled apply only through #43's fleet-wide rung after preserving
+   the #37/#38 safety constraints, and do not treat #39 as evidence of a
+   successful heuristic tuning change unless a fresh controlled run produces
+   directly stamped causal evidence.

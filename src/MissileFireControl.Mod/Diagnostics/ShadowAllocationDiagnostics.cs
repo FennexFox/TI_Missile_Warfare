@@ -202,7 +202,11 @@ namespace MissileFireControl.Mod.Diagnostics
                         else
                         {
                             dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(candidate, snapshot);
+                            applyResult = TryApplyControlledCommand(
+                                dryRun,
+                                candidate,
+                                snapshot,
+                                ControlledCommandResultId(dryRun, candidate));
                         }
 
                         if (applyResult.AppliedCommands > 0)
@@ -263,7 +267,11 @@ namespace MissileFireControl.Mod.Diagnostics
                         else
                         {
                             dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(candidate, snapshot);
+                            applyResult = TryApplyControlledCommand(
+                                dryRun,
+                                candidate,
+                                snapshot,
+                                ControlledCommandResultId(dryRun, candidate));
                         }
 
                         if (applyResult.AppliedCommands > 0)
@@ -480,6 +488,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "experimentId", request.ExperimentId);
             AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", ControlledCommandResultId(request, candidate));
             AppendPair(builder, "gateName", CommandApplyGateName);
             AppendPair(builder, "gateResult", gateDecision.Result);
             AppendPair(builder, "blockReason", gateDecision.Reason);
@@ -519,11 +528,13 @@ namespace MissileFireControl.Mod.Diagnostics
                 return;
             }
 
+            string commandResultId = ControlledCommandResultId(request, candidate);
             StringBuilder builder = new StringBuilder(512);
             AppendPair(builder, "recordType", result.RecordType);
             AppendPair(builder, "experimentId", request.ExperimentId);
             AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", commandResultId);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationLiveApply");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "commandPath", "SelectSalvoTargetCommand.OnCommandExecute");
@@ -556,6 +567,13 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "appliedCommands", result.AppliedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "failedCommands", result.FailedCommands.ToString(CultureInfo.InvariantCulture));
             Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static string ControlledCommandResultId(ControlledDryRunRequest request, CommandCandidateDecision candidate)
+        {
+            string experimentId = request == null ? "unknown-experiment" : request.ExperimentId;
+            string candidateId = candidate == null ? "unknown-candidate" : candidate.CandidateId;
+            return experimentId + ":" + candidateId;
         }
 
         private static void WriteDryRunIntent(
@@ -657,7 +675,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 allowCommandApply);
         }
 
-        private static CommandApplyResult TryApplyControlledCommand(CommandCandidateDecision candidate, ExtractedCombatSnapshot snapshot)
+        private static CommandApplyResult TryApplyControlledCommand(
+            ControlledDryRunRequest request,
+            CommandCandidateDecision candidate,
+            ExtractedCombatSnapshot snapshot,
+            string commandResultId)
         {
             if (candidate == null || snapshot == null)
             {
@@ -720,16 +742,27 @@ namespace MissileFireControl.Mod.Diagnostics
 
             try
             {
+                CombatLaunchDiagnostics.RegisterControlledCommandContext(
+                    commandResultId,
+                    request == null ? "unknown" : request.ExperimentId,
+                    candidate.CandidateId,
+                    candidate.LauncherId,
+                    candidate.LauncherName,
+                    candidate.TargetId,
+                    candidate.TargetName,
+                    candidate.AssignedShots);
                 executeMethod.Invoke(command, new[] { launcher, target });
             }
             catch (TargetInvocationException ex)
             {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
                 return CommandApplyResult.Failed(
                     "commandInvocationFailed",
                     ex.InnerException == null ? ex.GetType().Name : ex.InnerException.GetType().Name);
             }
             catch (Exception ex)
             {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
                 return CommandApplyResult.Failed("commandInvocationFailed", ex.GetType().Name);
             }
 
