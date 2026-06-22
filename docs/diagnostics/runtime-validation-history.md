@@ -601,3 +601,67 @@ Enemy allocator / friendly-target candidates wait without applying, and the
 first selected-team hostile candidate can apply exactly one single-ship vanilla
 salvo-target command. This is still selected single-ship evidence only; it does
 not validate selected-group or fleet-wide allocation.
+
+## 2026-06-23 Issue #38 selected-group controlled smoke
+
+Issue #38 expands the controlled live experiment from the #37 single selected
+ship path to a small explicitly selected player group. The group remains
+default-off, explicitly triggered, capped at one live attempt per selected ship,
+and capped at three live attempts per trigger.
+
+Fresh runtime smoke on the latest `Player.log`, written 2026-06-23 06:03 local
+time, validated selected-group scope visibility and bounded command behavior:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 899, no sequence gaps or duplicates
+- MissileWeapon.TryFire rows: 152
+- SnapshotLog entries: 152
+- AllocationLog entries: 412: 152 `cycle`, 147 `allocation`, five
+  `rejection`, 22 `dryRunExperiment`, 22 `dryRunIntent`, 22
+  `dryRunCommandCandidate`, 10 `dryRunApplyGate`, six `appliedDecision`, four
+  `skippedDecision`, and 22 `dryRunResult` rows
+- controlled experiment ids: `dryrun-20260622T210249826Z-1` and
+  `dryrun-20260622T210303457Z-2`
+- selected group source:
+  `GameControl.spaceCombat.combatHUD.groupSelectedFriendlyShips`
+- selected ship count: three in every controlled dry-run experiment row
+- selected ships: `Shiloh` id `276`, `Carrhae` id `278`, and `Puebla` id
+  `279`, all team `47`
+- command candidates: 10 `eligible`, 12 `wouldSkip`
+- skip reason before the apply gate: `allocatorLauncherOutsideSelectedGroup: 12`
+- apply-gate records: 10, all `allowed`
+- live apply attempts: 10
+- applied decisions: six
+- skipped live decisions: four
+- skipped live reason: `perShipCommandCapReached: 4`
+- failed commands: zero
+- scope violations: zero
+- safety-gate blocked commands: zero
+- same-team missile target snapshots: zero
+- parser suspicious patterns: none
+- MissileWarfare issues: none
+
+Per experiment:
+
+- `dryrun-20260622T210249826Z-1`: three applied, two skipped
+- `dryrun-20260622T210303457Z-2`: three applied, two skipped
+
+Per selected ship:
+
+- `Shiloh#276[team=47]`: two applied, two skipped
+- `Carrhae#278[team=47]`: two applied, two skipped
+- `Puebla#279[team=47]`: two applied
+
+Interpretation: the selected-group probe now sees the in-game battle-menu group
+selection through `groupSelectedFriendlyShips`. Live command application stayed
+inside the selected three-ship group, ignored allocator cycles from outside the
+group, respected the per-ship cap, and produced no failed commands, scope
+violations, same-team target snapshots, parser suspicious patterns, or
+MissileWarfare warnings/errors. This validates the #38 selected-group safety
+rung. It does not validate fleet-wide #43 allocation.
+
+Remaining limitation: controlled result rows still report command-result
+`missilesSpent` as `unknown`. LaunchLog pre/post ammo deltas are visible
+elsewhere in the log, but they are not yet directly correlated back to each
+controlled command result row.

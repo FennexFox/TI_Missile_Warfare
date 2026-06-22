@@ -6,11 +6,13 @@ This roadmap records durable issue-sized work. Temporary per-PR plans belong und
 
 The project has enough diagnostics to observe missile launches and shadow
 allocation inputs, and Issues #34-#36 validate the controlled experiment
-envelope through a default-off apply gate. Issue #37 now has post-fix runtime
-smoke evidence for the first behavior-changing selected single-ship apply path:
-enemy allocator / friendly-target candidates wait, and the first selected-team
-hostile candidate can apply exactly one vanilla salvo-target command. The path
-remains default-off and selected-single-ship only.
+envelope through a default-off apply gate. Issue #37 has post-fix runtime smoke
+evidence for the first behavior-changing selected single-ship apply path: enemy
+allocator / friendly-target candidates wait, and the first selected-team hostile
+candidate can apply exactly one vanilla salvo-target command. Issue #38 expands
+that path to a small explicitly selected player missile group with one attempt
+per selected ship and three attempts per trigger. The path remains default-off
+and is still not fleet-wide allocation.
 
 Current blocker:
 
@@ -35,8 +37,10 @@ Current missing or provisional inputs:
 
 - Issue #37 adds and runtime-smoke-validates a first live command path only for
   one explicitly selected player missile ship and one resolved hostile target
-  from a selected-team allocator cycle; additional runtime evidence is still
-  needed before selected-group or fleet-wide expansion;
+  from a selected-team allocator cycle;
+- Issue #38 adds selected-group scaffolding and parser reporting for two to
+  three explicitly selected player missile ships, but still needs fresh runtime
+  smoke before it can be treated as validated combat evidence;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -161,8 +165,9 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending later selected-group / fleet-wide scope expansion. #37
-now supplies selected-single-ship live smoke evidence only.
+Status: blocked pending later selected-group runtime validation and fleet-wide
+scope expansion. #37 supplies selected-single-ship live smoke evidence only, and
+#38 is the selected-group safety/fitting rung before #43 fleet-wide eligibility.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -211,13 +216,13 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Use the post-fix #37 selected-single-ship smoke as the current live-apply
-   baseline, and expand only through the planned #38 selected-subgroup and #43
-   fleet-wide rungs. Any further #37 retest should preserve the same checks:
-   `launcherId` names the selected ship, `allocatorLauncherId` names a same-team
-   cycle producer, `targetTeam` differs from `launcherTeam`, with at most one
-   applied/failed command per trigger and no scope violations, same-team missile
-   target snapshots, or MissileWarfare warnings/errors.
+1. Validate the #38 selected-group rung with fresh runtime smoke before using it
+   for #39 evidence review or #43 fleet-wide planning. The smoke should preserve
+   the same checks as #37 while adding group attribution: `launcherId` names one
+   selected ship, `allocatorLauncherId` names the selected-group cycle producer,
+   `targetTeam` differs from `launcherTeam`, per-ship and per-trigger caps hold,
+   and there are no scope violations, same-team missile target snapshots, or
+   MissileWarfare warnings/errors.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited

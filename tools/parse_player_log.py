@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
@@ -114,6 +114,13 @@ class AllocationBattleSummary:
     controlled_live_apply_reason_counts: dict[str, int] = field(default_factory=dict)
     controlled_live_apply_path_counts: dict[str, int] = field(default_factory=dict)
     controlled_live_apply_candidate_source_counts: dict[str, int] = field(default_factory=dict)
+    controlled_selected_group_members_by_experiment: dict[str, str] = field(default_factory=dict)
+    controlled_live_apply_counts_by_experiment: dict[str, dict[str, int]] = field(default_factory=dict)
+    controlled_live_apply_counts_by_ship: dict[str, dict[str, int]] = field(default_factory=dict)
+    controlled_live_apply_assigned_shots_by_ship: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_spent_shots_by_ship: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_spent_unknown_by_ship: dict[str, int] = field(default_factory=dict)
+    controlled_live_apply_mismatch_counts: dict[str, int] = field(default_factory=dict)
     unknown_record_type_counts: dict[str, int] = field(default_factory=dict)
     max_target_count_observed: int | None = None
     target_observations: int = 0
@@ -277,6 +284,15 @@ def try_parse_int(text: str | None) -> int | None:
         return None
 
 
+def first_parse_int(*texts: str | None) -> int | None:
+    """Return the first successfully parsed integer from a list of fields."""
+    for text in texts:
+        value = try_parse_int(text)
+        if value is not None:
+            return value
+    return None
+
+
 def try_parse_float(text: str | None) -> float | None:
     """Parse a diagnostic floating-point value, returning None for unknown fields."""
     if text is None or text.strip() in {"", "unknown", "n/a", "null"}:
@@ -302,6 +318,11 @@ def sorted_count_dict(counter: Counter[str], limit: int | None = None) -> dict[s
     return dict(items)
 
 
+def sorted_nested_count_dict(values: dict[str, Counter[str]]) -> dict[str, dict[str, int]]:
+    """Return deterministic nested counter dictionaries."""
+    return {key: dict(sorted(counter.items())) for key, counter in sorted(values.items())}
+
+
 def summarize_numeric(values: list[float]) -> NumericFieldSummary:
     """Return compact average/median stats for present numeric values."""
     if not values:
@@ -320,6 +341,32 @@ def split_csv_field(text: str | None) -> list[str]:
         return []
 
     return [value.strip() for value in text.split(",") if value.strip()]
+
+
+def ship_key_from_parts(ship_id: str | None, name: str | None, team: str | None) -> str:
+    """Return a compact stable display key for ship-scoped report rows."""
+    clean_id = ship_id or "unknown"
+    clean_name = name or "unknown"
+    clean_team = team or "unknown"
+    return f"{clean_name}#{clean_id}[team={clean_team}]"
+
+
+def ship_key_from_pairs(pairs: dict[str, str]) -> str:
+    """Return the selected command ship key from an allocation record."""
+    return ship_key_from_parts(pairs.get("launcherId"), pairs.get("launcher"), pairs.get("launcherTeam"))
+
+
+def format_group_members(ids_text: str | None, names_text: str | None, teams_text: str | None) -> str:
+    """Format selected-group ids, names, and teams from comma-separated fields."""
+    ids = split_csv_field(ids_text)
+    names = split_csv_field(names_text)
+    teams = split_csv_field(teams_text)
+    members: list[str] = []
+    for index, ship_id in enumerate(ids):
+        name = names[index] if index < len(names) else "unknown"
+        team = teams[index] if index < len(teams) else "unknown"
+        members.append(ship_key_from_parts(ship_id, name, team))
+    return ", ".join(members) if members else "none"
 
 
 def split_observed_capability_fields(text: str | None) -> list[str]:
@@ -620,6 +667,13 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_live_apply_reason_counts: Counter[str] = Counter()
     controlled_live_apply_path_counts: Counter[str] = Counter()
     controlled_live_apply_candidate_source_counts: Counter[str] = Counter()
+    controlled_selected_group_members_by_experiment: dict[str, str] = {}
+    controlled_live_apply_counts_by_experiment: dict[str, Counter[str]] = defaultdict(Counter)
+    controlled_live_apply_counts_by_ship: dict[str, Counter[str]] = defaultdict(Counter)
+    controlled_live_apply_assigned_shots_by_ship: Counter[str] = Counter()
+    controlled_live_apply_spent_shots_by_ship: Counter[str] = Counter()
+    controlled_live_apply_spent_unknown_by_ship: Counter[str] = Counter()
+    controlled_live_apply_mismatch_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
     controlled_live_apply_attempts = 0
     controlled_live_apply_applied = 0
@@ -859,10 +913,25 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         controlled_dry_run_experiment_ids.add(experiment_id)
 
                 if record_type == "dryRunExperiment":
+                    experiment_id = pairs.get("experimentId")
+                    if experiment_id:
+                        controlled_selected_group_members_by_experiment[experiment_id] = format_group_members(
+                            pairs.get("selectedShipIds"),
+                            pairs.get("selectedShipNames"),
+                            pairs.get("selectedShipTeams"),
+                        )
                     controlled_dry_run_selected_ship_counts[pairs.get("selectedShipCount", "unknown")] += 1
                     controlled_dry_run_missing_reason_counts[
                         pairs.get("selectedScopeMissingReason", "unknown")
                     ] += 1
+                    selected_count = try_parse_int(pairs.get("selectedShipCount"))
+                    command_scope_count = try_parse_int(pairs.get("commandScopeShipCount"))
+                    if (
+                        selected_count is not None
+                        and command_scope_count is not None
+                        and selected_count != command_scope_count
+                    ):
+                        controlled_live_apply_mismatch_counts["selectedScopeCommandScopeCountMismatch"] += 1
 
                 if record_type == "dryRunCommandCandidate":
                     controlled_dry_run_candidate_classification_counts[
@@ -901,6 +970,8 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 if record_type in (
                     APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
                 ) and pairs.get("experimentId"):
+                    experiment_id = pairs["experimentId"]
+                    ship_key = ship_key_from_pairs(pairs)
                     controlled_live_apply_attempts += 1
                     controlled_live_apply_reason_counts[pairs.get("reason", "unknown")] += 1
                     controlled_live_apply_path_counts[pairs.get("commandPath", "unknown")] += 1
@@ -909,10 +980,31 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         controlled_live_apply_candidate_source_counts[candidate_source] += 1
                     if record_type in APPLIED_ALLOCATION_RECORD_TYPES:
                         controlled_live_apply_applied += 1
+                        controlled_live_apply_counts_by_experiment[experiment_id]["applied"] += 1
+                        controlled_live_apply_counts_by_ship[ship_key]["applied"] += 1
                     elif record_type in SKIPPED_ALLOCATION_RECORD_TYPES:
                         controlled_live_apply_skipped += 1
+                        controlled_live_apply_counts_by_experiment[experiment_id]["skipped"] += 1
+                        controlled_live_apply_counts_by_ship[ship_key]["skipped"] += 1
                     else:
                         controlled_live_apply_failed += 1
+                        controlled_live_apply_counts_by_experiment[experiment_id]["failed"] += 1
+                        controlled_live_apply_counts_by_ship[ship_key]["failed"] += 1
+
+                    assigned_shots = first_parse_int(pairs.get("missilesAssigned"), pairs.get("assignedShots"))
+                    spent_shots = first_parse_int(
+                        pairs.get("missilesSpent"),
+                        pairs.get("visibleAmmoDelta"),
+                        pairs.get("ammoDelta"),
+                    )
+                    if assigned_shots is not None:
+                        controlled_live_apply_assigned_shots_by_ship[ship_key] += assigned_shots
+                    if spent_shots is None:
+                        controlled_live_apply_spent_unknown_by_ship[ship_key] += 1
+                    else:
+                        controlled_live_apply_spent_shots_by_ship[ship_key] += spent_shots
+                    if assigned_shots is not None and spent_shots is not None and assigned_shots != spent_shots:
+                        controlled_live_apply_mismatch_counts["assignedShotsSpentShotsMismatch"] += 1
 
                 status = pairs.get("status")
                 if status and record_type == "cycle":
@@ -1269,6 +1361,27 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_live_apply_candidate_source_counts = dict(
         sorted(controlled_live_apply_candidate_source_counts.items())
     )
+    allocation_summary.controlled_selected_group_members_by_experiment = dict(
+        sorted(controlled_selected_group_members_by_experiment.items())
+    )
+    allocation_summary.controlled_live_apply_counts_by_experiment = sorted_nested_count_dict(
+        controlled_live_apply_counts_by_experiment
+    )
+    allocation_summary.controlled_live_apply_counts_by_ship = sorted_nested_count_dict(
+        controlled_live_apply_counts_by_ship
+    )
+    allocation_summary.controlled_live_apply_assigned_shots_by_ship = dict(
+        sorted(controlled_live_apply_assigned_shots_by_ship.items())
+    )
+    allocation_summary.controlled_live_apply_spent_shots_by_ship = dict(
+        sorted(controlled_live_apply_spent_shots_by_ship.items())
+    )
+    allocation_summary.controlled_live_apply_spent_unknown_by_ship = dict(
+        sorted(controlled_live_apply_spent_unknown_by_ship.items())
+    )
+    allocation_summary.controlled_live_apply_mismatch_counts = dict(
+        sorted(controlled_live_apply_mismatch_counts.items())
+    )
     summary.allocation_summary = allocation_summary
     if sequences:
         ordered = sorted(sequences)
@@ -1444,6 +1557,10 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 "- controlled dry-run selected-scope reasons: "
                 + format_count_dict(summary.controlled_dry_run_missing_reason_counts)
             )
+        if summary.controlled_selected_group_members_by_experiment:
+            print("- controlled selected groups:")
+            for experiment_id, members in summary.controlled_selected_group_members_by_experiment.items():
+                print(f"  {experiment_id}: {members}")
     if summary.controlled_live_apply_attempts:
         print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")
         print(f"- controlled live apply applied: {summary.controlled_live_apply_applied}")
@@ -1463,6 +1580,29 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- controlled live apply candidate sources: "
                 + format_count_dict(summary.controlled_live_apply_candidate_source_counts)
+            )
+        if summary.controlled_live_apply_counts_by_experiment:
+            print("- controlled live apply by experiment:")
+            for experiment_id, counts in summary.controlled_live_apply_counts_by_experiment.items():
+                print(f"  {experiment_id}: {format_count_dict(counts)}")
+        if summary.controlled_live_apply_counts_by_ship:
+            print("- controlled live apply by ship:")
+            for ship, counts in summary.controlled_live_apply_counts_by_ship.items():
+                assigned = summary.controlled_live_apply_assigned_shots_by_ship.get(ship)
+                spent = summary.controlled_live_apply_spent_shots_by_ship.get(ship)
+                spent_unknown = summary.controlled_live_apply_spent_unknown_by_ship.get(ship, 0)
+                assigned_text = "unknown" if assigned is None else str(assigned)
+                spent_text = "unknown" if spent is None else str(spent)
+                if spent_unknown:
+                    spent_text += f" ({spent_unknown} unknown rows)"
+                print(
+                    f"  {ship}: {format_count_dict(counts)}; "
+                    f"assignedShots={assigned_text}; spentShots={spent_text}"
+                )
+        if summary.controlled_live_apply_mismatch_counts:
+            print(
+                "- controlled live apply mismatch evidence: "
+                + format_count_dict(summary.controlled_live_apply_mismatch_counts)
             )
     if summary.unknown_record_type_counts:
         print(f"- unknown record types: {format_count_dict(summary.unknown_record_type_counts)}")

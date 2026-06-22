@@ -19,11 +19,11 @@ ammo and gate evidence documented in
 
 Shadow allocation output remains diagnostics-first by default. It validates
 schema, parser behavior, and recommendation math when required inputs are
-visible. Issue #37 adds one explicitly triggered, default-off exception: when
-controlled dry-run diagnostics are enabled, a controlled experiment is armed,
-`AllowCommandApply=True`, and exactly one selected player missile ship produces
-an eligible candidate, the mod may attempt one reviewed vanilla salvo-target
-command and then stop.
+visible. Issue #37 added one explicitly triggered, default-off exception for a
+single selected player missile ship. Issue #38 expands that exception to a
+small explicitly selected player missile group while preserving the same
+default-off gate, selected-command scope, vanilla salvo-target command path,
+and bounded command caps.
 
 ## Runtime source
 
@@ -65,8 +65,9 @@ base diagnostics toggle. Controlled dry-run diagnostics also default to
 `false`. `AllowCommandApply` also defaults to `false`.
 
 When `AllowCommandApply=False`, the #36 hard stop remains active and controlled
-experiments are diagnostics-only. When `AllowCommandApply=True`, Issue #37 can
-perform at most one live command attempt for the next explicitly armed
+experiments are diagnostics-only. When `AllowCommandApply=True`, Issue #38 can
+perform at most one live command attempt per selected ship and at most three
+live command attempts total for the next explicitly armed selected-group
 controlled experiment. The reviewed command path is
 `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState,
 CombatTargetableState)`, which queues the vanilla primary-target and salvo mode
@@ -223,16 +224,32 @@ an eligible candidate from exactly one selected command-panel ship can emit
 If live preconditions fail after the gate, the row uses
 `recordType="skippedDecision"` or `recordType="failedCommand"` with a concrete
 `reason`, `appliedCommands="0"`, and `postState="notApplied"`. Each controlled
-experiment consumes at most one live attempt; additional eligible candidates in
-the same cycle are skipped with `reason="oneAttemptAlreadyConsumed"`.
+experiment consumes at most one live attempt per selected ship and at most three
+live attempts per trigger; additional eligible candidates for an already
+attempted selected ship or a capped trigger are skipped with
+`reason="perShipCommandCapReached"` or
+`reason="controlledGroupTriggerCapReached"`.
 
-For #37, a live attempt additionally requires exactly one selected command
-scope. The active-player launcher fallback remains useful diagnostics, but it
-is not eligible for first-live apply. The selected ship runtime object is kept
-through the command scope and re-checked for `CanPerformShipCommands()` and
-`AnyOffensiveMissileWeaponCanFire()` before the command is invoked. Multi-ship
-selected groups remain future #38 scope, and broader fleet-wide controlled
-application remains future #43 scope.
+For #38, a live attempt additionally requires a selected command-panel scope of
+one to three ships. The active-player launcher fallback remains useful
+diagnostics, but it is not eligible for live apply. The selected ship runtime
+object is kept through the command scope and re-checked for
+`CanPerformShipCommands()`, `AnyOffensiveMissileWeaponCanFire()`, player-faction
+ownership, and non-AI control before the command is invoked. For groups larger
+than one, the allocator snapshot launcher must be one of the selected group
+members so every candidate and result row is attributable to exactly one
+selected ship. Broader fleet-wide controlled application remains future #43
+scope.
+
+Selected groups above three ships, mixed-team groups, non-player/AI ships,
+unknown player-control evidence, unknown command readiness, same-team targets,
+and allocator launchers outside the selected group skip or fail closed with an
+explicit reason. Each selected ship can consume at most one post-gate live
+command attempt per trigger, and each trigger can consume at most three
+post-gate attempts. Controlled result rows include `selectedGroupMaxShips`,
+`commandTriggerCap`, `launcherId`, `allocatorLauncherId`, `missilesAssigned`,
+and `missilesSpent`. `missilesSpent` remains `unknown` until a runtime row can
+directly prove spend evidence for that command result.
 
 If the current allocation cycle was emitted by a different ship, the controlled
 experiment can command the exactly-one selected ship only when the allocator
@@ -387,13 +404,16 @@ battle-level allocation report for before/after tuning comparisons.
 The parser separates current shadow cycles, allocations, rejections, and no-op
 records from controlled dry-run experiment rows and controlled-apply result
 records. Controlled dry-run rows are summarized by experiment count, experiment
-id, intent count, command-candidate count, apply-gate count,
-intended/skipped/applied/failed/safety-gate-blocked command counts, candidate
-classification/reason counts, apply-gate result counts, safety-gate block reason
-counts, command-scope source and missing-reason counts, scope-violation count,
-selected ship counts, and selected-scope missing reasons. Controlled live apply
-rows with an `experimentId` are summarized separately by attempts, applied,
-skipped, failed, reason counts, and command path counts.
+id, selected group members, intent count, command-candidate count, apply-gate
+count, intended/skipped/applied/failed/safety-gate-blocked command counts,
+candidate classification/reason counts, apply-gate result counts, safety-gate
+block reason counts, command-scope source and missing-reason counts,
+scope-violation count, selected ship counts, and selected-scope missing
+reasons. Controlled live apply rows with an `experimentId` are summarized
+separately by attempts, applied, skipped, failed, reason counts, command path
+counts, counts by experiment, counts by selected ship, assigned shots by
+selected ship, visible spent shots by selected ship when present, and explicit
+mismatch evidence when assigned/spent or selected/command scope counts disagree.
 
 The parser also treats same-team missile target snapshots as a failed verdict.
 Those snapshots can indicate that a controlled command or external combat state

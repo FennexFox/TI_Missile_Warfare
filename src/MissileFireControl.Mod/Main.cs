@@ -57,7 +57,7 @@ namespace MissileFireControl.Mod
                 "Enable controlled command experiment diagnostics");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
-                "Allow controlled command apply (single selected ship)");
+                "Allow controlled command apply (selected group, capped)");
             Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 
