@@ -32,8 +32,8 @@ Current blocker:
 Current missing or provisional inputs:
 
 - Issue #37 adds a first live command path only for one explicitly selected
-  player missile ship and one resolved target; fresh runtime smoke is still
-  needed before expanding scope;
+  player missile ship and one resolved hostile target from a selected-team
+  allocator cycle; fresh runtime smoke is still needed before expanding scope;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -212,8 +212,9 @@ Acceptance criteria once unblocked:
    follow-up: select exactly one player missile ship, enable controlled
    diagnostics and `AllowCommandApply`, trigger once or twice as needed, parse
    the fresh log, and verify `launcherId` names the selected ship while
-   `allocatorLauncherId` names the cycle producer, with at most one
-   applied/failed command per trigger and no scope violations or MissileWarfare
+   `allocatorLauncherId` names a same-team cycle producer, `targetTeam` differs
+   from `launcherTeam`, with at most one applied/failed command per trigger and
+   no scope violations, same-team missile target snapshots, or MissileWarfare
    warnings/errors.
 2. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and

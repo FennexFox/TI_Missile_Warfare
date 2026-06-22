@@ -40,6 +40,7 @@
 - python -m ruff check tools\fit_shadow_allocation.py tools\parse_player_log.py
 - python -m compileall tools
 - python tools\parse_player_log.py tools\fixtures\first_live_apply.txt --require-launchlogs --require-snapshots
+- python tools\parse_player_log.py tools\fixtures\enemy_allocator_candidate_skip.txt --require-launchlogs --require-snapshots
 
 ## Manual smoke tests
 
@@ -67,7 +68,9 @@
 - `python tools\parse_player_log.py tools\fixtures\first_live_apply.txt --require-launchlogs --require-snapshots`: passed; reported one controlled live apply attempt, one applied command, zero skipped live attempts, zero failed live attempts, zero scope violations, and no unknown record types.
 - `python tools\parse_player_log.py tools\fixtures\selected_ship_rejected_target_apply.txt --require-launchlogs --require-snapshots`: passed; reported one rejected-target controlled live apply with `candidateSource=selectedShipRejectedTarget`, one applied command, zero failed commands, and zero scope violations.
 - `python tools\parse_player_log.py tools\fixtures\apply_gate_hard_stop.txt --require-launchlogs --require-snapshots`: passed; #36 hard-stop fixture still reports one blocked gate, zero applied commands, and zero failed commands.
+- `python tools\parse_player_log.py tools\fixtures\enemy_allocator_candidate_skip.txt --require-launchlogs --require-snapshots`: passed; reported `allocatorLauncherOutsideSelectedTeam`, zero intended commands, zero applied commands, and zero failed commands.
 - `python tools\fit_shadow_allocation.py --input tools\fixtures --output artifacts\shadow-fitting\issue_37_fixtures`: passed; readiness remains `Not ready` because fixtures are synthetic and no real selected combat log was analyzed.
 - `python C:\Users\techn\.codex\skills\phased-issue-implementation\scripts\phase_plan_helper.py validate --plan-dir dev-docs\plan\issue_37`: passed.
 - Manual runtime smoke was not performed in this environment.
 - Follow-up Lake Maracaibo log parse passed with no MissileWarfare issues and showed the first live apply succeeded, but the second trigger stayed pending because the selected ship stopped emitting missile projectile-fire cycles while other ships continued. This drove the selected-command-launcher vs allocator-launcher follow-up change.
+- Follow-up Sadowa/Tempest log parse now intentionally fails after parser updates because same-team missile target snapshots are present. This drove the selected-team allocator and hostile-target guard.

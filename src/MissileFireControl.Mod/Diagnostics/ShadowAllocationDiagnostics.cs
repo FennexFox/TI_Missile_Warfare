@@ -424,12 +424,15 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "launcherTeam", candidate.CommandLauncherTeamId);
             AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
             AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
+            AppendPair(builder, "allocatorLauncherTeam", candidate.AllocatorLauncherTeamId);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
             AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "targetTeam", candidate.TargetTeamId);
             AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
             AppendPair(builder, "appliedCommands", "0");
@@ -461,12 +464,15 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "launcherTeam", candidate.CommandLauncherTeamId);
             AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
             AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
+            AppendPair(builder, "allocatorLauncherTeam", candidate.AllocatorLauncherTeamId);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
             AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "targetTeam", candidate.TargetTeamId);
             AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
             AppendPair(builder, "preStateVisible", "candidateIdentity");
@@ -502,12 +508,15 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "commandScopeShipCount", candidate.CommandScopeShipCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "launcherId", candidate.LauncherId);
             AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "launcherTeam", candidate.CommandLauncherTeamId);
             AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
             AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
+            AppendPair(builder, "allocatorLauncherTeam", candidate.AllocatorLauncherTeamId);
             AppendPair(builder, "weaponId", candidate.WeaponId);
             AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
             AppendPair(builder, "targetId", candidate.TargetId);
             AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "targetTeam", candidate.TargetTeamId);
             AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
             AppendPair(builder, "preStateVisible", result.PreStateVisible);
@@ -628,6 +637,11 @@ namespace MissileFireControl.Mod.Diagnostics
                 return CommandApplyResult.Skipped("selectedSingleShipRequired");
             }
 
+            if (!IsHostileSelectedCommandTarget(candidate))
+            {
+                return CommandApplyResult.Skipped("hostileTargetRequired");
+            }
+
             object launcher = candidate.CommandLauncherRuntimeObject ?? snapshot.LauncherRuntimeObject;
             object target = snapshot.TargetRuntimeObject;
             if (launcher == null)
@@ -688,6 +702,16 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return CommandApplyResult.Applied();
+        }
+
+        private static bool IsHostileSelectedCommandTarget(CommandCandidateDecision candidate)
+        {
+            return candidate != null
+                && HasConcreteTeam(candidate.CommandLauncherTeamId)
+                && HasConcreteTeam(candidate.AllocatorLauncherTeamId)
+                && HasConcreteTeam(candidate.TargetTeamId)
+                && string.Equals(candidate.CommandLauncherTeamId, candidate.AllocatorLauncherTeamId, StringComparison.Ordinal)
+                && !string.Equals(candidate.CommandLauncherTeamId, candidate.TargetTeamId, StringComparison.Ordinal);
         }
 
         private static MethodInfo FindCompatibleMethod(Type type, string methodName, object firstArgument, object secondArgument)
@@ -814,6 +838,9 @@ namespace MissileFireControl.Mod.Diagnostics
             return reason == "outsidePlayerControlledScope"
                 || reason == "selectedScopeRequired"
                 || reason == "requiresSingleSelectedShip"
+                || reason == "teamIdentityUnavailable"
+                || reason == "allocatorLauncherOutsideSelectedTeam"
+                || reason == "hostileTargetRequired"
                 || reason == "unsafeScope";
         }
 
@@ -941,6 +968,9 @@ namespace MissileFireControl.Mod.Diagnostics
                 LauncherName = string.IsNullOrWhiteSpace(selectedLauncherName) ? "unknown" : selectedLauncherName,
                 AllocatorLauncherId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id,
                 AllocatorLauncherName = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.DisplayName,
+                CommandLauncherTeamId = SingleTeamId(commandScope),
+                AllocatorLauncherTeamId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.TeamId,
+                TargetTeamId = snapshot == null || snapshot.Target == null ? "unknown" : snapshot.Target.TeamId,
                 CommandLauncherRuntimeObject = commandScope == null ? null : commandScope.SingleRuntimeShip(),
                 WeaponId = snapshot == null || snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
                 MissileProfileId = snapshot == null || snapshot.Missile == null ? "unknown" : snapshot.Missile.Id,
@@ -968,6 +998,23 @@ namespace MissileFireControl.Mod.Diagnostics
             if (commandScope.Count != 1)
             {
                 return candidate.Fail("wouldSkip", "requiresSingleSelectedShip");
+            }
+
+            if (!HasConcreteTeam(candidate.CommandLauncherTeamId)
+                || !HasConcreteTeam(candidate.AllocatorLauncherTeamId)
+                || !HasConcreteTeam(candidate.TargetTeamId))
+            {
+                return candidate.Fail("wouldSkip", "teamIdentityUnavailable");
+            }
+
+            if (!string.Equals(candidate.CommandLauncherTeamId, candidate.AllocatorLauncherTeamId, StringComparison.Ordinal))
+            {
+                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedTeam");
+            }
+
+            if (string.Equals(candidate.CommandLauncherTeamId, candidate.TargetTeamId, StringComparison.Ordinal))
+            {
+                return candidate.Fail("wouldSkip", "hostileTargetRequired");
             }
 
             if (!HasConcreteToken(candidate.WeaponId))
@@ -1083,6 +1130,16 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return !value.StartsWith("unknown", StringComparison.Ordinal);
+        }
+
+        private static bool HasConcreteTeam(string value)
+        {
+            return HasConcreteToken(value) && value != "none";
+        }
+
+        private static string SingleTeamId(CommandScopeEvidence evidence)
+        {
+            return evidence != null && evidence.TeamIds.Count == 1 ? evidence.TeamIds[0] : "unknown";
         }
 
         private static SelectedScopeEvidence CaptureSelectedScopeEvidence()
@@ -1796,9 +1853,15 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public string LauncherName { get; set; } = "unknown";
 
+            public string CommandLauncherTeamId { get; set; } = "unknown";
+
             public string AllocatorLauncherId { get; set; } = "unknown";
 
             public string AllocatorLauncherName { get; set; } = "unknown";
+
+            public string AllocatorLauncherTeamId { get; set; } = "unknown";
+
+            public string TargetTeamId { get; set; } = "unknown";
 
             public object CommandLauncherRuntimeObject { get; set; }
 

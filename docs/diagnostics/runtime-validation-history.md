@@ -541,3 +541,28 @@ allocator only rejects a target because the observed module budget is too small,
 an explicit controlled trigger may still issue the selected-ship command with
 `candidateSource="selectedShipRejectedTarget"`, provided the selected ship still
 reports `CanPerformShipCommands()` and `AnyOffensiveMissileWeaponCanFire()`.
+
+## 2026-06-22 Issue #37 follow-up: enemy allocator and friendly target guard
+
+A later Sadowa combat log showed that the selected-command-launcher follow-up
+was too permissive. The controlled experiment accepted an allocator cycle from
+an enemy ship and attempted to command the selected friendly ship at a friendly
+target:
+
+- selected command ship: `Sadowa` id `276`, team `47`
+- allocator snapshot launcher: `Tempest` id `283`, team `50`
+- resolved target: `Vella Gulf` id `279`, team `47`
+- command result: `failedCommand`, `reason="commandInvocationFailed"`,
+  `exceptionType="NullReferenceException"`
+- subsequent controlled-ship missile snapshots targeted friendly
+  `Vella Gulf`, matching the observed circular/near-self missile behavior
+
+Interpretation: the vanilla command can mutate primary-target state before a
+later invocation failure. #37 now requires known selected launcher, allocator
+launcher, and target teams; the selected command ship team must match the
+allocator launcher team; and the target team must differ. Enemy allocator
+cycles classify as `allocatorLauncherOutsideSelectedTeam`, friendly targets
+classify as `hostileTargetRequired`, and the experiment waits for a later
+selected-team hostile candidate instead of applying. The parser now fails logs
+with same-team missile target snapshots so this condition is not reported as a
+clean smoke.
