@@ -317,3 +317,128 @@ Interpretation: Issue #27 recovered observed target PD capability evidence for
 this combat log. Full #6 baseline readiness is no longer blocked by all-cycle
 PD defaulting in this sample, but still requires multiple real selected logs
 under the existing Issue #24 readiness rule.
+
+## Current four-log fitting snapshot
+
+On 2026-06-22, the offline fitting wrapper replayed the fresh selected
+Terra Invicta `Player*.log` combat logs copied under ignored `artifacts/`
+paths:
+
+```powershell
+python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
+```
+
+The selected set was:
+
+- `Player-prev2.log`, written 2026-06-22 09:03 local time
+- `Player-prev1.log`, written 2026-06-22 09:05 local time
+- `Player-prev.log`, written 2026-06-22 09:09 local time
+- `Player.log`, written 2026-06-22 09:11 local time
+
+Aggregate result:
+
+- logs analyzed: 4
+- logs with required evidence: 4
+- real selected logs with required evidence: 4
+- parser failures: 0
+- fitting readiness verdict: `Ready for #6 baseline`
+- evidence sufficiency verdict: `Baseline-ready with named limitations`
+- controlled live command readiness: `Not ready`
+- plausible: 541
+- partial saturation: 114
+- ambiguous: 58
+- command-safety no-op: 204
+- missing-evidence-limited: 0
+- severe classifications: 0 (`overkill`, `underkill`, `target-value mismatch`,
+  `PD-risk mismatch`, and `impossible` were all zero)
+- evidence limitations: none
+
+Per-log fitting summary:
+
+- `Player-prev.log`: parser `OK`; 497 shadow cycles; 364 plausible, 79
+  partial saturation, 54 ambiguous; no command-safety no-op rows.
+- `Player-prev1.log`: parser `OK`; 195 shadow cycles; 156 plausible, 35
+  partial saturation, 4 ambiguous; no command-safety no-op rows.
+- `Player-prev2.log`: parser `OK`; 33 shadow cycles; 21 plausible, 12
+  command-safety no-op.
+- `Player.log`: parser `OK`; 192 shadow cycles; 192 command-safety no-op and
+  no allocation-quality rows.
+
+Evidence sufficiency summary:
+
+- `ammoGateBudgetShots`: `ready`, 917/917 cycles numeric
+- target identity: `provisional`, 713/917 cycles with launcher-selected target
+  identity; 204 no-op rows lacked target identity and allocated no shots
+- target velocity: `ready`, 917/917 cycles observed
+- relative velocity: `ready`, 917/917 cycles observed
+- missile profile data: `ready`, 917/917 cycles present
+- observed target PD evidence: `provisional`, with 713/917 observed static
+  template-capability cycles and 204/917 default-model cycles only on
+  non-allocation decisions
+
+Interpretation: the fresh selected logs support the fitting-wrapper #6 baseline
+under current rules because multiple real logs parse, required evidence is
+present, allocation/rejection rows avoid PD-defaulted evidence, and severe
+classifications are zero. They do not unblock controlled live command
+application; command intent logging, command mapping, and live-command safety
+remain separate gates.
+
+## Issue #28 evidence sufficiency gate
+
+Issue #28 adds an explicit sufficiency layer above the parser verdict and the
+Issue #24 fitting baseline. The gate separates parser/fitting health from
+controlled live-command readiness and reports named evidence limits for each
+input category.
+
+The fitting report now names statuses such as `ready`, `provisional`,
+`presenceOnly`, `defaulted`, `unknown`, and `commandUnsafe`. Parser `OK`, empty
+allocator-critical `missingInputs`, and a fitting-wrapper readiness verdict are
+not sufficient wording for controlled #6 readiness. They can support a baseline
+for design and diagnostics only when the generated evidence-sufficiency report
+is reviewed with the controlled-command blockers still in view.
+
+## Issue #29 point-defense capability evidence quality
+
+Issue #29 upgrades the point-defense evidence vocabulary without changing the
+legacy `pdWeight` count-style scalar. Source review confirmed conservative
+static template capability fields on `TIShipWeaponTemplate`, including
+`defenseMode`, `EffectiveRangeAgainstProjectiles_km()`, `targetingRange_km`,
+`cooldown_s`, and `averageCooldown_s`. The same review did not prove that the
+current projectile-fire snapshot can safely observe target defensive weapon
+cooldown/readiness, live ammo, arc coverage, or target/projectile geometry.
+
+The runtime schema now emits additive fields:
+
+- `pdEvidenceQuality`
+- `pdCapabilityEvidenceSource`
+- `pdCapabilityWeaponCount`
+- `pdCapabilityRangeKm`
+- `pdCapabilityCooldownSeconds`
+- `pdCapabilityObservedFields`
+- `pdCapabilityMissingReason`
+- `pdCapabilityLimitations`
+
+The fitting report interprets those fields conservatively:
+
+- missing new fields on old logs preserve the Issue #28 legacy behavior:
+  `observedTargetWeaponTemplates` remains `presenceOnly`;
+- `pdEvidenceQuality=observedPresenceOnly` remains `presenceOnly`;
+- `pdEvidenceQuality=observedTemplateCapability` becomes `provisional`, with
+  limitations naming template-only evidence, no live readiness, no geometry,
+  and no arc coverage;
+- `pdCapabilityObservedFields` records which static template field categories
+  justified the capability label, such as `range`, `cooldown`, or
+  `ammoCapacity`;
+- ammo-capacity-like template fields are not live ammo/readiness evidence;
+- future `geometryAwareCapability` evidence remains `provisional` by default
+  until a separate source-backed readiness gate and real-log validation prove a
+  stronger claim;
+- `pdEvidenceQuality=defaultModel` remains defaulted fallback evidence.
+
+Static validation used `tools/fixtures/shadow_allocation_synthetic.txt` to
+exercise `observedTemplateCapability` and
+`tools/fixtures/shadow_allocation_missing_target_noop.txt` to preserve the
+defaulted no-op path. The fixture fitting report correctly classified observed
+target PD evidence as `provisional`; the aggregate readiness verdict remained
+`Not ready` because fixtures are synthetic and do not count as real combat
+evidence.

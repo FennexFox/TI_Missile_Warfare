@@ -89,13 +89,21 @@ If no concrete launcher-selected identity is visible, `targetId`, `target`, and
 `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and
 `missing=targetIdentity` remains valid.
 
+This missing field means the current hook could not observe a launcher-selected
+priority target. It does not prove vanilla combat had no target. Decompiled
+source review shows `SelectSalvoTargetCommand` sets `combatPrimaryTarget`
+through `SetCombatPrimaryTargetAction`, `ClearTargetCommand` is valid only when
+that primary target exists, and `MissileWeapon.TryFire` still fires through a
+live `base.target` object. Fighting without a player-set priority target is
+therefore compatible with `targetIdentitySource=none` in this diagnostic schema.
+
 ## SnapshotLog schema
 
 Snapshot diagnostics use a separate marker so existing launch diagnostics remain
 unchanged:
 
 ```text
-[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" missing="targetIdentity"
+[SnapshotLog] source="TISpaceCombatProjectileState.Fire(missile)" launcherId="..." launcher="..." launcherTeam="..." targetId="..." target="..." targetTeam="..." targetIdentitySource="..." expectedTargetPosition="..." targetVelocityKps="..." targetVelocityEvidenceSource="targetCombatState" targetVelocityMissingReason="none" relativeVelocityKps="..." relativeSpeedKps="..." relativeVelocityEvidenceSource="targetAndLauncherVelocity" relativeVelocityMissingReason="none" missileId="..." missile="..." weaponRole="Missile" ammoGateBudgetShots="..." ammoGateBudgetEvidenceSource="shipAmmoByWeaponData+TryFireCommonGates" ammoGateBudgetMissingReason="none" ammoEvidenceSource="shipAmmoByWeaponData" liveWeaponState="..." ammoGateWeaponCount="1" unknownAmmoGateWeaponCount="0" remainingShots="..." pdWeight="0" pdWeightEvidenceSource="defaultModel" pdWeightDefaulted="True" pdWeightDefaultReason="pdEvidenceUnavailable" pdWeightMissingReason="none" pdEvidenceQuality="defaultModel" pdCapabilityEvidenceSource="none" pdCapabilityWeaponCount="0" pdCapabilityRangeKm="0" pdCapabilityCooldownSeconds="0" pdCapabilityObservedFields="none" pdCapabilityMissingReason="none" pdCapabilityLimitations="targetPdEvidenceUnavailable" missing="targetIdentity"
 ```
 
 The `missing` field records which fields were not visible from the hook rather
@@ -173,6 +181,33 @@ The cycle also reports `pdWeightEvidenceSource`, `pdWeightDefaulted`,
 `pdWeightDefaultReason`, and `pdWeightMissingReason` so a formal default model
 is distinguishable from observed PD evidence and unknown PD evidence.
 
+Issue #29 adds a separate point-defense capability evidence layer without
+renaming or recalibrating the legacy `pdWeight` count. The new fields are:
+
+- `pdEvidenceQuality`: `defaultModel`, `observedPresenceOnly`, or
+  `observedTemplateCapability` in the current runtime path.
+- `pdCapabilityEvidenceSource`: `observedTargetWeaponTemplateCapability` when
+  static target weapon-template capability fields were visible.
+- `pdCapabilityWeaponCount`: observed defense-mode weapon count.
+- `pdCapabilityRangeKm`: maximum observed projectile-defense range from
+  `EffectiveRangeAgainstProjectiles_km()` / targeting-range style fields.
+- `pdCapabilityCooldownSeconds`: average observed cooldown from template
+  cooldown fields when visible.
+- `pdCapabilityObservedFields`: comma-separated static template field
+  categories that justify `observedTemplateCapability`, such as `range`,
+  `cooldown`, `ammoCapacity`, `range,cooldown`, or `none`.
+- `pdCapabilityMissingReason`: why capability evidence is absent.
+- `pdCapabilityLimitations`: comma-separated limits such as
+  `templateCapabilityOnly`, `noLiveReadiness`, `noGeometry`, and
+  `noArcCoverage`.
+
+`observedTemplateCapability` means static template fields such as range,
+cooldown, or ammo-capacity-like fields were observed. It is stronger than
+defense-mode presence, but it is still provisional. Ammo-capacity-like template
+fields are not live ammo/readiness, and the current schema is still not arc
+coverage, target/projectile geometry, or a calibrated vanilla point-defense
+simulator.
+
 `targetVelocity` is reported when target velocity cannot be read from runtime
 target evidence. The preferred evidence path is the live `MissileWeapon.target`
 `IDamageable` observed in the `MissileWeapon.TryFire` prefix, using
@@ -217,8 +252,9 @@ allocator-critical fields:
 The parser also reports target-velocity and relative-velocity coverage,
 evidence source counts, missing reason counts, no-op/skip reason counts, and
 cycle status counts. PD input reporting separates observed, defaulted, and
-unknown cycles, then prints the evidence source, default reason, and missing
-reason breakdowns.
+unknown cycles, then prints the evidence source, default reason, missing
+reason, capability quality, capability source, capability missing reason, and
+capability observed-field, and capability limitation breakdowns.
 
 Parser warnings such as `all shadow cycles missing ammoGateBudgetShots`, `too
 many launch-window rejects`, or `allocation report limited by missing runtime
@@ -250,13 +286,57 @@ conservative buckets:
 - `target-value mismatch`
 - `PD-risk mismatch`
 - `partial saturation`
+- `command-safety no-op`
 - `missing-evidence-limited`
 - `impossible`
 - `ambiguous`
 
-PD default-model evidence is reported as an evidence limitation. Any
-PD-defaulted evidence can support at most a conditional #6 baseline
-recommendation; it cannot establish full readiness.
+`command-safety no-op` means no allocation was made because no concrete
+launcher-selected target identity was visible. It is safe skip evidence, not
+allocation-quality evidence and not proof that vanilla had no missile target.
+
+PD default-model evidence is reported as an evidence limitation when it qualifies
+an allocation/rejection decision. PD defaulting on `command-safety no-op` rows is
+not counted as an allocation evidence limit because no target was allocated.
+PD-defaulted allocation/rejection evidence can support at most a conditional #6
+baseline recommendation; it cannot establish full readiness.
+
+Issue #28 adds a separate evidence-sufficiency gate to the fitting report. This
+gate is intentionally distinct from parser health, required-evidence presence,
+empty `missingInputs`, and the fitting-wrapper `Ready for #6 baseline` verdict.
+It reports these per-input statuses:
+
+- `ready`: source-labeled evidence is sufficient for the scoped claim.
+- `provisional`: usable for cautious baseline diagnostics, with a named limit.
+- `presenceOnly`: proves existence or presence, not capability magnitude or
+  live state.
+- `defaulted`: a fallback/default model affected allocation or rejection
+  evidence.
+- `unknown`: absent or not interpretable from the selected logs.
+- `commandUnsafe`: unsafe for controlled command application even when parser
+  and fitting evidence are healthy.
+
+Legacy `observedTargetWeaponTemplates` point-defense evidence with no
+`pdEvidenceQuality` field remains `presenceOnly`. New
+`pdEvidenceQuality=observedPresenceOnly` is also `presenceOnly`. New
+`pdEvidenceQuality=observedTemplateCapability` is `provisional`: it proves
+static template capability fields were visible, but not live readiness, ammo,
+arc coverage, range geometry, support behavior applicability, or exact
+interception capability. `pdCapabilityObservedFields` names which template field
+categories justified that label. `geometryAwareCapability` is reserved for
+future source-backed work and is not automatically `ready`; until separately
+validated, richer-than-presence PD capability remains `provisional`.
+`defaultModel` or `pdWeightDefaulted=True` remains a named limitation whenever
+it qualifies allocation or rejection evidence.
+
+The same report also carries controlled live command readiness separately from
+fitting readiness. Current reports should remain `Not ready` for controlled
+live commands until command-intent logging, vanilla command granularity mapping,
+and live-command safety gates pass.
+
+Rows scoped as `fitting baseline` describe allocator-consumable evidence for
+offline diagnostics. They do not prove that the same evidence is sufficient for
+controlled command application.
 
 A tiny synthetic fixture exists at
 `tools/fixtures/shadow_allocation_synthetic.txt` for wrapper smoke validation.

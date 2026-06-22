@@ -22,8 +22,16 @@ Current blocker:
 Current missing or provisional inputs:
 
 - dry-run command-intent logging for the verified selected-player scope;
-- multiple-real-log fitting evidence with Issue #27 observed target
-  point-defense evidence;
+- the current selected four-log fitting snapshot is baseline-ready with named
+  limitations, not controlled-command ready;
+- Issue #29 upgrades observed target point-defense evidence from
+  defense-mode presence to provisional static template capability when range,
+  cooldown, ammo-capacity-like, or similar template fields are visible;
+  `pdCapabilityObservedFields` names the observed categories, and live
+  readiness, live ammo, geometry, and arc coverage remain unproven;
+- vanilla salvo target command granularity is ship-level across all
+  salvo-capable weapons on the ship, so per-visible-module command assumptions
+  remain unsafe;
 - in-flight projectile/controller guidance target identity.
 
 ## Completed diagnostic foundation
@@ -98,7 +106,8 @@ Acceptance criteria:
 Goal: replay selected local combat logs through parser/fitting tooling before
 using the allocator as a #6 baseline.
 
-Status: tooling available; real selected-log fitting evidence still local.
+Status: tooling available; the 2026-06-22 selected four-log fitting run is
+baseline-ready with named limitations.
 
 Implementation notes:
 
@@ -112,6 +121,24 @@ Implementation notes:
   least one plausible allocation or no-op decision.
 - Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
+- The 2026-06-22 selected four-log fitting run found 541 plausible, 114 partial
+  saturation, 58 ambiguous, 204 command-safety no-op, 0
+  missing-evidence-limited, and zero severe classifications across four
+  parser-OK real logs.
+- `command-safety no-op` classifies missing launcher-selected `targetIdentity`
+  no-op evidence as a safe skip when no concrete launcher-selected priority
+  target is visible. It is not allocation-quality evidence and not proof that
+  vanilla had no missile target.
+- Issue #28/#29 sufficiency reporting keeps the fitting baseline distinct from
+  controlled command readiness while naming limitations: target PD evidence is
+  `presenceOnly` for legacy template-presence logs and `provisional` only when
+  static capability fields are present; target-identity no-op evidence is
+  `provisional`, observed launch/ammo deltas are `provisional`, future
+  geometry-aware PD evidence is also `provisional` until separately validated,
+  and controlled live command readiness is `Not ready`.
+- #6 readiness now separates three remaining concerns: evidence quality
+  (#29 after #28's gate), command safety (#22/#23), and allocator design choices
+  (#6).
 
 ## Blocked controlled features
 
@@ -164,8 +191,10 @@ Acceptance criteria once unblocked:
 
 1. Implement #22 dry-run command-intent logging from the verified selected ship
    and group-selected ship scopes.
-2. Run fresh selected-log fitting with Issue #27 PD evidence enabled and record
-   whether multiple real logs remain free of PD-default limitations.
+2. Re-run selected-log fitting after the Issue #29 PD capability schema is
+   present in fresh real combat logs and
+   record whether multiple real logs remain free of defaulted or evidence-limited
+   classifications.
 3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
 4. Only then revisit #23 live command safety, controlled allocation, and launch
