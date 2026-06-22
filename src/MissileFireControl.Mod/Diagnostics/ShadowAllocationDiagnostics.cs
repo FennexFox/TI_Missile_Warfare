@@ -15,6 +15,8 @@ namespace MissileFireControl.Mod.Diagnostics
 {
     internal static class ShadowAllocationDiagnostics
     {
+        private const string CommandApplyGateName = "controlledCommandApplyGate";
+
         private static int _cycleSequence;
         private static int _experimentSequence;
         private static readonly object DryRunLock = new object();
@@ -137,18 +139,19 @@ namespace MissileFireControl.Mod.Diagnostics
             if (!canAllocate)
             {
                 WriteNoOp(cycleId, snapshot, "missing required allocation inputs");
-                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, "missing required allocation inputs");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, "missing required allocation inputs");
                 return;
             }
 
             if (result == null)
             {
                 WriteNoOp(cycleId, snapshot, "allocation result unavailable");
-                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, "allocation result unavailable");
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, "allocation result unavailable");
                 return;
             }
 
             int allocationIndex = 0;
+            int safetyGateBlockedCommands = 0;
             foreach (TargetAllocation allocation in result.Allocations)
             {
                 allocationIndex++;
@@ -157,6 +160,16 @@ namespace MissileFireControl.Mod.Diagnostics
                 CommandCandidateDecision candidate = BuildCommandCandidate(cycleId, allocationIndex, snapshot, allocation, commandScope);
                 commandCandidates.Add(candidate);
                 WriteDryRunCommandCandidate(dryRun, candidate);
+                if (candidate.Classification == "eligible")
+                {
+                    CommandApplyGateDecision gateDecision = EvaluateCommandApplyGate();
+                    if (gateDecision.Blocked)
+                    {
+                        safetyGateBlockedCommands++;
+                    }
+
+                    WriteDryRunApplyGate(dryRun, candidate, gateDecision);
+                }
             }
 
             foreach (TargetAllocation rejection in result.Rejections)
@@ -168,13 +181,13 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 string noOpReason = NoOpReason(snapshot);
                 WriteNoOp(cycleId, snapshot, noOpReason);
-                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, noOpReason);
+                WriteDryRunResult(dryRun, cycleId, 0, 1, 0, 0, noOpReason);
                 return;
             }
 
             if (commandCandidates.Count == 0)
             {
-                WriteDryRunResult(dryRun, cycleId, 0, result.Allocations.Count == 0 ? 1 : 0, 0, "dryRunOnly");
+                WriteDryRunResult(dryRun, cycleId, 0, result.Allocations.Count == 0 ? 1 : 0, 0, 0, "dryRunOnly");
                 return;
             }
 
@@ -184,7 +197,8 @@ namespace MissileFireControl.Mod.Diagnostics
                 commandCandidates.Count(candidate => candidate.Classification == "eligible"),
                 commandCandidates.Count(candidate => candidate.Classification == "wouldSkip"),
                 commandCandidates.Count(candidate => candidate.Classification == "wouldFail"),
-                "dryRunOnly");
+                safetyGateBlockedCommands,
+                safetyGateBlockedCommands > 0 ? "blockedBySafetyToggle" : "dryRunOnly");
         }
 
         private static ControlledDryRunRequest ConsumePendingControlledDryRun()
@@ -283,6 +297,42 @@ namespace MissileFireControl.Mod.Diagnostics
             Log.Info("[AllocationLog] " + builder);
         }
 
+        private static void WriteDryRunApplyGate(
+            ControlledDryRunRequest request,
+            CommandCandidateDecision candidate,
+            CommandApplyGateDecision gateDecision)
+        {
+            if (request == null || candidate == null || gateDecision == null)
+            {
+                return;
+            }
+
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", "dryRunApplyGate");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "gateName", CommandApplyGateName);
+            AppendPair(builder, "gateResult", gateDecision.Result);
+            AppendPair(builder, "blockReason", gateDecision.Reason);
+            AppendPair(builder, "controlledExperimentMode", gateDecision.ControlledExperimentMode ? "True" : "False");
+            AppendPair(builder, "allowCommandApply", gateDecision.AllowCommandApply ? "True" : "False");
+            AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
+            AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
+            AppendPair(builder, "launcherId", candidate.LauncherId);
+            AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "weaponId", candidate.WeaponId);
+            AppendPair(builder, "missileProfileId", candidate.MissileProfileId);
+            AppendPair(builder, "targetId", candidate.TargetId);
+            AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
+            AppendPair(builder, "preStateVisible", "candidateIdentity");
+            AppendPair(builder, "postState", gateDecision.Blocked ? "notApplied" : "notAppliedNoLivePath");
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
         private static void WriteDryRunIntent(
             ControlledDryRunRequest request,
             int cycleId,
@@ -317,6 +367,7 @@ namespace MissileFireControl.Mod.Diagnostics
             int intendedCommands,
             int skippedCommands,
             int failedCommands,
+            int safetyGateBlockedCommands,
             string resultReason)
         {
             if (request == null)
@@ -332,9 +383,30 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "skippedCommands", skippedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "appliedCommands", "0");
             AppendPair(builder, "failedCommands", failedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "safetyGateBlockedCommands", safetyGateBlockedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "result", "dryRunOnly");
             AppendPair(builder, "resultReason", resultReason ?? "dryRunOnly");
             Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static CommandApplyGateDecision EvaluateCommandApplyGate()
+        {
+            bool controlledExperimentMode = Main.Settings != null && Main.Settings.EnableControlledDryRunDiagnostics;
+            bool allowCommandApply = Main.Settings != null && Main.Settings.AllowCommandApply;
+            if (!controlledExperimentMode || !allowCommandApply)
+            {
+                return new CommandApplyGateDecision(
+                    "blocked",
+                    "blockedBySafetyToggle",
+                    controlledExperimentMode,
+                    allowCommandApply);
+            }
+
+            return new CommandApplyGateDecision(
+                "allowedDryRunOnly",
+                "applyPathNotImplemented",
+                controlledExperimentMode,
+                allowCommandApply);
         }
 
         private static CommandScopeEvidence ResolveCommandScope(SelectedScopeEvidence selectedScope, ExtractedCombatSnapshot snapshot)
@@ -1287,6 +1359,31 @@ namespace MissileFireControl.Mod.Diagnostics
                 Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
                 return this;
             }
+        }
+
+        private sealed class CommandApplyGateDecision
+        {
+            public CommandApplyGateDecision(
+                string result,
+                string reason,
+                bool controlledExperimentMode,
+                bool allowCommandApply)
+            {
+                Result = string.IsNullOrWhiteSpace(result) ? "blocked" : result;
+                Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
+                ControlledExperimentMode = controlledExperimentMode;
+                AllowCommandApply = allowCommandApply;
+            }
+
+            public string Result { get; }
+
+            public string Reason { get; }
+
+            public bool ControlledExperimentMode { get; }
+
+            public bool AllowCommandApply { get; }
+
+            public bool Blocked => Result == "blocked";
         }
     }
 }

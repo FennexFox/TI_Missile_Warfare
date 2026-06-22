@@ -52,9 +52,15 @@ panel trigger:
 - `EnableShadowAllocationDiagnostics`
 - `EnableControlledDryRunDiagnostics`
 
+The command-apply boundary has a separate default-off setting:
+
+- `AllowCommandApply`
+
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
 base diagnostics toggle. Controlled dry-run diagnostics also default to
-`false`. Shadow allocation and controlled dry-run diagnostics are
+`false`. `AllowCommandApply` also defaults to `false`; Issue #36 uses it only
+as an auditable hard-stop input and still performs no live command application.
+Shadow allocation and controlled dry-run diagnostics are
 diagnostics-only: they never apply assignments, never issue commands, never
 change fire mode, and never suppress or delay original game methods.
 
@@ -79,31 +85,35 @@ snapshot count fields.
 ## Target identity semantics
 
 Launcher-selected target identity probing is conservative. The projectile-state
-fire hook does not receive the live `MissileController.target` object.
-`MissileWeapon` passes that target to the Unity controller immediately after the
-state fire call.
+fire hook does not receive the live `MissileController.target` object, but the
+paired `MissileWeapon.TryFire` prefix can observe the live weapon `target`
+before the projectile fire hook runs on the same thread.
 
-The snapshot extractor checks the launcher/carrier for `combatPrimaryTarget` or
-related primary-target members. Candidate target wrappers are unwrapped through
-members such as `combatTargetableState`, `GetCombatantState`,
+The snapshot extractor first checks the launcher/carrier for
+`combatPrimaryTarget` or related primary-target members. If no launcher priority
+target is visible, it falls back to the live `MissileWeapon.TryFire` target from
+the same-thread readiness handoff. Candidate target wrappers are unwrapped
+through members such as `combatTargetableState`, `GetCombatantState`,
 `GetTargetableState`, `ShipState`, and `WeaponCarrierState` when present.
 
 `targetIdentitySource=launcher` means launcher/carrier primary-target or
-focus-fire identity. It is not proof of the actual in-flight missile guidance
-target. For projectile/controller guidance target coverage, add a separate
-observation point around `MissileWeapon.target` or `MissileController.target`.
+focus-fire identity. `targetIdentitySource=tryFireTarget` means the identity was
+derived from the live `MissileWeapon.target` observed immediately before the
+projectile fire hook.
 
 If no concrete launcher-selected identity is visible, `targetId`, `target`, and
 `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and
 `missing=targetIdentity` remains valid.
 
-This missing field means the current hook could not observe a launcher-selected
-priority target. It does not prove vanilla combat had no target. Decompiled
-source review shows `SelectSalvoTargetCommand` sets `combatPrimaryTarget`
-through `SetCombatPrimaryTargetAction`, `ClearTargetCommand` is valid only when
-that primary target exists, and `MissileWeapon.TryFire` still fires through a
-live `base.target` object. Fighting without a player-set priority target is
-therefore compatible with `targetIdentitySource=none` in this diagnostic schema.
+This missing field means neither a launcher-selected priority target nor a
+same-thread `MissileWeapon.TryFire` target could be normalized into a concrete
+combat target identity. It does not prove vanilla combat had no target.
+Decompiled source review shows `SelectSalvoTargetCommand` sets
+`combatPrimaryTarget` through `SetCombatPrimaryTargetAction`, while
+`MissileWeapon.TryFire` still fires through a live `base.target` object. Fighting
+without a player-set priority target is therefore compatible with
+`targetIdentitySource=tryFireTarget`; it should not require enabling combat AI
+control just to expose allocator target identity.
 
 ## SnapshotLog schema
 
@@ -155,7 +165,8 @@ the UMM panel, the next shadow allocation cycle is tagged with a local
 [AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
 [AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
 [AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
-[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" result="dryRunOnly" resultReason="dryRunOnly"
+[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." weaponId="..." missileProfileId="..." targetId="..." target="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
+[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" safetyGateBlockedCommands="1" result="dryRunOnly" resultReason="blockedBySafetyToggle"
 ```
 
 The selected-scope probe is intentionally narrow. It looks for the verified
@@ -174,7 +185,17 @@ violation flag, launcher, weapon/module, target, assigned shot, and ammo/gate
 budget evidence. The rows do not call `SelectSalvoTargetCommand`,
 `FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`,
 `SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
-report `appliedCommands="0"` for Issues #34 and #35.
+report `appliedCommands="0"` for Issues #34 through #36.
+
+Issue #36 routes only `eligible` candidates to a named
+`controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
+setting, the gate emits `recordType="dryRunApplyGate"` with
+`gateResult="blocked"`, `blockReason="blockedBySafetyToggle"`,
+`postState="notApplied"`, and `appliedCommands="0"`. This is still
+diagnostics-only; it records the hard stop before any live command API exists in
+the mod. If runtime logs do not naturally produce an eligible candidate, the
+synthetic `tools/fixtures/apply_gate_hard_stop.txt` fixture exercises the
+gate-reachable blocked path.
 
 The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
 UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
@@ -278,12 +299,14 @@ battle-level allocation report for before/after tuning comparisons.
 The parser separates current shadow cycles, allocations, rejections, and no-op
 records from controlled dry-run experiment rows and future controlled-apply
 records. Controlled dry-run rows are summarized by experiment count, experiment
-id, intent count, command-candidate count, intended/skipped/applied/failed
-command counts, candidate classification/reason counts, command-scope source
-and missing-reason counts, scope-violation count, selected ship counts, and
-selected-scope missing reasons. Future record types such as applied decisions,
-skipped decisions, and failed command applications are bucketed when they
-appear, but current logs are expected to show zero controlled-apply counts.
+id, intent count, command-candidate count, apply-gate count,
+intended/skipped/applied/failed/safety-gate-blocked command counts, candidate
+classification/reason counts, apply-gate result counts, safety-gate block reason
+counts, command-scope source and missing-reason counts, scope-violation count,
+selected ship counts, and selected-scope missing reasons. Future record types
+such as applied decisions, skipped decisions, and failed command applications
+are bucketed when they appear, but current logs are expected to show zero
+controlled-apply counts.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather
@@ -341,11 +364,11 @@ conservative buckets:
 - `ambiguous`
 
 Controlled dry-run rows such as `dryRunExperiment`, `dryRunIntent`,
-`dryRunCommandCandidate`, and `dryRunResult` are not allocation-quality rows.
-The fitting report summarizes them separately with experiment, candidate,
-classification, reason, command-scope, selected-scope, scope-violation, and
-applied/failed command counts instead of treating them as ambiguous allocation
-decisions.
+`dryRunCommandCandidate`, `dryRunApplyGate`, and `dryRunResult` are not
+allocation-quality rows. The fitting report summarizes them separately with
+experiment, candidate, apply-gate, classification, reason, command-scope,
+selected-scope, scope-violation, safety-gate-blocked, and applied/failed command
+counts instead of treating them as ambiguous allocation decisions.
 
 `command-safety no-op` means no allocation was made because no concrete
 launcher-selected target identity was visible. It is safe skip evidence, not
