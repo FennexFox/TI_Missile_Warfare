@@ -318,23 +318,70 @@ this combat log. Full #6 baseline readiness is no longer blocked by all-cycle
 PD defaulting in this sample, but still requires multiple real selected logs
 under the existing Issue #24 readiness rule.
 
-## Superseded four-log fitting snapshot
+## Current four-log fitting snapshot
 
-A previous local Issue #30 pass replayed four Terra Invicta `Player*.log`
-combat logs through the offline fitting wrapper under ignored `artifacts/`
-paths. That local evidence set is now superseded and should not be used as the
-current readiness baseline.
-
-The replacement process is:
+On 2026-06-22, the offline fitting wrapper replayed the fresh selected
+Terra Invicta `Player*.log` combat logs copied under ignored `artifacts/`
+paths:
 
 ```powershell
 python tools\fit_shadow_allocation.py --input artifacts\combat-logs\selected --output artifacts\shadow-fitting\latest
 ```
 
-Use only the fresh selected four-log set for new parser, fitting, and
-evidence-sufficiency claims. Historical counts from the superseded local logs
-were removed from this durable doc so they do not get mistaken for current #6
-readiness evidence.
+The selected set was:
+
+- `Player-prev2.log`, written 2026-06-22 09:03 local time
+- `Player-prev1.log`, written 2026-06-22 09:05 local time
+- `Player-prev.log`, written 2026-06-22 09:09 local time
+- `Player.log`, written 2026-06-22 09:11 local time
+
+Aggregate result:
+
+- logs analyzed: 4
+- logs with required evidence: 4
+- real selected logs with required evidence: 4
+- parser failures: 0
+- fitting readiness verdict: `Ready for #6 baseline`
+- evidence sufficiency verdict: `Baseline-ready with named limitations`
+- controlled live command readiness: `Not ready`
+- plausible: 541
+- partial saturation: 114
+- ambiguous: 58
+- command-safety no-op: 204
+- missing-evidence-limited: 0
+- severe classifications: 0 (`overkill`, `underkill`, `target-value mismatch`,
+  `PD-risk mismatch`, and `impossible` were all zero)
+- evidence limitations: none
+
+Per-log fitting summary:
+
+- `Player-prev.log`: parser `OK`; 497 shadow cycles; 364 plausible, 79
+  partial saturation, 54 ambiguous; no command-safety no-op rows.
+- `Player-prev1.log`: parser `OK`; 195 shadow cycles; 156 plausible, 35
+  partial saturation, 4 ambiguous; no command-safety no-op rows.
+- `Player-prev2.log`: parser `OK`; 33 shadow cycles; 21 plausible, 12
+  command-safety no-op.
+- `Player.log`: parser `OK`; 192 shadow cycles; 192 command-safety no-op and
+  no allocation-quality rows.
+
+Evidence sufficiency summary:
+
+- `ammoGateBudgetShots`: `ready`, 917/917 cycles numeric
+- target identity: `provisional`, 713/917 cycles with launcher-selected target
+  identity; 204 no-op rows lacked target identity and allocated no shots
+- target velocity: `ready`, 917/917 cycles observed
+- relative velocity: `ready`, 917/917 cycles observed
+- missile profile data: `ready`, 917/917 cycles present
+- observed target PD evidence: `provisional`, with 713/917 observed static
+  template-capability cycles and 204/917 default-model cycles only on
+  non-allocation decisions
+
+Interpretation: the fresh selected logs support the fitting-wrapper #6 baseline
+under current rules because multiple real logs parse, required evidence is
+present, allocation/rejection rows avoid PD-defaulted evidence, and severe
+classifications are zero. They do not unblock controlled live command
+application; command intent logging, command mapping, and live-command safety
+remain separate gates.
 
 ## Issue #28 evidence sufficiency gate
 
@@ -347,8 +394,8 @@ The fitting report now names statuses such as `ready`, `provisional`,
 `presenceOnly`, `defaulted`, `unknown`, and `commandUnsafe`. Parser `OK`, empty
 allocator-critical `missingInputs`, and a fitting-wrapper readiness verdict are
 not sufficient wording for controlled #6 readiness. They can support a baseline
-for design and diagnostics only after the fresh selected logs are replayed and
-the generated report is reviewed.
+for design and diagnostics only when the generated evidence-sufficiency report
+is reviewed with the controlled-command blockers still in view.
 
 ## Issue #29 point-defense capability evidence quality
 

@@ -22,9 +22,8 @@ Current blocker:
 Current missing or provisional inputs:
 
 - dry-run command-intent logging for the verified selected-player scope;
-- fresh selected four-log fitting validation is pending; the previous local
-  four-log snapshot is superseded and should not be treated as the current
-  baseline;
+- the current selected four-log fitting snapshot is baseline-ready with named
+  limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
   defense-mode presence to provisional static template capability when range,
   cooldown, ammo-capacity-like, or similar template fields are visible;
@@ -107,8 +106,8 @@ Acceptance criteria:
 Goal: replay selected local combat logs through parser/fitting tooling before
 using the allocator as a #6 baseline.
 
-Status: tooling available. Fresh selected four-log validation is pending; old
-local fitting artifacts have been treated as stale.
+Status: tooling available; the 2026-06-22 selected four-log fitting run is
+baseline-ready with named limitations.
 
 Implementation notes:
 
@@ -122,6 +121,10 @@ Implementation notes:
   least one plausible allocation or no-op decision.
 - Any PD-defaulted evidence blocks full readiness but does not block a
   conditional baseline.
+- The 2026-06-22 selected four-log fitting run found 541 plausible, 114 partial
+  saturation, 58 ambiguous, 204 command-safety no-op, 0
+  missing-evidence-limited, and zero severe classifications across four
+  parser-OK real logs.
 - `command-safety no-op` classifies missing launcher-selected `targetIdentity`
   no-op evidence as a safe skip when no concrete launcher-selected priority
   target is visible. It is not allocation-quality evidence and not proof that
