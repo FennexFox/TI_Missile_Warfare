@@ -4,14 +4,16 @@ This directory is the durable documentation entry point for the Terra Invicta mi
 
 ## Current state
 
-The project is still diagnostics-first. Current runtime evidence can observe missile launch hooks, launcher identity, launcher-selected target identity in some cases, and paired pre/post ammo plus gate/cooldown evidence from `MissileWeapon.TryFire`.
-
-Issue #17 resolves the shot-budget design gate to Path A: `TISpaceShipState.ammo[weaponData]` plus vanilla fire gates is the per-weapon game-equivalent fire budget. The mod names that explicit value `ammoGateBudgetShots`; no distinct loaded/chambered source was found. See [Readiness semantics](research/readiness-semantics.md).
-
-Issue #21 verifies selected-player command scope for later dry-run command-intent logging. Live controlled command/application work should remain disabled until dry-run evidence and command-application safety are verified. See [Selected command scope](research/selected-command-scope.md).
+The project is still diagnostics-first. Start with the concise
+[agent current-state summary](agent/CURRENT_STATE.md), then follow the evidence
+links before changing behavior.
 
 ## Start here
 
+- [Agent docs index](agent/INDEX.md): recommended durable reading order for
+  coding agents.
+- [Current state](agent/CURRENT_STATE.md): concise project posture, confirmed
+  facts, blockers, and `Needs verification:` gaps.
 - [Architecture](guide/architecture.md): high-level mod/Core boundary and design principle.
 - [MVP roadmap](planning/mvp-roadmap.md): current issue-sized roadmap, completed diagnostics, blockers, and next work.
 - [Reverse-engineering plan](research/reverse-engineering-plan.md): diagnostic-first plan for finding runtime combat entry points.
@@ -21,15 +23,19 @@ Issue #21 verifies selected-player command scope for later dry-run command-inten
 - [Readiness semantics](research/readiness-semantics.md): confirmed ammo/gate budget semantics and remaining command-safety constraints.
 - [Selected command scope](research/selected-command-scope.md): verified selected-player command scope and vanilla salvo command granularity.
 - [Assumption audit](maintenance/assumption-audit.md): assumptions that were fixed or explicitly marked provisional.
+- [ADR index](adr/README.md): accepted durable decisions and their consequences.
 
 ## Directory map
 
+- `agent/`: concise agent orientation, current state, and workflow.
+- `adr/`: accepted decisions and their consequences.
 - `guide/`: stable orientation documents.
 - `diagnostics/`: confirmed runtime observations, log formats, and parser validation notes.
 - `research/`: unsettled reverse-engineering questions and semantic investigations.
 - `planning/`: durable roadmap documents that remain useful after one PR.
+- `investigations/`: durable investigation records promoted from temporary issue work.
 - `maintenance/`: documentation hygiene and assumption-audit notes.
-- `archive/`: historical setup notes.
+- `archive/`: superseded durable notes retained only for historical context.
 
 ## Relationship with `dev-docs/`
 
