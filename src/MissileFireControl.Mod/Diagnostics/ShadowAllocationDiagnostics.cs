@@ -460,6 +460,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "blockReason", gateDecision.Reason);
             AppendPair(builder, "controlledExperimentMode", gateDecision.ControlledExperimentMode ? "True" : "False");
             AppendPair(builder, "allowCommandApply", gateDecision.AllowCommandApply ? "True" : "False");
+            AppendPair(builder, "recommendationOnlyMode", gateDecision.RecommendationOnlyMode ? "True" : "False");
             AppendPair(builder, "candidateSource", candidate.CandidateSource);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
@@ -668,20 +669,33 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             bool controlledExperimentMode = Main.Settings != null && Main.Settings.EnableControlledDryRunDiagnostics;
             bool allowCommandApply = Main.Settings != null && Main.Settings.AllowCommandApply;
+            bool recommendationOnlyMode = Main.Settings == null || Main.Settings.EnableRecommendationOnlyMode;
             if (!controlledExperimentMode || !allowCommandApply)
             {
                 return new CommandApplyGateDecision(
                     "blocked",
                     "blockedBySafetyToggle",
                     controlledExperimentMode,
-                    allowCommandApply);
+                    allowCommandApply,
+                    recommendationOnlyMode);
+            }
+
+            if (recommendationOnlyMode)
+            {
+                return new CommandApplyGateDecision(
+                    "blocked",
+                    "blockedByRecommendationOnlyMode",
+                    controlledExperimentMode,
+                    allowCommandApply,
+                    recommendationOnlyMode);
             }
 
             return new CommandApplyGateDecision(
                 "allowed",
                 "none",
                 controlledExperimentMode,
-                allowCommandApply);
+                allowCommandApply,
+                recommendationOnlyMode);
         }
 
         private static CommandApplyResult TryApplyControlledCommand(
@@ -2243,12 +2257,14 @@ namespace MissileFireControl.Mod.Diagnostics
                 string result,
                 string reason,
                 bool controlledExperimentMode,
-                bool allowCommandApply)
+                bool allowCommandApply,
+                bool recommendationOnlyMode)
             {
                 Result = string.IsNullOrWhiteSpace(result) ? "blocked" : result;
                 Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
                 ControlledExperimentMode = controlledExperimentMode;
                 AllowCommandApply = allowCommandApply;
+                RecommendationOnlyMode = recommendationOnlyMode;
             }
 
             public string Result { get; }
@@ -2258,6 +2274,8 @@ namespace MissileFireControl.Mod.Diagnostics
             public bool ControlledExperimentMode { get; }
 
             public bool AllowCommandApply { get; }
+
+            public bool RecommendationOnlyMode { get; }
 
             public bool Blocked => Result == "blocked";
         }
