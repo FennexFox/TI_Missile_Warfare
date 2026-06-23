@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "verdict": "fixture-only",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-23T00:00:00Z",
+  "summary": "Synthetic schema smoke entry.",
+  "evidenceGaps": [],
+  "nextAction": "Use only for tooling validation."
+}

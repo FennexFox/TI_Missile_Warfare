@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-LIVE-0001",
+  "runMode": "controlled-live",
+  "selectedMode": "selected-group",
+  "selectedShipNames": ["Fixture One", "Fixture Two"],
+  "selectedShipCount": 2,
+  "friendlyMissileShipCount": 2,
+  "enemyShipCount": 1,
+  "launcherWeaponCount": 4,
+  "missileFamily": "synthetic",
+  "targetIds": ["live-target-1"],
+  "pdEvidenceCategory": "observedTemplateCapability",
+  "rangeBand": "medium",
+  "closingSpeedBand": "closing",
+  "commandGateSummary": "one applied command; one same-target command skipped by target aggregate controlled-command cap",
+  "directCommandSpendSummary": "direct command spend visible for applied command",
+  "skippedCommandSummary": "same-target controlled-command cap skip",
+  "vanillaSpilloverSummary": "none-correlated same-target vanilla TryFire rows after cap and budget",
+  "conservativeOutcomeHintSummary": "DestroyShip hint present but not exact attribution",
+  "knownMissingEvidence": ["exact kill attribution", "vanilla salvo suppression"],
+  "evidenceSummary": {
+    "missing_evidence_counts": {
+      "exact kill attribution": 1,
+      "vanilla salvo suppression": 1
+    },
+    "skipped_command_counts": {},
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Useful controlled-live evidence, but still evidence-limited."
+}

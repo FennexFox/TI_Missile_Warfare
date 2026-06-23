@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-FIXTURE-0001",
+  "runMode": "fixture",
+  "selectedMode": "fixture",
+  "selectedShipCount": 0,
+  "friendlyMissileShipCount": 1,
+  "enemyShipCount": 1,
+  "launcherWeaponCount": 1,
+  "missileFamily": "synthetic",
+  "targetIds": ["fixture-target-1"],
+  "pdEvidenceCategory": "observedTemplateCapability",
+  "rangeBand": "fixture",
+  "closingSpeedBand": "fixture",
+  "knownMissingEvidence": [],
+  "evidenceSummary": {
+    "missing_evidence_counts": {},
+    "skipped_command_counts": {},
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Schema smoke only."
+}
