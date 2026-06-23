@@ -941,6 +941,7 @@ namespace MissileFireControl.Mod.Diagnostics
             return reason == "outsidePlayerControlledScope"
                 || reason == "selectedScopeRequired"
                 || reason == "requiresSingleSelectedShip"
+                || reason == "allocatorLauncherOutsideSelectedShip"
                 || reason == "allocatorLauncherOutsideSelectedGroup"
                 || reason == "teamIdentityUnavailable"
                 || reason == "allocatorLauncherOutsideSelectedTeam"
@@ -1059,12 +1060,8 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             string allocatorLauncherId = snapshot == null || snapshot.Launcher == null ? "unknown" : snapshot.Launcher.Id;
             bool allocatorLauncherInSelectedScope = commandScope != null && commandScope.ContainsShip(allocatorLauncherId);
-            bool singleSelectedScope = commandScope != null && commandScope.Count == 1;
-            string selectedLauncherId = allocatorLauncherInSelectedScope
-                ? allocatorLauncherId
-                : singleSelectedScope
-                    ? commandScope.Ids[0]
-                    : null;
+
+            string selectedLauncherId = allocatorLauncherInSelectedScope ? allocatorLauncherId : null;
             string selectedLauncherName = commandScope == null ? null : commandScope.NameFor(selectedLauncherId);
             string selectedLauncherTeam = commandScope == null ? "unknown" : commandScope.TeamFor(selectedLauncherId);
             CommandCandidateDecision candidate = new CommandCandidateDecision
@@ -1102,44 +1099,49 @@ namespace MissileFireControl.Mod.Diagnostics
 
             if (commandScope == null || commandScope.Count == 0)
             {
-                return candidate.Fail("wouldSkip", ScopeUnavailableReason(commandScope));
+                return candidate.Fail("wouldSkip", ScopeUnavailableReason(commandScope), true);
             }
 
             if (!IsSelectedCommandScopeSource(candidate.CommandScopeSource))
             {
-                return candidate.Fail("wouldSkip", "selectedScopeRequired");
+                return candidate.Fail("wouldSkip", "selectedScopeRequired", true);
             }
 
             if (commandScope.Count > MaxSelectedGroupShipCount)
             {
-                return candidate.Fail("wouldSkip", "selectedGroupTooBroad");
+                return candidate.Fail("wouldSkip", "selectedGroupTooBroad", true);
             }
 
             if (!commandScope.HasSingleConcreteTeam())
             {
-                return candidate.Fail("wouldSkip", "mixedSelectedGroupTeam");
+                return candidate.Fail("wouldSkip", "mixedSelectedGroupTeam", true);
+            }
+
+            if (commandScope.Count == 1 && !allocatorLauncherInSelectedScope)
+            {
+                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedShip", true);
             }
 
             if (commandScope.Count > 1 && !allocatorLauncherInSelectedScope)
             {
-                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedGroup");
+                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedGroup", true);
             }
 
             if (!HasConcreteTeam(candidate.CommandLauncherTeamId)
                 || !HasConcreteTeam(candidate.AllocatorLauncherTeamId)
                 || !HasConcreteTeam(candidate.TargetTeamId))
             {
-                return candidate.Fail("wouldSkip", "teamIdentityUnavailable");
+                return candidate.Fail("wouldSkip", "teamIdentityUnavailable", true);
             }
 
             if (!string.Equals(candidate.CommandLauncherTeamId, candidate.AllocatorLauncherTeamId, StringComparison.Ordinal))
             {
-                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedTeam");
+                return candidate.Fail("wouldSkip", "allocatorLauncherOutsideSelectedTeam", true);
             }
 
             if (string.Equals(candidate.CommandLauncherTeamId, candidate.TargetTeamId, StringComparison.Ordinal))
             {
-                return candidate.Fail("wouldSkip", "hostileTargetRequired");
+                return candidate.Fail("wouldSkip", "hostileTargetRequired", true);
             }
 
             if (!HasConcreteToken(candidate.WeaponId))
@@ -1152,14 +1154,21 @@ namespace MissileFireControl.Mod.Diagnostics
                 return candidate.Fail("wouldFail", "missingTargetIdentity");
             }
 
-            if (!allowRejectedTarget && (candidate.AssignedShots <= 0 || candidate.AmmoGateBudgetShots < candidate.AssignedShots))
+            if (candidate.AssignedShots <= 0)
+            {
+                return candidate.Fail(
+                    "wouldFail",
+                    allowRejectedTarget ? "rejectedTargetNoPositiveAssignedShots" : "insufficientAmmo");
+            }
+
+            if (candidate.AmmoGateBudgetShots < candidate.AssignedShots)
             {
                 return candidate.Fail("wouldFail", "insufficientAmmo");
             }
 
             if (commandScope.IsNonPlayerOrAiControlled(candidate.LauncherId))
             {
-                return candidate.Fail("wouldSkip", "nonPlayerOrAIControlled");
+                return candidate.Fail("wouldSkip", "nonPlayerOrAIControlled", true);
             }
 
             if (!commandScope.PlayerControlKnownFor(candidate.LauncherId))
@@ -2243,10 +2252,11 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public int AmmoGateBudgetShots { get; set; } = -1;
 
-            public CommandCandidateDecision Fail(string classification, string reason)
+            public CommandCandidateDecision Fail(string classification, string reason, bool scopeViolation = false)
             {
                 Classification = string.IsNullOrWhiteSpace(classification) ? "wouldFail" : classification;
                 Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
+                ScopeViolation = scopeViolation;
                 return this;
             }
         }
