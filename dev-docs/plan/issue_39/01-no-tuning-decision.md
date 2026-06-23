@@ -248,3 +248,35 @@ without changing allocator behavior:
 - same-target duplicate kill-package candidates are now report-visible;
 - exact projectile/hit/kill attribution remains out of scope without a stable RE
   hook.
+
+## Focused Same-target Cap Follow-up
+
+A focused behavior-changing follow-up now implements the first bounded rule from
+the report-only candidate evidence: within one selected-group controlled command
+experiment, once a target has received an applied command package, later eligible
+commands to that same target are skipped with
+`targetAggregateSalvoCapReached` if they would exceed the experiment's
+target-level assigned-shot budget.
+
+This is intentionally a controlled selected-group command gate, not a broad
+allocator rewrite. The current live path builds one-target allocation requests
+from `MissileWeapon.TryFire` cycles, so the cross-ship duplicate evidence is only
+visible in the controlled experiment state that spans selected ships and cycles.
+The existing selected-scope, hostile-target, per-ship, and group command caps are
+preserved.
+
+Evidence cited from the regenerated local report
+`artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`:
+
+- `dryrun-20260622T224037268Z-3` / Yudachi#284: two direct applied commands,
+  14 assigned and 14 directly observed spent shots, with a conservative
+  post-direct-launch destroyed hint.
+- `dryrun-20260622T224608094Z-2` / Ghost#281: two direct applied commands,
+  16 assigned and 16 directly observed spent shots, with a conservative
+  post-direct-launch destroyed hint.
+
+The rule does not infer exact projectile, hit, or kill attribution from
+`DestroyShip` text. It only uses the direct command-spend rows as support for
+preventing repeated same-target ship-level command packages in the selected
+controlled experiment. A fresh runtime smoke is still required to observe the new
+`targetAggregateSalvoCapReached` skip reason in real combat logs.

@@ -282,3 +282,15 @@ kill-package candidates directly in the fitting report. The report-only section
 uses direct command-spend rows and available kill-size/outcome hints to identify
 candidate target-level aggregate salvo caps. The actual allocator behavior change
 remains a separate focused follow-up.
+
+### Issue #39 same-target cap follow-up
+
+The focused follow-up implements the first bounded rule from that evidence:
+selected-group controlled command experiments now skip later eligible commands to
+the same target with `targetAggregateSalvoCapReached` after the experiment has
+already applied that target's assigned-shot budget. The change is deliberately
+limited to the controlled selected-group command gate and does not expand command
+scope or claim fleet-wide allocation readiness.
+
+Validation still needs a fresh runtime smoke showing the new skip reason in a
+same-target selected-group case.

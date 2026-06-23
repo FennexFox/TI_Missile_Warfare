@@ -791,3 +791,28 @@ correlation is validated, target identity bridging is validated, skipped rows ar
 separated from applied direct launches, conservative post-direct-launch
 DestroyShip hints are available, and duplicate same-target kill-package evidence
 is now mechanically visible for the next focused rule-change PR.
+
+## Issue #39 same-target aggregate salvo cap follow-up
+
+The focused follow-up implements a selected-group controlled command gate for the
+same-target duplicate kill-package candidate. Within one controlled experiment,
+after a target receives an applied command package, later eligible commands to
+that same target are skipped with `targetAggregateSalvoCapReached` when they
+would exceed the experiment's target-level assigned-shot budget.
+
+The rule is scoped to the controlled selected-group command path and preserves
+the existing selected-scope, hostile-target, per-ship, and group command caps.
+It is not a fleet-wide allocator rewrite.
+
+Evidence came from a regenerated local report at
+`artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`: the
+Yudachi experiment spent 14 directly correlated shots across two same-target
+commands, and the Ghost experiment spent 16 directly correlated shots across two
+same-target commands. Both targets later appeared in vanilla `DestroyShip` text,
+which remains conservative post-direct-launch outcome evidence rather than exact
+projectile, hit, or kill attribution.
+
+Build validation passed locally. A fresh runtime smoke is still required to
+verify that the next same-target selected-group case emits
+`targetAggregateSalvoCapReached` and avoids the second same-target applied
+command.

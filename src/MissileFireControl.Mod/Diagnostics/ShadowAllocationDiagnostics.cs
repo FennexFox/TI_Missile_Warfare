@@ -190,24 +190,7 @@ namespace MissileFireControl.Mod.Diagnostics
                     WriteDryRunApplyGate(dryRun, candidate, gateDecision);
                     if (!gateDecision.Blocked)
                     {
-                        CommandApplyResult applyResult;
-                        if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
-                        {
-                            applyResult = CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
-                        }
-                        else if (dryRun.HasAttempted(candidate.LauncherId))
-                        {
-                            applyResult = CommandApplyResult.Skipped("perShipCommandCapReached");
-                        }
-                        else
-                        {
-                            dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(
-                                dryRun,
-                                candidate,
-                                snapshot,
-                                ControlledCommandResultId(dryRun, candidate));
-                        }
+                        CommandApplyResult applyResult = ApplyControlledCandidate(dryRun, candidate, snapshot);
 
                         if (applyResult.AppliedCommands > 0)
                         {
@@ -255,24 +238,7 @@ namespace MissileFireControl.Mod.Diagnostics
                     WriteDryRunApplyGate(dryRun, candidate, gateDecision);
                     if (!gateDecision.Blocked)
                     {
-                        CommandApplyResult applyResult;
-                        if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
-                        {
-                            applyResult = CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
-                        }
-                        else if (dryRun.HasAttempted(candidate.LauncherId))
-                        {
-                            applyResult = CommandApplyResult.Skipped("perShipCommandCapReached");
-                        }
-                        else
-                        {
-                            dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(
-                                dryRun,
-                                candidate,
-                                snapshot,
-                                ControlledCommandResultId(dryRun, candidate));
-                        }
+                        CommandApplyResult applyResult = ApplyControlledCandidate(dryRun, candidate, snapshot);
 
                         if (applyResult.AppliedCommands > 0)
                         {
@@ -574,6 +540,49 @@ namespace MissileFireControl.Mod.Diagnostics
             string experimentId = request == null ? "unknown-experiment" : request.ExperimentId;
             string candidateId = candidate == null ? "unknown-candidate" : candidate.CandidateId;
             return experimentId + ":" + candidateId;
+        }
+
+        private static CommandApplyResult ApplyControlledCandidate(
+            ControlledDryRunRequest dryRun,
+            CommandCandidateDecision candidate,
+            ExtractedCombatSnapshot snapshot)
+        {
+            if (dryRun == null || candidate == null)
+            {
+                return CommandApplyResult.Skipped("controlledExperimentUnavailable");
+            }
+
+            if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
+            {
+                return CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
+            }
+
+            if (dryRun.HasAttempted(candidate.LauncherId))
+            {
+                return CommandApplyResult.Skipped("perShipCommandCapReached");
+            }
+
+            // #39 direct evidence showed duplicate selected-group kill packages
+            // on the same target; cap the experiment's aggregate command budget
+            // before invoking another ship-level vanilla salvo command.
+            if (dryRun.WouldExceedTargetBudget(candidate.TargetId, candidate.AssignedShots))
+            {
+                dryRun.MarkAttempted(candidate.LauncherId);
+                return CommandApplyResult.Skipped("targetAggregateSalvoCapReached");
+            }
+
+            dryRun.MarkAttempted(candidate.LauncherId);
+            CommandApplyResult applyResult = TryApplyControlledCommand(
+                dryRun,
+                candidate,
+                snapshot,
+                ControlledCommandResultId(dryRun, candidate));
+            if (applyResult.AppliedCommands > 0)
+            {
+                dryRun.MarkTargetBudget(candidate.TargetId, candidate.AssignedShots);
+            }
+
+            return applyResult;
         }
 
         private static void WriteDryRunIntent(
@@ -1878,6 +1887,7 @@ namespace MissileFireControl.Mod.Diagnostics
         private sealed class ControlledDryRunRequest
         {
             private readonly HashSet<string> _attemptedShipIds = new HashSet<string>();
+            private readonly Dictionary<string, TargetBudget> _targetBudgets = new Dictionary<string, TargetBudget>();
 
             public ControlledDryRunRequest(string experimentId, string requestedUtc)
             {
@@ -1909,6 +1919,41 @@ namespace MissileFireControl.Mod.Diagnostics
                 return commandCap > 0 && _attemptedShipIds.Count >= commandCap;
             }
 
+            public bool WouldExceedTargetBudget(string targetId, int assignedShots)
+            {
+                if (!HasConcreteToken(targetId) || assignedShots <= 0)
+                {
+                    return false;
+                }
+
+                TargetBudget budget;
+                if (!_targetBudgets.TryGetValue(targetId, out budget))
+                {
+                    return false;
+                }
+
+                int targetShotBudget = Math.Max(budget.MaxAssignedShots, assignedShots);
+                return budget.AppliedAssignedShots + assignedShots > targetShotBudget;
+            }
+
+            public void MarkTargetBudget(string targetId, int assignedShots)
+            {
+                if (!HasConcreteToken(targetId) || assignedShots <= 0)
+                {
+                    return;
+                }
+
+                TargetBudget budget;
+                if (!_targetBudgets.TryGetValue(targetId, out budget))
+                {
+                    budget = new TargetBudget();
+                    _targetBudgets[targetId] = budget;
+                }
+
+                budget.MaxAssignedShots = Math.Max(budget.MaxAssignedShots, assignedShots);
+                budget.AppliedAssignedShots += assignedShots;
+            }
+
             public bool HasAttemptedAll(CommandScopeEvidence commandScope)
             {
                 return commandScope != null
@@ -1923,6 +1968,13 @@ namespace MissileFireControl.Mod.Diagnostics
                     && commandScope.Count > 0
                     && commandScope.Count <= MaxSelectedGroupShipCount
                     && commandScope.Ids.Any(id => !HasAttempted(id));
+            }
+
+            private sealed class TargetBudget
+            {
+                public int AppliedAssignedShots { get; set; }
+
+                public int MaxAssignedShots { get; set; }
             }
         }
 
