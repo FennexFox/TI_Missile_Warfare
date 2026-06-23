@@ -4,11 +4,11 @@
   "runMode": "fixture",
   "selectedMode": "fleet-wide",
   "selectedShipCount": 0,
-  "friendlyMissileShipCount": 2,
-  "enemyShipCount": 2,
-  "launcherWeaponCount": 2,
+  "friendlyMissileShipCount": 1,
+  "enemyShipCount": 4,
+  "launcherWeaponCount": 1,
   "missileFamily": "synthetic",
-  "targetIds": ["target-red-1", "target-red-2"],
+  "targetIds": ["target-red-1", "target-red-2", "target-red-3", "target-red-4"],
   "pdEvidenceCategory": "mixed-visible-and-allocator-evidence",
   "rangeBand": "fixture",
   "closingSpeedBand": "fixture",
@@ -17,7 +17,7 @@
   ],
   "evidenceSummary": {
     "missing_evidence_counts": {
-      "fleet-wide report-only missing allocator evidence": 2
+      "fleet-wide report-only missing allocator evidence": 3
     },
     "skipped_command_counts": {
       "fleet-wide report-only missing allocator evidence": 2,
@@ -30,5 +30,5 @@
     "regression_counts": {},
     "vanilla_spillover_counts": {}
   },
-  "reviewerNotes": "Synthetic #43.1 report-only fixture. Uses fleet-wide eligibility and visible hostile targets only for diagnostics; appliedCommands remains zero."
+  "reviewerNotes": "Synthetic #43.1 report-only fixture. Uses one eligible fleet-wide launcher and four visible hostile targets so the fourth candidate matches the implementation's fleetReportOnlyPerShipCapWouldBlock diagnostic cap. appliedCommands remains zero."
 }

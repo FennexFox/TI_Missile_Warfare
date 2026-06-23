@@ -964,7 +964,11 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 foreach (DictionaryEntry entry in dictionary)
                 {
-                    yield return entry.Key ?? entry.Value;
+                    object selected = SelectDictionaryCombatObject(entry);
+                    if (selected != null)
+                    {
+                        yield return selected;
+                    }
                 }
 
                 yield break;
@@ -981,13 +985,64 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 if (item is DictionaryEntry entry)
                 {
-                    yield return entry.Key ?? entry.Value;
+                    object selected = SelectDictionaryCombatObject(entry);
+                    if (selected != null)
+                    {
+                        yield return selected;
+                    }
                 }
                 else
                 {
                     yield return item;
                 }
             }
+        }
+
+        private static object SelectDictionaryCombatObject(DictionaryEntry entry)
+        {
+            object keyObject = UnwrapSelectedShip(entry.Key);
+            object valueObject = UnwrapSelectedShip(entry.Value);
+            bool keyLooksLikeShip = LooksLikeCombatShipObject(keyObject);
+            bool valueLooksLikeShip = LooksLikeCombatShipObject(valueObject);
+
+            if (keyLooksLikeShip && !valueLooksLikeShip)
+            {
+                return keyObject;
+            }
+
+            if (valueLooksLikeShip && !keyLooksLikeShip)
+            {
+                return valueObject;
+            }
+
+            if (valueLooksLikeShip)
+            {
+                return valueObject;
+            }
+
+            if (keyLooksLikeShip)
+            {
+                return keyObject;
+            }
+
+            return valueObject ?? keyObject;
+        }
+
+        private static bool LooksLikeCombatShipObject(object value)
+        {
+            if (value == null || value is string)
+            {
+                return false;
+            }
+
+            string teamId = GameObjectReader.TeamId(value);
+            if (HasConcreteTeam(teamId))
+            {
+                return true;
+            }
+
+            return TryReadBool(value, "CanPerformShipCommands").HasValue
+                || TryReadBool(value, "AnyOffensiveMissileWeaponCanFire").HasValue;
         }
 
         private static object CurrentSpaceCombat()
