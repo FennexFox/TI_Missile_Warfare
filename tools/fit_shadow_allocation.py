@@ -632,15 +632,20 @@ def controlled_cap_spillover_diagnostics(
         if not same_target_applied:
             continue
 
-        skipped_by_launcher = {
-            str(skip.get("launcherId", "unknown")): skip for skip in skips
-        }
+        first_skip_line_by_launcher: dict[str, int] = {}
+        for skip in skips:
+            launcher_id = str(skip.get("launcherId", "unknown"))
+            skip_line = int(skip["line"])
+            existing = first_skip_line_by_launcher.get(launcher_id)
+            if existing is None or skip_line < existing:
+                first_skip_line_by_launcher[launcher_id] = skip_line
+
         spillover_launches = [
             launch
             for launch in launch_records
-            if launch.launcher_id in skipped_by_launcher
+            if launch.launcher_id in first_skip_line_by_launcher
             and launch.target_id == target_id
-            and launch.line > int(skipped_by_launcher[launch.launcher_id]["line"])
+            and launch.line > first_skip_line_by_launcher[launch.launcher_id]
             and launch.controlled_command_correlation == "none"
             and launch.command_result_id.lower() in {"", "none", "unknown", "null"}
         ]
@@ -805,8 +810,14 @@ def direct_spent_by_command_result(
     launch_records: list[LaunchEvidenceRecord],
     experiment_id: str,
 ) -> dict[str, int]:
-    """Return max directly observed spend per command result id."""
-    spent: dict[str, int] = {}
+    """Return direct spend by command result id.
+
+    ``controlledCommandObservedSpentShots`` is cumulative and should use max(),
+    while ``ammo_delta`` is per-launch fallback evidence and should be summed
+    only when cumulative observed spent is absent for that command result.
+    """
+    cumulative_spent: dict[str, int] = {}
+    fallback_delta_spent: Counter[str] = Counter()
     for launch in launch_records:
         if (
             launch.experiment_id != experiment_id
@@ -814,12 +825,16 @@ def direct_spent_by_command_result(
             or launch.command_result_id.lower() in {"", "none", "unknown", "null"}
         ):
             continue
-        observed = launch.controlled_command_observed_spent_shots
-        if observed is None:
-            observed = launch.ammo_delta
-        if observed is None:
-            continue
-        spent[launch.command_result_id] = max(spent.get(launch.command_result_id, 0), observed)
+        if launch.controlled_command_observed_spent_shots is not None:
+            cumulative_spent[launch.command_result_id] = max(
+                cumulative_spent.get(launch.command_result_id, 0),
+                launch.controlled_command_observed_spent_shots,
+            )
+        elif launch.ammo_delta is not None:
+            fallback_delta_spent[launch.command_result_id] += launch.ammo_delta
+
+    spent = dict(fallback_delta_spent)
+    spent.update(cumulative_spent)
     return spent
 
 

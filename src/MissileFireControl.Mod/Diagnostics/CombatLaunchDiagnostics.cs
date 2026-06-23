@@ -415,6 +415,10 @@ namespace MissileFireControl.Mod.Diagnostics
                 {
                     context.ObservedSpentShots += ammoDelta;
                 }
+                else if (context.AssignedShots >= 0)
+                {
+                    context.ObservedSpentShots++;
+                }
 
                 int observedSpentShots = context.ObservedSpentShots;
                 if (context.AssignedShots >= 0 && observedSpentShots >= context.AssignedShots)
