@@ -292,5 +292,7 @@ already applied that target's assigned-shot budget. The change is deliberately
 limited to the controlled selected-group command gate and does not expand command
 scope or claim fleet-wide allocation readiness.
 
-Validation still needs a fresh runtime smoke showing the new skip reason in a
-same-target selected-group case.
+Fresh runtime smoke on `Player.log` written 2026-06-23 11:04 local confirmed the
+new skip reason in a same-target selected-group case: after one direct Dragon
+command, later eligible Dragon commands were skipped with
+`targetAggregateSalvoCapReached`.

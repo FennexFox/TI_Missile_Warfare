@@ -812,7 +812,13 @@ same-target commands. Both targets later appeared in vanilla `DestroyShip` text,
 which remains conservative post-direct-launch outcome evidence rather than exact
 projectile, hit, or kill attribution.
 
-Build validation passed locally. A fresh runtime smoke is still required to
-verify that the next same-target selected-group case emits
-`targetAggregateSalvoCapReached` and avoids the second same-target applied
-command.
+Build validation passed locally.
+
+Fresh runtime smoke on the active `Player.log` written 2026-06-23 11:04 local
+verified the new skip reason in real combat logs. Experiment
+`dryrun-20260623T020248174Z-1` applied one direct command from Pharsalos to
+Dragon#281 for eight assigned and eight directly observed spent shots. Later
+same-target eligible commands from El Alamein and Kasserine Pass were skipped
+with `targetAggregateSalvoCapReached`, and Dragon later appeared in conservative
+post-direct-launch `DestroyShip` outcome text. The regenerated report is in
+`artifacts\shadow-fitting\issue_39_20260623_1104_local`.
