@@ -33,7 +33,7 @@ Observed state after `92ebc65`:
 - `targetAggregateControlledCommandCapReached` is the renamed skip reason for later same-target controlled command candidates; older artifacts show the previous label `targetAggregateSalvoCapReached`.
 - The first same-target selected ship can receive the controlled command and produce `directRuntimeContext` launch rows.
 - Later same-target selected ships can still launch missiles through vanilla / existing fire behavior with `controlledCommandCorrelation="none"` and `commandResultId="none"`.
-- The first applied ship can also launch additional none-correlated shots after its assigned controlled shots are consumed.
+- The first applied ship can also launch additional none-correlated shots after its assigned controlled shots are consumed; this is tracked separately as applied-launcher post-budget spillover.
 
 Therefore, `92ebc65` should be treated as a controlled-command attribution guard, not as an actual missile expenditure cap.
 
@@ -144,6 +144,8 @@ Controlled command cap prevented duplicate controlled command attribution, but s
 
 This is the crucial fitting-ready distinction for #43: fitted heuristics must not confuse direct controlled command spend with vanilla spillover spend.
 
+A second report-only diagnostic should expose applied-launcher post-budget spillover: once a directly controlled launcher has consumed its assigned direct command budget, later same-launcher/same-target `TryFire` rows with `controlledCommandCorrelation="none"` must be reported separately from direct controlled spend. This captures the Gaugamela/Hamanami pattern from the rename smoke log.
+
 ## Suggested implementation plan
 
 1. Review `tools/fit_shadow_allocation.py` and `tools/parse_player_log.py` for current command-result and launch grouping.
@@ -182,7 +184,8 @@ Issue #39.1 is complete when the next worker can state all of the following with
 - #39 direct command-spend attribution is available.
 - `targetStateId` bridge works.
 - `targetAggregateControlledCommandCapReached` or its historical equivalent gates controlled command application only.
-- Vanilla same-target spillover launches are detected and reported separately.
+- Vanilla same-target spillover launches from skipped launchers are detected and reported separately.
+- Applied-launcher post-budget same-target spillover is detected and reported separately.
 - Conservative `DestroyShip` lines remain outcome hints, not exact kill attribution.
 - Actual vanilla salvo suppression / selected-ship distribution is out of scope and belongs to a later focused design before or during #43.
 

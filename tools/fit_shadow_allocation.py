@@ -179,6 +179,21 @@ class ControlledCapSpilloverDiagnostic:
 
 
 @dataclass
+class AppliedLauncherPostBudgetSpilloverDiagnostic:
+    experiment_id: str
+    target_id: str
+    target: str
+    command_result_id: str
+    applied_launcher: str
+    assigned_shots: int
+    direct_spent_shots: int
+    direct_budget_reached_line: int
+    same_target_none_correlated_try_fire_count: int
+    same_target_none_correlated_try_fire_lines: list[int]
+    interpretation: str
+
+
+@dataclass
 class CycleContext:
     cycle_id: str
     line: int
@@ -208,6 +223,7 @@ class FittingLogReport:
     representative_records: list[dict[str, object]]
     controlled_command_evidence: list[dict[str, object]]
     controlled_cap_spillover_diagnostics: list[dict[str, object]]
+    applied_launcher_post_budget_spillover_diagnostics: list[dict[str, object]]
     parser_summary: dict[str, object]
 
 
@@ -678,6 +694,113 @@ def controlled_cap_spillover_diagnostics(
     return diagnostics
 
 
+def applied_launcher_post_budget_spillover_diagnostics(
+    raw_records: list[dict[str, str | int]],
+    launch_records: list[LaunchEvidenceRecord],
+) -> list[AppliedLauncherPostBudgetSpilloverDiagnostic]:
+    """Find same-launcher vanilla launches after direct controlled budget is consumed."""
+    command_records = [
+        raw
+        for raw in raw_records
+        if str(raw.get("recordType", "unknown")) in CONTROLLED_COMMAND_RESULT_RECORD_TYPES
+        and raw.get("experimentId")
+    ]
+    applied_rows = [
+        raw
+        for raw in command_records
+        if str(raw.get("result", "unknown")).lower() == "applied"
+    ]
+
+    diagnostics: list[AppliedLauncherPostBudgetSpilloverDiagnostic] = []
+    direct_spent_cache: dict[str, dict[str, int]] = {}
+    for row in applied_rows:
+        experiment_id = str(row.get("experimentId", "unknown"))
+        command_result_id = str(row.get("commandResultId", "unknown"))
+        launcher_id = str(row.get("launcherId", "unknown"))
+        target_id = str(row.get("targetId", "unknown"))
+        assigned_shots = first_int(row.get("missilesAssigned"), row.get("assignedShots"))
+        if (
+            not assigned_shots
+            or assigned_shots <= 0
+            or command_result_id.lower() in {"", "none", "unknown", "null"}
+        ):
+            continue
+
+        direct_launches = sorted(
+            [
+                launch
+                for launch in launch_records
+                if launch.experiment_id == experiment_id
+                and launch.command_result_id == command_result_id
+                and launch.controlled_command_correlation == "directRuntimeContext"
+                and launch.launcher_id == launcher_id
+                and launch.target_id == target_id
+            ],
+            key=lambda launch: launch.line,
+        )
+        if not direct_launches:
+            continue
+
+        if experiment_id not in direct_spent_cache:
+            direct_spent_cache[experiment_id] = direct_spent_by_command_result(
+                launch_records,
+                experiment_id,
+            )
+        direct_spent = direct_spent_cache[experiment_id].get(command_result_id, 0)
+        if direct_spent < assigned_shots:
+            continue
+
+        budget_reached_line: int | None = None
+        for launch in direct_launches:
+            observed = launch.controlled_command_observed_spent_shots
+            if observed is None:
+                observed = launch.ammo_delta
+            if observed is not None and observed >= assigned_shots:
+                budget_reached_line = launch.line
+                break
+        if budget_reached_line is None:
+            budget_reached_line = max(launch.line for launch in direct_launches)
+
+        spillover_launches = [
+            launch
+            for launch in launch_records
+            if launch.launcher_id == launcher_id
+            and launch.target_id == target_id
+            and launch.line > budget_reached_line
+            and launch.controlled_command_correlation == "none"
+            and launch.command_result_id.lower() in {"", "none", "unknown", "null"}
+        ]
+        if not spillover_launches:
+            continue
+
+        diagnostics.append(
+            AppliedLauncherPostBudgetSpilloverDiagnostic(
+                experiment_id=experiment_id,
+                target_id=target_id,
+                target=compact_entity(
+                    str(row.get("target", "unknown")),
+                    target_id,
+                    str(row.get("targetTeam", "unknown")),
+                ),
+                command_result_id=command_result_id,
+                applied_launcher=launcher_summary(row, direct_spent),
+                assigned_shots=assigned_shots,
+                direct_spent_shots=direct_spent,
+                direct_budget_reached_line=budget_reached_line,
+                same_target_none_correlated_try_fire_count=len(spillover_launches),
+                same_target_none_correlated_try_fire_lines=sorted(
+                    {launch.line for launch in spillover_launches}
+                ),
+                interpretation=(
+                    "applied launcher consumed its direct controlled budget, "
+                    "then continued same-target none-correlated vanilla launches"
+                ),
+            )
+        )
+
+    return diagnostics
+
+
 def direct_spent_by_command_result(
     launch_records: list[LaunchEvidenceRecord],
     experiment_id: str,
@@ -932,6 +1055,10 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
     classified_records = classify_records(cycles, raw_records)
     command_evidence = controlled_command_rows(raw_records, launch_records, target_outcomes)
     spillover_diagnostics = controlled_cap_spillover_diagnostics(raw_records, launch_records)
+    post_budget_spillover_diagnostics = applied_launcher_post_budget_spillover_diagnostics(
+        raw_records,
+        launch_records,
+    )
     classification_counts = Counter(record.classification for record in classified_records)
     limitation_counts = Counter(
         limitation for record in classified_records for limitation in record.limitations
@@ -965,6 +1092,9 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
         controlled_command_evidence=[asdict(record) for record in command_evidence],
         controlled_cap_spillover_diagnostics=[
             asdict(record) for record in spillover_diagnostics
+        ],
+        applied_launcher_post_budget_spillover_diagnostics=[
+            asdict(record) for record in post_budget_spillover_diagnostics
         ],
         parser_summary=asdict(summary),
     )
@@ -1799,6 +1929,9 @@ def format_markdown_report(report: AggregateReport) -> str:
     lines.extend(["", "## Controlled cap spillover diagnostics", ""])
     lines.extend(controlled_cap_spillover_markdown_lines(report.logs))
 
+    lines.extend(["", "## Applied launcher post-budget spillover diagnostics", ""])
+    lines.extend(applied_launcher_post_budget_spillover_markdown_lines(report.logs))
+
     lines.extend(["", "## Per-log summaries", ""])
     for log in report.logs:
         parser_reasons = "; ".join(log.parser_reasons) if log.parser_reasons else "none"
@@ -1887,6 +2020,10 @@ def format_markdown_report(report: AggregateReport) -> str:
             "  command application/attribution cap fired. It does not suppress",
             "  vanilla same-target launches, which are reported separately as",
             "  none-correlated spillover when visible.",
+            "- Applied launcher post-budget spillover means a directly controlled",
+            "  launcher consumed its assigned direct command budget, then later",
+            "  produced same-target none-correlated TryFire rows. It is visible",
+            "  vanilla spillover evidence, not exact causal expenditure attribution.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -2200,6 +2337,63 @@ def controlled_cap_spillover_markdown_lines(logs: list[FittingLogReport]) -> lis
         )
     if len(rows) > 20:
         lines.append(f"- table truncated to 20/{len(rows)} spillover cases")
+    return lines
+
+
+def applied_launcher_post_budget_spillover_markdown_lines(
+    logs: list[FittingLogReport],
+) -> list[str]:
+    """Return post-budget spillover diagnostics Markdown lines."""
+    rows = [
+        row
+        for log in logs
+        for row in log.applied_launcher_post_budget_spillover_diagnostics
+    ]
+    if not rows:
+        return [
+            "- no applied-launcher same-target vanilla spillover was detected after direct controlled budget consumption"
+        ]
+
+    lines = [
+        f"- post-budget spillover cases: {len(rows)}",
+        (
+            "- interpretation: a directly controlled launcher consumed its "
+            "assigned command budget, then same-target none-correlated vanilla "
+            "launches remained visible."
+        ),
+        "",
+        "| experiment | target | applied launcher | command result | assigned | direct spent | budget reached line | none-correlated same-target TryFire after budget | interpretation |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows[:20]:
+        lines.append(
+            "| {experiment} | {target} | {launcher} | {command_result} | {assigned} | {spent} | {budget_line} | {try_fire} | {interpretation} |".format(
+                experiment=markdown_cell(str(row.get("experiment_id", "unknown"))),
+                target=markdown_cell(
+                    f"{row.get('target', 'unknown')} ({row.get('target_id', 'unknown')})"
+                ),
+                launcher=markdown_cell(str(row.get("applied_launcher", "unknown"))),
+                command_result=markdown_cell(str(row.get("command_result_id", "unknown"))),
+                assigned=format_optional_int(row.get("assigned_shots")),
+                spent=format_optional_int(row.get("direct_spent_shots")),
+                budget_line=format_optional_int(row.get("direct_budget_reached_line")),
+                try_fire=markdown_cell(
+                    "{count} @ {lines}".format(
+                        count=row.get("same_target_none_correlated_try_fire_count", 0),
+                        lines=",".join(
+                            str(value)
+                            for value in row.get(
+                                "same_target_none_correlated_try_fire_lines",
+                                [],
+                            )
+                        ),
+                    )
+                ),
+                interpretation=markdown_cell(str(row.get("interpretation", "unknown"))),
+            )
+        )
+    if len(rows) > 20:
+        lines.append(f"- table truncated to 20/{len(rows)} post-budget spillover cases")
     return lines
 
 

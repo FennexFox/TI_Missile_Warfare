@@ -306,6 +306,8 @@ controlled command spend from same-target none-correlated vanilla spillover
 launches. Actual vanilla salvo suppression and selected-ship budget distribution
 remain unresolved and belong to a later focused design before or during #43.
 
+The report also separates applied-launcher post-budget spillover: a ship can consume its direct controlled assigned-shot budget and later keep producing same-target none-correlated `TryFire` rows. This is visible vanilla spillover evidence, not exact causal expenditure attribution.
+
 ### Future combat outcome hook RE issue
 
 A separate follow-up issue should investigate stable combat outcome hooks for

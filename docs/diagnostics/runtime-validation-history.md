@@ -838,3 +838,5 @@ none-correlated vanilla spillover. Actual vanilla salvo suppression and
 selected-ship budget distribution remain unresolved and are out of scope for
 #39.1; they require a later focused design before or during #43. The regenerated
 report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.
+
+A subsequent rename smoke log also showed the applied-launcher post-budget spillover pattern: after the applied launcher consumed its direct controlled assigned-shot budget, later same-launcher/same-target `TryFire` rows could still appear with `controlledCommandCorrelation="none"`. The fitting report now separates this as `Applied launcher post-budget spillover diagnostics`, distinct from skipped-launcher controlled cap spillover.
