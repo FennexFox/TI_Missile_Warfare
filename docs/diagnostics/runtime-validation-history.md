@@ -665,3 +665,178 @@ Remaining limitation: controlled result rows still report command-result
 `missilesSpent` as `unknown`. LaunchLog pre/post ammo deltas are visible
 elsewhere in the log, but they are not yet directly correlated back to each
 controlled command result row.
+
+## Issue #39 controlled-correlation instrumentation attempt
+
+Issue #39 reviewed the #38 selected-group controlled evidence as the first
+selected-group learning-loop checkpoint. The selected-group smoke is sufficient
+to show bounded command behavior: two controlled experiment ids, three selected
+ships, six applied commands, four `perShipCommandCapReached` skips, zero failed
+commands, zero scope violations, zero same-team missile target snapshots, no
+parser suspicious patterns, and no MissileWarfare issues.
+
+The regenerated pre-instrumentation #39 fitting artifact includes a controlled
+command result evidence table tied to experiment id, selected ship, allocator
+launcher, target, command result, and immediate same-launcher/same-target launch
+evidence where visible. It found 10 command result rows: six applied and four
+skipped. Direct command-result `missilesSpent` remained numeric on 0/10 rows.
+All 10 rows had one immediate same-launcher/same-target `MissileWeapon.TryFire`
+ammo delta, but the skipped rows also accounted for four observed deltas. That
+means nearby launch evidence is visible, but it is not causal command-spend
+proof.
+
+#39 now adds diagnostics-only correlation support for fresh runtime evidence:
+controlled apply-gate/result rows log `commandResultId`, successful applied
+commands register a matching launch context, and later `MissileWeapon.TryFire`
+rows can report `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots` when
+the launcher/target context matches.
+
+No allocator parameters changed. The old controlled log still has 0/10 directly
+stamped rows and 10/10 line-window heuristic rows, so it remains insufficient to
+justify a heuristic/rule/parameter-family change. A fresh instrumented
+selected-group controlled run is required before #39 can decide whether one
+specific heuristic family should be tuned or whether a final no-tuning/blocker
+decision is warranted.
+
+## Issue #39 fresh instrumented log target identity follow-up
+
+A fresh instrumented `Player.log` after the first #39 correlation slice confirmed
+that launch-side telemetry fields are emitted, including launcher/target ids,
+`visibleAmmoDelta`, `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots`.
+However, direct command correlation still did not occur in that log.
+
+The identified blocker was target identity mismatch rather than missing launch
+telemetry. Controlled command result rows used allocator target ids such as
+`280` / `283`, while `MissileWeapon.TryFire` launch rows reported a runtime
+`CombatShipController` stable id for `targetId`. The target text still exposed
+the tactical target id, so line-window evidence remained visible, but the direct
+runtime context match could not attribute the launch to the command result.
+
+The follow-up fix adds a diagnostics-only target identity bridge: launch rows now
+also report `targetStateId`, runtime context matching accepts either launch
+`targetId` or bridged `targetStateId`, and the fitting report prefers
+`targetStateId` / target-text id fallback before falling back to runtime stable
+`targetId`. A new instrumented selected-group smoke is still required before #39
+can decide whether direct stamped launch/spend evidence justifies one bounded
+heuristic change.
+
+## Issue #39 direct command-spend correlation smoke success
+
+A fresh selected-group controlled smoke after the target identity bridge
+confirmed direct command-result launch/spend correlation:
+
+- selected ship count was 3, within `selectedGroupMaxShips=3`;
+- controlled command result rows were 4 total: three `appliedDecision` rows and
+  one `skippedDecision` row with `perShipCommandCapReached`;
+- failed controlled commands remained zero;
+- `MissileWeapon.TryFire` rows with `controlledCommandCorrelation="directRuntimeContext"`
+  were observed for the applied commands;
+- each applied command produced six directly stamped launch rows and observed
+  spent shots of six;
+- the skipped command produced no direct launch attribution.
+
+This resolves the selected-group command-spend attribution blocker. The remaining
+#39 evidence gap is outcome quality: the logs now show that controlled commands
+spent missiles, but they still need conservative evidence about overkill,
+under-saturation, target mismatch, or point-defense absorption before any
+heuristic family should be tuned.
+
+The fitting report now also records best-effort target destruction hints from
+vanilla `CombatManager ActiveShip(DestroyShip)` lines when they occur after a
+controlled command for the same target id. This is deliberately labeled as
+post-command outcome evidence, not unique projectile/hit/kill attribution.
+
+## Issue #39 multi-target direct-correlation smoke follow-up
+
+A later controlled smoke produced direct launch/spend evidence across multiple
+controlled targets. Applied commands produced direct `MissileWeapon.TryFire`
+correlation rows, while repeated `perShipCommandCapReached` skipped rows did not
+receive direct launch attribution. Vanilla `DestroyShip` text later appeared for
+Medusa and Yudachi after directly correlated launches to those targets.
+
+The fitting report now attaches target destruction hints only to command rows
+with direct launch evidence, preventing skipped same-target rows from inheriting
+a misleading outcome hint. The evidence remains conservative: target destruction
+after directly correlated launches is useful outcome-quality evidence, but still
+not exact projectile, hit, or kill attribution.
+
+## Issue #39 Sphinx/Ghost direct-correlation smoke follow-up
+
+A later controlled smoke provided another successful direct-correlation sample:
+Puebla spent six directly correlated shots on Sphinx before Sphinx appeared in
+vanilla `DestroyShip` text, while Friedland and Ramillies each spent eight
+directly correlated shots on Ghost before Ghost appeared in vanilla `DestroyShip`
+text. Repeated `perShipCommandCapReached` skipped rows had no direct launch
+attribution.
+
+This further confirms that the #39 command-spend attribution path is functioning
+and that post-direct-launch destruction hints can support outcome-quality review.
+The Ghost case is now a concrete tuning candidate for a later implementation
+slice: same-target duplicate kill packages or target-level aggregate salvo caps.
+No additional diagnostics code is needed for the current #39 evidence closeout;
+heuristic/rule changes should be handled separately from the instrumentation PR.
+
+## Issue #39 pre-tuning diagnostic closeout
+
+The fitting report now includes a report-only `Controlled tuning candidates`
+section. It groups directly correlated applied commands by experiment and target
+and flags same-target duplicate kill-package candidates when multiple direct
+commands spend on the same target and aggregate observed spend exceeds available
+kill-size evidence.
+
+This closes the useful diagnostics work before a heuristic change: command-spend
+correlation is validated, target identity bridging is validated, skipped rows are
+separated from applied direct launches, conservative post-direct-launch
+DestroyShip hints are available, and duplicate same-target kill-package evidence
+is now mechanically visible for the next focused rule-change PR.
+
+## Issue #39 same-target controlled-command cap follow-up
+
+The focused follow-up implements a selected-group controlled command gate for the
+same-target duplicate kill-package candidate. Within one controlled experiment,
+after a target receives an applied command package, later eligible commands to
+that same target are skipped with
+`targetAggregateControlledCommandCapReached` when they would exceed the
+experiment's target-level assigned-shot budget.
+
+The rule is scoped to the controlled selected-group command path and preserves
+the existing selected-scope, hostile-target, per-ship, and group command caps.
+It is not a fleet-wide allocator rewrite.
+
+Issue #39.1 corrects the interpretation of this follow-up: commit `92ebc65` is
+not an actual missile expenditure cap. It only prevents duplicate controlled
+command application and direct command-spend attribution for the same target
+inside the controlled selected-group experiment. Vanilla same-target launches
+from skipped selected ships can still occur and remain visible as
+none-correlated `MissileWeapon.TryFire` rows.
+
+Evidence came from a regenerated local report at
+`artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`: the
+Yudachi experiment spent 14 directly correlated shots across two same-target
+commands, and the Ghost experiment spent 16 directly correlated shots across two
+same-target commands. Both targets later appeared in vanilla `DestroyShip` text,
+which remains conservative post-direct-launch outcome evidence rather than exact
+projectile, hit, or kill attribution.
+
+Build validation passed locally.
+
+Fresh runtime smoke on the active `Player.log` written 2026-06-23 11:04 local
+verified the new skip reason in real combat logs. Experiment
+`dryrun-20260623T020248174Z-1` applied one direct command from Pharsalos to
+Dragon#281 for eight assigned and eight directly observed spent shots. Later
+same-target eligible commands from El Alamein and Kasserine Pass were skipped
+with the target aggregate controlled-command cap. Older artifacts show the
+pre-rename reason `targetAggregateSalvoCapReached`; newly generated logs use
+`targetAggregateControlledCommandCapReached`. Dragon later appeared in
+conservative post-direct-launch `DestroyShip` outcome text.
+
+The fitting report now has a `Controlled cap spillover diagnostics` section that
+keeps direct controlled command spend separate from later same-target
+none-correlated vanilla spillover. Actual vanilla salvo suppression and
+selected-ship budget distribution remain unresolved and are out of scope for
+#39.1; they require a later focused design before or during #43. The regenerated
+report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.
+
+A subsequent rename smoke log also showed the applied-launcher post-budget spillover pattern: after the applied launcher consumed its direct controlled assigned-shot budget, later same-launcher/same-target `TryFire` rows could still appear with `controlledCommandCorrelation="none"`. The fitting report now separates this as `Applied launcher post-budget spillover diagnostics`, distinct from skipped-launcher controlled cap spillover.

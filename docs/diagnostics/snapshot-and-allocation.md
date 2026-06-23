@@ -60,14 +60,22 @@ The command-apply boundary has a separate default-off setting:
 
 - `AllowCommandApply`
 
+Recommendation-only mode is a second command-apply interlock:
+
+- `EnableRecommendationOnlyMode`
+
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
 base diagnostics toggle. Controlled dry-run diagnostics also default to
 `false`. `AllowCommandApply` also defaults to `false`.
+`EnableRecommendationOnlyMode` defaults to `true`.
 
 When `AllowCommandApply=False`, the #36 hard stop remains active and controlled
-experiments are diagnostics-only. When `AllowCommandApply=True`, Issue #38 can
-perform at most one live command attempt per selected ship and at most three
-live command attempts total for the next explicitly armed selected-group
+experiments are diagnostics-only. When `AllowCommandApply=True` but
+`EnableRecommendationOnlyMode=True`, the gate still blocks with
+`blockedByRecommendationOnlyMode`. Live apply requires both
+`AllowCommandApply=True` and `EnableRecommendationOnlyMode=False`; then Issue
+#38 can perform at most one live command attempt per selected ship and at most
+three live command attempts total for the next explicitly armed selected-group
 controlled experiment. The reviewed command path is
 `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState,
 CombatTargetableState)`, which queues the vanilla primary-target and salvo mode
@@ -175,7 +183,7 @@ the UMM panel, the next shadow allocation cycle is tagged with a local
 [AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
 [AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
 [AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
-[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
+[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" recommendationOnlyMode="True" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
 [AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" safetyGateBlockedCommands="1" result="dryRunOnly" resultReason="blockedBySafetyToggle"
 ```
 
@@ -213,9 +221,16 @@ the mod. If runtime logs do not naturally produce an eligible candidate, the
 synthetic `tools/fixtures/apply_gate_hard_stop.txt` fixture exercises the
 gate-reachable blocked path.
 
-Issue #37 changes only the gate-allowed case. With `AllowCommandApply=True`,
-an eligible candidate from exactly one selected command-panel ship can emit
-`gateResult="allowed"` and then one result row:
+With `AllowCommandApply=True` and `EnableRecommendationOnlyMode=True`, the same
+gate emits `blockReason="blockedByRecommendationOnlyMode"` and
+`recommendationOnlyMode="True"`. The synthetic
+`tools/fixtures/recommendation_only_apply_gate.txt` fixture exercises this
+explicit recommendation-only interlock.
+
+Issue #37 changes only the gate-allowed case. With `AllowCommandApply=True` and
+`EnableRecommendationOnlyMode=False`, an eligible candidate from exactly one
+selected command-panel ship can emit `gateResult="allowed"` and then one result
+row:
 
 ```text
 [AllocationLog] recordType="appliedDecision" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" commandIntent="salvoTargetRecommendationLiveApply" commandGranularity="shipAllSalvoCapableWeapons" commandPath="SelectSalvoTargetCommand.OnCommandExecute" candidateSource="allocatorAllocation" result="applied" reason="none" exceptionType="none" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0"

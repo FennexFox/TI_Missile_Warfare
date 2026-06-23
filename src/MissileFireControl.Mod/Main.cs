@@ -58,7 +58,9 @@ namespace MissileFireControl.Mod
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
                 "Allow controlled command apply (selected group, capped)");
-            Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
+            Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(
+                Settings.EnableRecommendationOnlyMode,
+                "Recommendation-only mode (blocks command apply)");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 
             GUILayout.BeginHorizontal();

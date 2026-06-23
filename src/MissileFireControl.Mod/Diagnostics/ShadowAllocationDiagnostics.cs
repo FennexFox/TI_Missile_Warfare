@@ -190,20 +190,7 @@ namespace MissileFireControl.Mod.Diagnostics
                     WriteDryRunApplyGate(dryRun, candidate, gateDecision);
                     if (!gateDecision.Blocked)
                     {
-                        CommandApplyResult applyResult;
-                        if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
-                        {
-                            applyResult = CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
-                        }
-                        else if (dryRun.HasAttempted(candidate.LauncherId))
-                        {
-                            applyResult = CommandApplyResult.Skipped("perShipCommandCapReached");
-                        }
-                        else
-                        {
-                            dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(candidate, snapshot);
-                        }
+                        CommandApplyResult applyResult = ApplyControlledCandidate(dryRun, candidate, snapshot);
 
                         if (applyResult.AppliedCommands > 0)
                         {
@@ -251,20 +238,7 @@ namespace MissileFireControl.Mod.Diagnostics
                     WriteDryRunApplyGate(dryRun, candidate, gateDecision);
                     if (!gateDecision.Blocked)
                     {
-                        CommandApplyResult applyResult;
-                        if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
-                        {
-                            applyResult = CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
-                        }
-                        else if (dryRun.HasAttempted(candidate.LauncherId))
-                        {
-                            applyResult = CommandApplyResult.Skipped("perShipCommandCapReached");
-                        }
-                        else
-                        {
-                            dryRun.MarkAttempted(candidate.LauncherId);
-                            applyResult = TryApplyControlledCommand(candidate, snapshot);
-                        }
+                        CommandApplyResult applyResult = ApplyControlledCandidate(dryRun, candidate, snapshot);
 
                         if (applyResult.AppliedCommands > 0)
                         {
@@ -480,11 +454,13 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "experimentId", request.ExperimentId);
             AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", ControlledCommandResultId(request, candidate));
             AppendPair(builder, "gateName", CommandApplyGateName);
             AppendPair(builder, "gateResult", gateDecision.Result);
             AppendPair(builder, "blockReason", gateDecision.Reason);
             AppendPair(builder, "controlledExperimentMode", gateDecision.ControlledExperimentMode ? "True" : "False");
             AppendPair(builder, "allowCommandApply", gateDecision.AllowCommandApply ? "True" : "False");
+            AppendPair(builder, "recommendationOnlyMode", gateDecision.RecommendationOnlyMode ? "True" : "False");
             AppendPair(builder, "candidateSource", candidate.CandidateSource);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationDryRun");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
@@ -519,11 +495,13 @@ namespace MissileFireControl.Mod.Diagnostics
                 return;
             }
 
+            string commandResultId = ControlledCommandResultId(request, candidate);
             StringBuilder builder = new StringBuilder(512);
             AppendPair(builder, "recordType", result.RecordType);
             AppendPair(builder, "experimentId", request.ExperimentId);
             AppendPair(builder, "cycleId", candidate.CycleId.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", commandResultId);
             AppendPair(builder, "commandIntent", "salvoTargetRecommendationLiveApply");
             AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
             AppendPair(builder, "commandPath", "SelectSalvoTargetCommand.OnCommandExecute");
@@ -556,6 +534,56 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "appliedCommands", result.AppliedCommands.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "failedCommands", result.FailedCommands.ToString(CultureInfo.InvariantCulture));
             Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static string ControlledCommandResultId(ControlledDryRunRequest request, CommandCandidateDecision candidate)
+        {
+            string experimentId = request == null ? "unknown-experiment" : request.ExperimentId;
+            string candidateId = candidate == null ? "unknown-candidate" : candidate.CandidateId;
+            return experimentId + ":" + candidateId;
+        }
+
+        private static CommandApplyResult ApplyControlledCandidate(
+            ControlledDryRunRequest dryRun,
+            CommandCandidateDecision candidate,
+            ExtractedCombatSnapshot snapshot)
+        {
+            if (dryRun == null || candidate == null)
+            {
+                return CommandApplyResult.Skipped("controlledExperimentUnavailable");
+            }
+
+            if (dryRun.HasReachedCommandCap(MaxLiveCommandsPerControlledExperiment))
+            {
+                return CommandApplyResult.Skipped("controlledGroupTriggerCapReached");
+            }
+
+            if (dryRun.HasAttempted(candidate.LauncherId))
+            {
+                return CommandApplyResult.Skipped("perShipCommandCapReached");
+            }
+
+            // #39 direct evidence showed duplicate selected-group kill packages
+            // on the same target; cap the experiment's aggregate command budget
+            // before invoking another ship-level vanilla salvo command.
+            if (dryRun.WouldExceedTargetBudget(candidate.TargetId, candidate.AssignedShots))
+            {
+                dryRun.MarkAttempted(candidate.LauncherId);
+                return CommandApplyResult.Skipped("targetAggregateControlledCommandCapReached");
+            }
+
+            dryRun.MarkAttempted(candidate.LauncherId);
+            CommandApplyResult applyResult = TryApplyControlledCommand(
+                dryRun,
+                candidate,
+                snapshot,
+                ControlledCommandResultId(dryRun, candidate));
+            if (applyResult.AppliedCommands > 0)
+            {
+                dryRun.MarkTargetBudget(candidate.TargetId, candidate.AssignedShots);
+            }
+
+            return applyResult;
         }
 
         private static void WriteDryRunIntent(
@@ -641,23 +669,40 @@ namespace MissileFireControl.Mod.Diagnostics
         {
             bool controlledExperimentMode = Main.Settings != null && Main.Settings.EnableControlledDryRunDiagnostics;
             bool allowCommandApply = Main.Settings != null && Main.Settings.AllowCommandApply;
+            bool recommendationOnlyMode = Main.Settings == null || Main.Settings.EnableRecommendationOnlyMode;
             if (!controlledExperimentMode || !allowCommandApply)
             {
                 return new CommandApplyGateDecision(
                     "blocked",
                     "blockedBySafetyToggle",
                     controlledExperimentMode,
-                    allowCommandApply);
+                    allowCommandApply,
+                    recommendationOnlyMode);
+            }
+
+            if (recommendationOnlyMode)
+            {
+                return new CommandApplyGateDecision(
+                    "blocked",
+                    "blockedByRecommendationOnlyMode",
+                    controlledExperimentMode,
+                    allowCommandApply,
+                    recommendationOnlyMode);
             }
 
             return new CommandApplyGateDecision(
                 "allowed",
                 "none",
                 controlledExperimentMode,
-                allowCommandApply);
+                allowCommandApply,
+                recommendationOnlyMode);
         }
 
-        private static CommandApplyResult TryApplyControlledCommand(CommandCandidateDecision candidate, ExtractedCombatSnapshot snapshot)
+        private static CommandApplyResult TryApplyControlledCommand(
+            ControlledDryRunRequest request,
+            CommandCandidateDecision candidate,
+            ExtractedCombatSnapshot snapshot,
+            string commandResultId)
         {
             if (candidate == null || snapshot == null)
             {
@@ -720,16 +765,27 @@ namespace MissileFireControl.Mod.Diagnostics
 
             try
             {
+                CombatLaunchDiagnostics.RegisterControlledCommandContext(
+                    commandResultId,
+                    request == null ? "unknown" : request.ExperimentId,
+                    candidate.CandidateId,
+                    candidate.LauncherId,
+                    candidate.LauncherName,
+                    candidate.TargetId,
+                    candidate.TargetName,
+                    candidate.AssignedShots);
                 executeMethod.Invoke(command, new[] { launcher, target });
             }
             catch (TargetInvocationException ex)
             {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
                 return CommandApplyResult.Failed(
                     "commandInvocationFailed",
                     ex.InnerException == null ? ex.GetType().Name : ex.InnerException.GetType().Name);
             }
             catch (Exception ex)
             {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
                 return CommandApplyResult.Failed("commandInvocationFailed", ex.GetType().Name);
             }
 
@@ -1845,6 +1901,7 @@ namespace MissileFireControl.Mod.Diagnostics
         private sealed class ControlledDryRunRequest
         {
             private readonly HashSet<string> _attemptedShipIds = new HashSet<string>();
+            private readonly Dictionary<string, TargetBudget> _targetBudgets = new Dictionary<string, TargetBudget>();
 
             public ControlledDryRunRequest(string experimentId, string requestedUtc)
             {
@@ -1876,6 +1933,41 @@ namespace MissileFireControl.Mod.Diagnostics
                 return commandCap > 0 && _attemptedShipIds.Count >= commandCap;
             }
 
+            public bool WouldExceedTargetBudget(string targetId, int assignedShots)
+            {
+                if (!HasConcreteToken(targetId) || assignedShots <= 0)
+                {
+                    return false;
+                }
+
+                TargetBudget budget;
+                if (!_targetBudgets.TryGetValue(targetId, out budget))
+                {
+                    return false;
+                }
+
+                int targetShotBudget = Math.Max(budget.MaxAssignedShots, assignedShots);
+                return budget.AppliedAssignedShots + assignedShots > targetShotBudget;
+            }
+
+            public void MarkTargetBudget(string targetId, int assignedShots)
+            {
+                if (!HasConcreteToken(targetId) || assignedShots <= 0)
+                {
+                    return;
+                }
+
+                TargetBudget budget;
+                if (!_targetBudgets.TryGetValue(targetId, out budget))
+                {
+                    budget = new TargetBudget();
+                    _targetBudgets[targetId] = budget;
+                }
+
+                budget.MaxAssignedShots = Math.Max(budget.MaxAssignedShots, assignedShots);
+                budget.AppliedAssignedShots += assignedShots;
+            }
+
             public bool HasAttemptedAll(CommandScopeEvidence commandScope)
             {
                 return commandScope != null
@@ -1890,6 +1982,13 @@ namespace MissileFireControl.Mod.Diagnostics
                     && commandScope.Count > 0
                     && commandScope.Count <= MaxSelectedGroupShipCount
                     && commandScope.Ids.Any(id => !HasAttempted(id));
+            }
+
+            private sealed class TargetBudget
+            {
+                public int AppliedAssignedShots { get; set; }
+
+                public int MaxAssignedShots { get; set; }
             }
         }
 
@@ -2158,12 +2257,14 @@ namespace MissileFireControl.Mod.Diagnostics
                 string result,
                 string reason,
                 bool controlledExperimentMode,
-                bool allowCommandApply)
+                bool allowCommandApply,
+                bool recommendationOnlyMode)
             {
                 Result = string.IsNullOrWhiteSpace(result) ? "blocked" : result;
                 Reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
                 ControlledExperimentMode = controlledExperimentMode;
                 AllowCommandApply = allowCommandApply;
+                RecommendationOnlyMode = recommendationOnlyMode;
             }
 
             public string Result { get; }
@@ -2173,6 +2274,8 @@ namespace MissileFireControl.Mod.Diagnostics
             public bool ControlledExperimentMode { get; }
 
             public bool AllowCommandApply { get; }
+
+            public bool RecommendationOnlyMode { get; }
 
             public bool Blocked => Result == "blocked";
         }

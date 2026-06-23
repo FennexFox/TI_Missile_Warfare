@@ -12,7 +12,10 @@ allocator / friendly-target candidates wait, and the first selected-team hostile
 candidate can apply exactly one vanilla salvo-target command. Issue #38 expands
 that path to a small explicitly selected player missile group with one attempt
 per selected ship and three attempts per trigger. The path remains default-off
-and is still not fleet-wide allocation.
+and is still not fleet-wide allocation. Issue #39 is continuing as a controlled
+evidence fitting loop: selected-group safety evidence exists, but fresh
+instrumented command-result-to-launch/spend correlation is still required before
+any heuristic/rule/parameter-family change is justified.
 
 Current blocker:
 
@@ -38,9 +41,16 @@ Current missing or provisional inputs:
 - Issue #37 adds and runtime-smoke-validates a first live command path only for
   one explicitly selected player missile ship and one resolved hostile target
   from a selected-team allocator cycle;
-- Issue #38 adds selected-group scaffolding and parser reporting for two to
-  three explicitly selected player missile ships, but still needs fresh runtime
-  smoke before it can be treated as validated combat evidence;
+- Issue #38 selected-group runtime smoke passed for two controlled experiments,
+  three selected ships, six applied commands, four
+  `perShipCommandCapReached` skips, zero failed commands, zero scope
+  violations, zero same-team missile target snapshots, and no MissileWarfare
+  issues;
+- Issue #39 adds diagnostics-only `commandResultId` launch correlation support,
+  but the existing #38 log predates those fields and still does not justify
+  heuristic tuning because direct command-result missile spend, causal
+  launch/outcome correlation, target mismatch, overkill, and under-saturation
+  outcome evidence are not available;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -165,9 +175,10 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending later selected-group runtime validation and fleet-wide
-scope expansion. #37 supplies selected-single-ship live smoke evidence only, and
-#38 is the selected-group safety/fitting rung before #43 fleet-wide eligibility.
+Status: blocked pending fleet-wide scope expansion and stronger controlled
+outcome evidence. #37 supplies selected-single-ship live smoke evidence, #38
+supplies selected-group safety evidence, and #39 is adding controlled
+command-result-to-launch/spend diagnostics before any heuristic tuning decision.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -216,18 +227,96 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Validate the #38 selected-group rung with fresh runtime smoke before using it
-   for #39 evidence review or #43 fleet-wide planning. The smoke should preserve
-   the same checks as #37 while adding group attribution: `launcherId` names one
-   selected ship, `allocatorLauncherId` names the selected-group cycle producer,
-   `targetTeam` differs from `launcherTeam`, per-ship and per-trigger caps hold,
-   and there are no scope violations, same-team missile target snapshots, or
-   MissileWarfare warnings/errors.
-2. Re-run selected-log fitting after the Issue #29 PD capability schema is
+1. Run a fresh selected-group controlled smoke with the #39 `commandResultId`
+   instrumentation, then regenerate
+   `artifacts\shadow-fitting\heuristic_tuning_controlled` and reassess whether
+   directly stamped spend/launch evidence identifies one bounded heuristic
+   family to tune.
+2. Implement #44's experiment corpus and parameter ledger so future fitting
+   loops preserve controlled-live and shadow-replay provenance without treating
+   shadow replay as causal combat proof.
+3. Re-run selected-log fitting after the Issue #29 PD capability schema is
    present in fresh real combat logs and
    record whether multiple real logs remain free of defaulted or evidence-limited
    classifications.
-3. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+4. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-4. Expand controlled apply only through the planned #38 selected subgroup and
-   #43 fleet-wide rungs after #37 evidence is understood.
+5. Expand controlled apply only through #43's fleet-wide rung after preserving
+   the #37/#38 safety constraints, and do not treat #39 as evidence of a
+   successful heuristic tuning change unless a fresh controlled run produces
+   directly stamped causal evidence.
+
+### Issue #39 target identity bridge note
+
+A fresh instrumented #39 log showed that launch telemetry was present but direct
+correlation still failed because command results and `MissileWeapon.TryFire`
+launch rows used different target identity forms. The #39 diagnostics now add a
+launch-side `targetStateId` bridge and fitting-report fallback so the next fresh
+selected-group smoke can test direct command-result launch/spend correlation
+instead of relying on same-launcher/same-target line-window evidence.
+
+### Issue #39 direct correlation status
+
+The selected-group command-spend blocker is now resolved for the #39 diagnostic
+path: a fresh controlled smoke produced directly stamped `MissileWeapon.TryFire`
+rows for applied command results, while the skipped command had no direct launch
+attribution. The remaining blocker for heuristic tuning is outcome quality, not
+command-spend attribution. Parser/report tooling now records conservative
+post-command target destruction hints from vanilla `DestroyShip` log text, but
+exact hit/kill attribution remains out of scope until a stable combat outcome
+hook is identified.
+
+### Issue #39 follow-up boundary
+
+The latest selected-group smokes show stable direct command-spend correlation and
+post-direct-launch target destruction hints. The current diagnostics PR does not
+need more instrumentation code. The next implementation candidate should be a
+separate focused heuristic/rule slice around same-target duplicate kill packages
+or target-level aggregate salvo caps, using the Ghost double kill-sized salvo as
+supporting evidence.
+
+### Issue #39 pre-tuning diagnostic closeout
+
+Before the next heuristic/rule PR, #39 now exposes same-target duplicate
+kill-package candidates directly in the fitting report. The report-only section
+uses direct command-spend rows and available kill-size/outcome hints to identify
+candidate target-level aggregate salvo caps. The actual allocator behavior change
+remains a separate focused follow-up.
+
+### Issue #39 same-target controlled-command cap follow-up
+
+The focused follow-up implements the first bounded rule from that evidence:
+selected-group controlled command experiments now skip later eligible commands to
+the same target with `targetAggregateControlledCommandCapReached` after the
+experiment has already applied that target's assigned-shot budget. The change is
+deliberately limited to the controlled selected-group command gate and does not
+expand command scope or claim fleet-wide allocation readiness.
+
+Fresh runtime smoke on `Player.log` written 2026-06-23 11:04 local confirmed the
+new skip reason in a same-target selected-group case: after one direct Dragon
+command, later eligible Dragon commands were skipped with
+the target aggregate controlled-command cap. Older artifacts use the pre-rename
+label `targetAggregateSalvoCapReached`; newly generated logs use
+`targetAggregateControlledCommandCapReached`.
+
+Issue #39.1 closes the fitting-readiness boundary around that smoke: commit
+`92ebc65` is a controlled-command application and attribution guard, not an
+actual missile expenditure cap. The fitting report now separates direct
+controlled command spend from same-target none-correlated vanilla spillover
+launches. Actual vanilla salvo suppression and selected-ship budget distribution
+remain unresolved and belong to a later focused design before or during #43.
+
+The report also separates applied-launcher post-budget spillover: a ship can consume its direct controlled assigned-shot budget and later keep producing same-target none-correlated `TryFire` rows. This is visible vanilla spillover evidence, not exact causal expenditure attribution.
+
+### Future combat outcome hook RE issue
+
+A separate follow-up issue should investigate stable combat outcome hooks for
+missile hit/intercept/damage/kill attribution. This is not an immediate blocker
+for the #39 same-target controlled-command cap or selected-group heuristic work.
+It belongs to the deeper measurement layer that becomes more valuable after #44
+corpus/ledger infrastructure and before or alongside outcome-aware #43
+fleet-wide evaluation.
+
+Until that issue finds a stable hook, `DestroyShip` text remains a conservative
+post-direct-launch outcome hint rather than exact projectile, command, or kill
+attribution.
