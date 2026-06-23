@@ -139,3 +139,29 @@ Add a conservative filter for bad launches:
 - Salvo would arrive too desynchronized.
 
 Start with player-controlled launches. Patch AI behavior later, if at all.
+
+## Future combat outcome hook issue
+
+A separate follow-up issue should investigate combat outcome hooks for missile
+hit, intercept, damage, and kill attribution. This is not a prerequisite for the
+immediate #39 same-target controlled-command cap work: #39 already has direct
+command-spend evidence and conservative post-direct-launch `DestroyShip` outcome
+hints. The outcome-hook work is a deeper measurement layer for later
+outcome-aware fitting and fleet-wide evaluation.
+
+The research question is whether Terra Invicta exposes stable managed-code hooks
+for any of the following, in increasing precision:
+
+- projectile expiration or removal;
+- projectile miss / lost target;
+- point-defense interception;
+- projectile hit;
+- damage packet application;
+- target disabled/destroyed;
+- destroy/disable cause attributable to projectile, launcher, or command
+  context.
+
+Any hook added under that issue must be diagnostics-only first and must not
+change allocator heuristics, live command behavior, or command scope. Until a
+stable hook is found, vanilla `DestroyShip` text remains a conservative outcome
+hint only, not exact kill attribution.

@@ -296,3 +296,16 @@ Fresh runtime smoke on `Player.log` written 2026-06-23 11:04 local confirmed the
 new skip reason in a same-target selected-group case: after one direct Dragon
 command, later eligible Dragon commands were skipped with
 `targetAggregateSalvoCapReached`.
+
+### Future combat outcome hook RE issue
+
+A separate follow-up issue should investigate stable combat outcome hooks for
+missile hit/intercept/damage/kill attribution. This is not an immediate blocker
+for the #39 same-target controlled-command cap or selected-group heuristic work.
+It belongs to the deeper measurement layer that becomes more valuable after #44
+corpus/ledger infrastructure and before or alongside outcome-aware #43
+fleet-wide evaluation.
+
+Until that issue finds a stable hook, `DestroyShip` text remains a conservative
+post-direct-launch outcome hint rather than exact projectile, command, or kill
+attribution.
