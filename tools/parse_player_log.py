@@ -942,10 +942,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     ] += 1
                     selected_count = try_parse_int(pairs.get("selectedShipCount"))
                     command_scope_count = try_parse_int(pairs.get("commandScopeShipCount"))
+                    command_scope_source = pairs.get("commandScopeSource", "")
+                    selected_scope_source_visible = (
+                        "selectedFriendlyShip" in command_scope_source
+                        or "groupSelectedFriendlyShips" in command_scope_source
+                    )
                     if (
                         selected_count is not None
                         and command_scope_count is not None
                         and selected_count != command_scope_count
+                        and selected_scope_source_visible
                     ):
                         controlled_live_apply_mismatch_counts["selectedScopeCommandScopeCountMismatch"] += 1
 

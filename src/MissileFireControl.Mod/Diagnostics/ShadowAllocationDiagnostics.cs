@@ -161,6 +161,7 @@ namespace MissileFireControl.Mod.Diagnostics
 
             int allocationIndex = 0;
             int safetyGateBlockedCommands = 0;
+
             int appliedCommands = 0;
             int liveSkippedCommands = 0;
             int liveFailedCommands = 0;
@@ -896,7 +897,16 @@ namespace MissileFireControl.Mod.Diagnostics
                 return "commandApplySkipped";
             }
 
-            return safetyGateBlockedCommands > 0 ? "blockedBySafetyToggle" : "dryRunOnly";
+            if (safetyGateBlockedCommands > 0)
+            {
+                bool recommendationOnlyMode = Main.Settings == null || Main.Settings.EnableRecommendationOnlyMode;
+                bool allowCommandApply = Main.Settings != null && Main.Settings.AllowCommandApply;
+                return allowCommandApply && recommendationOnlyMode
+                    ? "blockedByRecommendationOnlyMode"
+                    : "blockedBySafetyToggle";
+            }
+
+            return "dryRunOnly";
         }
 
         private static bool ShouldWaitForSelectedCandidate(
