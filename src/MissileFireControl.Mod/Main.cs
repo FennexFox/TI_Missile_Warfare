@@ -1,4 +1,5 @@
 using HarmonyLib;
+using MissileFireControl.Mod.Diagnostics;
 using MissileFireControl.Mod.Patches;
 using UnityEngine;
 using UnityModManagerNet;
@@ -42,7 +43,7 @@ namespace MissileFireControl.Mod
         private static void OnGUI(UnityModManager.ModEntry modEntry)
         {
             GUILayout.Label("MissileWarfare - scaffold build");
-            GUILayout.Label("No live launch behavior is changed yet.");
+            GUILayout.Label("Controlled command apply is default-off and requires an explicit one-shot trigger.");
 
             Settings.EnableDiagnostics = GUILayout.Toggle(Settings.EnableDiagnostics, "Enable diagnostic logging");
             Settings.EnableSnapshotDiagnostics = GUILayout.Toggle(
@@ -51,7 +52,15 @@ namespace MissileFireControl.Mod
             Settings.EnableShadowAllocationDiagnostics = GUILayout.Toggle(
                 Settings.EnableShadowAllocationDiagnostics,
                 "Enable shadow allocation diagnostics (log-only)");
-            Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(Settings.EnableRecommendationOnlyMode, "Recommendation-only mode");
+            Settings.EnableControlledDryRunDiagnostics = GUILayout.Toggle(
+                Settings.EnableControlledDryRunDiagnostics,
+                "Enable controlled command experiment diagnostics");
+            Settings.AllowCommandApply = GUILayout.Toggle(
+                Settings.AllowCommandApply,
+                "Allow controlled command apply (selected group, capped)");
+            Settings.EnableRecommendationOnlyMode = GUILayout.Toggle(
+                Settings.EnableRecommendationOnlyMode,
+                "Recommendation-only mode (blocks command apply)");
             Settings.EnableLaunchDiscipline = GUILayout.Toggle(Settings.EnableLaunchDiscipline, "Enable launch-discipline checks (placeholder)");
 
             GUILayout.BeginHorizontal();
@@ -66,6 +75,11 @@ namespace MissileFireControl.Mod
             if (GUILayout.Button("Write diagnostic ping"))
             {
                 Log.Info("Diagnostic ping from UMM panel.");
+            }
+
+            if (GUILayout.Button("Trigger controlled command experiment"))
+            {
+                Log.Info(ShadowAllocationDiagnostics.RequestControlledDryRun());
             }
         }
 

@@ -14,7 +14,9 @@ namespace MissileFireControl.Mod.Adapters
         }
 
         public string Source { get; set; }
+        public object LauncherRuntimeObject { get; set; }
         public ShipSnapshot Launcher { get; set; }
+        public object TargetRuntimeObject { get; set; }
         public ShipSnapshot Target { get; set; }
         public string TargetIdentitySource { get; set; }
         public MissileProfile Missile { get; set; }
@@ -63,6 +65,8 @@ namespace MissileFireControl.Mod.Adapters
         public Vector3d TargetVelocityKps { get; set; }
         public string TargetVelocityEvidenceSource { get; set; }
         public string TargetVelocityMissingReason { get; set; }
+        public object TargetRuntimeObject { get; set; }
+        public string TargetIdentityEvidenceSource { get; set; }
     }
 
     internal static class CombatSnapshotExtractor
@@ -79,11 +83,17 @@ namespace MissileFireControl.Mod.Adapters
             object originVelocity = GetArg(args, 5);
             string targetIdentitySource;
             object targetObject = ExtractTargetObject(launcher, out targetIdentitySource);
+            if (targetObject == null)
+            {
+                targetObject = ExtractReadinessTargetObject(readinessEvidence, out targetIdentitySource);
+            }
 
             ExtractedCombatSnapshot snapshot = new ExtractedCombatSnapshot
             {
                 Source = "TISpaceCombatProjectileState.Fire(missile)",
+                LauncherRuntimeObject = launcher,
                 Launcher = ExtractShip(launcher, "launcher"),
+                TargetRuntimeObject = targetObject,
                 Target = targetObject == null ? null : ExtractShip(targetObject, "target"),
                 TargetIdentitySource = targetIdentitySource,
                 Missile = ExtractMissileProfile(missileTemplate),
@@ -160,6 +170,26 @@ namespace MissileFireControl.Mod.Adapters
             return target;
         }
 
+        private static object ExtractReadinessTargetObject(ReadinessEvidenceSnapshot readinessEvidence, out string source)
+        {
+            source = "none";
+            if (readinessEvidence == null || readinessEvidence.TargetRuntimeObject == null)
+            {
+                return null;
+            }
+
+            object target = NormalizeTarget(readinessEvidence.TargetRuntimeObject);
+            if (target == null)
+            {
+                return null;
+            }
+
+            source = string.IsNullOrWhiteSpace(readinessEvidence.TargetIdentityEvidenceSource)
+                ? "tryFireTarget"
+                : readinessEvidence.TargetIdentityEvidenceSource;
+            return target;
+        }
+
         private static object NormalizeTarget(object target)
         {
             object current = target;
@@ -168,10 +198,17 @@ namespace MissileFireControl.Mod.Adapters
                 object next = GameObjectReader.ReadFirstMember(
                     current,
                     "combatTargetableState",
+                    "CombatTargetableState",
                     "GetCombatantState",
                     "GetTargetableState",
+                    "combatantState",
+                    "CombatantState",
+                    "shipState",
                     "ShipState",
-                    "WeaponCarrierState");
+                    "weaponCarrierState",
+                    "WeaponCarrierState",
+                    "ref_ship",
+                    "RefShip");
                 if (next == null || ReferenceEquals(next, current))
                 {
                     return current;
@@ -268,7 +305,9 @@ namespace MissileFireControl.Mod.Adapters
                     HasTargetVelocity = readinessEvidence.HasTargetVelocity,
                     TargetVelocityKps = readinessEvidence.TargetVelocityKps,
                     TargetVelocityEvidenceSource = CleanEvidence(readinessEvidence.TargetVelocityEvidenceSource, "unknown"),
-                    TargetVelocityMissingReason = CleanEvidence(readinessEvidence.TargetVelocityMissingReason, "unknown")
+                    TargetVelocityMissingReason = CleanEvidence(readinessEvidence.TargetVelocityMissingReason, "unknown"),
+                    TargetRuntimeObject = readinessEvidence.TargetRuntimeObject,
+                    TargetIdentityEvidenceSource = CleanEvidence(readinessEvidence.TargetIdentityEvidenceSource, "unknown")
                 };
             }
 

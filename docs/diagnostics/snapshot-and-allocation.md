@@ -17,9 +17,13 @@ loaded/chambered source, and it is not valid without the paired module-keyed
 ammo and gate evidence documented in
 [`readiness-semantics.md`](../research/readiness-semantics.md).
 
-Shadow allocation output is still diagnostics-first. It validates schema,
-parser behavior, and recommendation math when required inputs are visible; it
-does not apply commands.
+Shadow allocation output remains diagnostics-first by default. It validates
+schema, parser behavior, and recommendation math when required inputs are
+visible. Issue #37 added one explicitly triggered, default-off exception for a
+single selected player missile ship. Issue #38 expands that exception to a
+small explicitly selected player missile group while preserving the same
+default-off gate, selected-command scope, vanilla salvo-target command path,
+and bounded command caps.
 
 ## Runtime source
 
@@ -45,10 +49,38 @@ Shadow allocation diagnostics require both settings:
 - `EnableDiagnostics`
 - `EnableShadowAllocationDiagnostics`
 
+Controlled dry-run diagnostics require all three settings plus an explicit UMM
+panel trigger:
+
+- `EnableDiagnostics`
+- `EnableShadowAllocationDiagnostics`
+- `EnableControlledDryRunDiagnostics`
+
+The command-apply boundary has a separate default-off setting:
+
+- `AllowCommandApply`
+
+Recommendation-only mode is a second command-apply interlock:
+
+- `EnableRecommendationOnlyMode`
+
 Both snapshot and shadow allocation diagnostics default to `false` beyond the
-base diagnostics toggle. Shadow allocation is diagnostics-only: it never applies
-assignments, never issues commands, never changes fire mode, and never
-suppresses or delays original game methods.
+base diagnostics toggle. Controlled dry-run diagnostics also default to
+`false`. `AllowCommandApply` also defaults to `false`.
+`EnableRecommendationOnlyMode` defaults to `true`.
+
+When `AllowCommandApply=False`, the #36 hard stop remains active and controlled
+experiments are diagnostics-only. When `AllowCommandApply=True` but
+`EnableRecommendationOnlyMode=True`, the gate still blocks with
+`blockedByRecommendationOnlyMode`. Live apply requires both
+`AllowCommandApply=True` and `EnableRecommendationOnlyMode=False`; then Issue
+#38 can perform at most one live command attempt per selected ship and at most
+three live command attempts total for the next explicitly armed selected-group
+controlled experiment. The reviewed command path is
+`SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState,
+CombatTargetableState)`, which queues the vanilla primary-target and salvo mode
+actions through the game player-action runner. The mod does not directly mutate
+ammo, cooldowns, projectile physics, or AI behavior.
 
 ## Snapshot mapping
 
@@ -71,31 +103,35 @@ snapshot count fields.
 ## Target identity semantics
 
 Launcher-selected target identity probing is conservative. The projectile-state
-fire hook does not receive the live `MissileController.target` object.
-`MissileWeapon` passes that target to the Unity controller immediately after the
-state fire call.
+fire hook does not receive the live `MissileController.target` object, but the
+paired `MissileWeapon.TryFire` prefix can observe the live weapon `target`
+before the projectile fire hook runs on the same thread.
 
-The snapshot extractor checks the launcher/carrier for `combatPrimaryTarget` or
-related primary-target members. Candidate target wrappers are unwrapped through
-members such as `combatTargetableState`, `GetCombatantState`,
+The snapshot extractor first checks the launcher/carrier for
+`combatPrimaryTarget` or related primary-target members. If no launcher priority
+target is visible, it falls back to the live `MissileWeapon.TryFire` target from
+the same-thread readiness handoff. Candidate target wrappers are unwrapped
+through members such as `combatTargetableState`, `GetCombatantState`,
 `GetTargetableState`, `ShipState`, and `WeaponCarrierState` when present.
 
 `targetIdentitySource=launcher` means launcher/carrier primary-target or
-focus-fire identity. It is not proof of the actual in-flight missile guidance
-target. For projectile/controller guidance target coverage, add a separate
-observation point around `MissileWeapon.target` or `MissileController.target`.
+focus-fire identity. `targetIdentitySource=tryFireTarget` means the identity was
+derived from the live `MissileWeapon.target` observed immediately before the
+projectile fire hook.
 
 If no concrete launcher-selected identity is visible, `targetId`, `target`, and
 `targetTeam` remain `unknown`, `targetIdentitySource` is `none`, and
 `missing=targetIdentity` remains valid.
 
-This missing field means the current hook could not observe a launcher-selected
-priority target. It does not prove vanilla combat had no target. Decompiled
-source review shows `SelectSalvoTargetCommand` sets `combatPrimaryTarget`
-through `SetCombatPrimaryTargetAction`, `ClearTargetCommand` is valid only when
-that primary target exists, and `MissileWeapon.TryFire` still fires through a
-live `base.target` object. Fighting without a player-set priority target is
-therefore compatible with `targetIdentitySource=none` in this diagnostic schema.
+This missing field means neither a launcher-selected priority target nor a
+same-thread `MissileWeapon.TryFire` target could be normalized into a concrete
+combat target identity. It does not prove vanilla combat had no target.
+Decompiled source review shows `SelectSalvoTargetCommand` sets
+`combatPrimaryTarget` through `SetCombatPrimaryTargetAction`, while
+`MissileWeapon.TryFire` still fires through a live `base.target` object. Fighting
+without a player-set priority target is therefore compatible with
+`targetIdentitySource=tryFireTarget`; it should not require enabling combat AI
+control just to expose allocator target identity.
 
 ## SnapshotLog schema
 
@@ -138,6 +174,156 @@ available, assigned shots, PD score, target value, saturation and kill package
 sizes, launch-window score, score per shot, and reason fields. No-op records
 use `noOpReason` when the shadow cycle cannot or should not recommend an
 allocation, such as missing required inputs or zero ammo/gate budget.
+
+When controlled dry-run diagnostics are enabled and explicitly triggered from
+the UMM panel, the next shadow allocation cycle is tagged with a local
+`experimentId` and emits additional diagnostics-only rows:
+
+```text
+[AllocationLog] recordType="dryRunExperiment" experimentId="dryrun-..." cycleId="1" requestedUtc="..." sourceHook="TISpaceCombatProjectileState.Fire(missile)" status="evaluated" selectedScopeVisible="True" selectedScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" selectedScopeMissingReason="none" selectedShipCount="1" selectedShipIds="..." selectedShipNames="..." selectedShipTeams="..." commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" commandScopeShipIds="..." targetId="..." target="..." missingInputs="none" appliedCommands="0"
+[AllocationLog] recordType="dryRunIntent" experimentId="dryrun-..." cycleId="1" decisionType="allocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." targetId="..." target="..." intendedShots="4" reason="kill package" appliedCommands="0"
+[AllocationLog] recordType="dryRunCommandCandidate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" classification="eligible" reason="none" scopeViolation="False" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" appliedCommands="0"
+[AllocationLog] recordType="dryRunApplyGate" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" gateName="controlledCommandApplyGate" gateResult="blocked" blockReason="blockedBySafetyToggle" controlledExperimentMode="True" allowCommandApply="False" recommendationOnlyMode="True" candidateSource="allocatorAllocation" commandIntent="salvoTargetRecommendationDryRun" commandGranularity="shipAllSalvoCapableWeapons" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="candidateIdentity" postState="notApplied" appliedCommands="0"
+[AllocationLog] recordType="dryRunResult" experimentId="dryrun-..." cycleId="1" intendedCommands="1" skippedCommands="0" appliedCommands="0" failedCommands="0" safetyGateBlockedCommands="1" result="dryRunOnly" resultReason="blockedBySafetyToggle"
+```
+
+The selected-scope probe is intentionally narrow. It looks for the verified
+tactical command-panel single selected ship and group selected ship members
+(`selectedFriendlyShipState`, `selectedFriendlyShip`, and
+`groupSelectedFriendlyShips`). If those members are unavailable or empty, the
+dry-run experiment row reports `selectedShipCount="0"` with an explicit
+`selectedScopeMissingReason` instead of falling back to the broad left-hand
+player-side combatant list.
+
+`dryRunIntent` rows describe allocator-motivated command intent.
+`dryRunCommandCandidate` rows classify the diagnostics-only command candidate as
+`eligible`, `wouldSkip`, or `wouldFail` under the resolved player-controlled
+command scope. They include command scope source, missing reason, scope
+violation flag, selected command launcher, allocator snapshot launcher,
+weapon/module, target, assigned shot, candidate source, and ammo/gate budget
+evidence. `launcherId` / `launcher` / `launcherTeam` name the selected command
+ship; `allocatorLauncherId` / `allocatorLauncher` / `allocatorLauncherTeam`
+name the ship that produced the current projectile-fire allocation cycle.
+`targetTeam` records the resolved target side used by the live-apply safety
+gate. The rows do not call
+`SelectSalvoTargetCommand`,
+`FleetSelectSalvoTargetCommand`, `SetCombatPrimaryTargetAction`,
+`SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
+report `appliedCommands="0"` for Issues #34 through #36.
+
+Issue #36 routes only `eligible` candidates to a named
+`controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
+setting, the gate emits `recordType="dryRunApplyGate"` with
+`gateResult="blocked"`, `blockReason="blockedBySafetyToggle"`,
+`postState="notApplied"`, and `appliedCommands="0"`. This is still
+diagnostics-only; it records the hard stop before any live command API exists in
+the mod. If runtime logs do not naturally produce an eligible candidate, the
+synthetic `tools/fixtures/apply_gate_hard_stop.txt` fixture exercises the
+gate-reachable blocked path.
+
+With `AllowCommandApply=True` and `EnableRecommendationOnlyMode=True`, the same
+gate emits `blockReason="blockedByRecommendationOnlyMode"` and
+`recommendationOnlyMode="True"`. The synthetic
+`tools/fixtures/recommendation_only_apply_gate.txt` fixture exercises this
+explicit recommendation-only interlock.
+
+Issue #37 changes only the gate-allowed case. With `AllowCommandApply=True` and
+`EnableRecommendationOnlyMode=False`, an eligible candidate from exactly one
+selected command-panel ship can emit `gateResult="allowed"` and then one result
+row:
+
+```text
+[AllocationLog] recordType="appliedDecision" experimentId="dryrun-..." cycleId="1" candidateId="cycle-1-allocation-1" commandIntent="salvoTargetRecommendationLiveApply" commandGranularity="shipAllSalvoCapableWeapons" commandPath="SelectSalvoTargetCommand.OnCommandExecute" candidateSource="allocatorAllocation" result="applied" reason="none" exceptionType="none" commandScopeSource="SpaceCombatCanvasController.selectedFriendlyShipState" commandScopeMissingReason="none" commandScopeShipCount="1" launcherId="..." launcher="..." launcherTeam="..." allocatorLauncherId="..." allocatorLauncher="..." allocatorLauncherTeam="..." weaponId="..." missileProfileId="..." targetId="..." target="..." targetTeam="..." assignedShots="4" ammoGateBudgetShots="8" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0"
+```
+
+If live preconditions fail after the gate, the row uses
+`recordType="skippedDecision"` or `recordType="failedCommand"` with a concrete
+`reason`, `appliedCommands="0"`, and `postState="notApplied"`. Each controlled
+experiment consumes at most one live attempt per selected ship and at most three
+live attempts per trigger; additional eligible candidates for an already
+attempted selected ship or a capped trigger are skipped with
+`reason="perShipCommandCapReached"` or
+`reason="controlledGroupTriggerCapReached"`.
+
+For #38, a live attempt additionally requires a selected command-panel scope of
+one to three ships. The active-player launcher fallback remains useful
+diagnostics, but it is not eligible for live apply. The selected ship runtime
+object is kept through the command scope and re-checked for
+`CanPerformShipCommands()`, `AnyOffensiveMissileWeaponCanFire()`, player-faction
+ownership, and non-AI control before the command is invoked. For groups larger
+than one, the allocator snapshot launcher must be one of the selected group
+members so every candidate and result row is attributable to exactly one
+selected ship. Broader fleet-wide controlled application remains future #43
+scope.
+
+Selected groups above three ships, mixed-team groups, non-player/AI ships,
+unknown player-control evidence, unknown command readiness, same-team targets,
+and allocator launchers outside the selected group skip or fail closed with an
+explicit reason. Each selected ship can consume at most one post-gate live
+command attempt per trigger, and each trigger can consume at most three
+post-gate attempts. Controlled result rows include `selectedGroupMaxShips`,
+`commandTriggerCap`, `launcherId`, `allocatorLauncherId`, `missilesAssigned`,
+and `missilesSpent`. `missilesSpent` remains `unknown` until a runtime row can
+directly prove spend evidence for that command result.
+
+If the current allocation cycle was emitted by a different ship, the controlled
+experiment can command the exactly-one selected ship only when the allocator
+cycle was produced by the selected ship's team and the resolved target is on a
+different concrete team. Enemy allocator cycles and friendly-target cycles are
+classified as `wouldSkip` with `allocatorLauncherOutsideSelectedTeam` or
+`hostileTargetRequired`, and the experiment remains armed until a selected-team
+hostile candidate appears. Same-team target snapshots are parser failures
+because they can indicate a friendly primary-target command leaked into combat
+state. Valid selected-team candidates are logged with
+`candidateSource="allocatorAllocation"` when the allocator emitted an
+allocation, or `candidateSource="selectedShipRejectedTarget"` when the
+allocator rejected the target only because the observed firing module did not
+have enough `ammoGateBudgetShots` to form a useful package. In both cases, the
+live command still calls only `SelectSalvoTargetCommand.OnCommandExecute` for
+the selected ship and resolved hostile target. Pressing the trigger again while
+an experiment is already armed does not replace it; the mod reports the pending
+experiment id instead. The experiment consumes when it applies, fails, reaches
+the safety gate, or otherwise reaches a selected-ship command decision.
+
+The 2026-06-22 Lake Maracaibo smoke showed why the selected command ship must be
+separate from the allocator snapshot launcher. The first controlled apply
+invoked the command for selected ship `Lake Maracaibo` id `276` and target
+`Persephone` id `280`. A second trigger stayed pending because Lake Maracaibo
+stopped emitting missile projectile-fire cycles after 15 missile shots, while
+other friendly ships continued to emit cycles. Late allocator cycles therefore
+reported only per-module `ammoGateBudgetShots="1"` or `"2"` rejections for
+other launchers, even though the selected ship had previously shown additional
+module ammo. New logs should use `launcherId`, `launcherTeam`,
+`allocatorLauncherId`, and `allocatorLauncherTeam` to make that distinction
+explicit.
+
+The later 2026-06-22 Sadowa/Tempest smoke showed the unsafe case that the team
+gate prevents. The selected command ship was friendly `Sadowa` id `276` team
+`47`, but the allocator cycle was emitted by enemy `Tempest` id `283` team
+`50` against friendly `Vella Gulf` id `279` team `47`. The vanilla command
+threw after beginning command execution, and the following missile snapshots
+showed same-team target evidence. Controlled live apply must now wait for a
+selected-team allocator candidate against a hostile target instead of applying
+that enemy allocator cycle.
+
+The immediate post-fix Cape St. George/Yayoi/Taiho smoke showed the intended
+runtime behavior. Two enemy allocator cycles from `Yayoi` team `50` toward
+friendly `Verdun` team `47` classified as `wouldSkip` with
+`allocatorLauncherOutsideSelectedTeam` and left the controlled experiment armed.
+The later selected-ship cycle from `Cape St. George` team `47` toward hostile
+`Taiho` team `50` classified as `eligible`, reached `gateResult="allowed"`, and
+emitted one `appliedDecision` through `SelectSalvoTargetCommand.OnCommandExecute`.
+The parser verdict was `OK`, with one applied command, zero failed commands,
+zero scope violations, zero same-team missile target snapshots, and no
+suspicious patterns.
+
+The 2026-06-22 runtime smoke validated the dry-run envelope with three explicit
+UMM triggers, three grouped dry-run experiment/intent/result sets, and zero
+applied or failed commands. In that smoke, selected command-panel scope was not
+visible (`selectedShipCount="0"`,
+`selectedScopeMissingReason="selectedScopeUnavailable"`). That is a safe #34
+result because the probe failed closed; #35 should use it as input for a
+broader auditable player-controlled command-scope resolver.
 
 ## Ammo/gate budget fields
 
@@ -231,10 +417,23 @@ safely formed.
 battle-level allocation report for before/after tuning comparisons.
 
 The parser separates current shadow cycles, allocations, rejections, and no-op
-records from future controlled-apply records. Future record types such as
-applied decisions, skipped decisions, and failed command applications are
-bucketed when they appear, but current logs are expected to show zero
-controlled-apply counts.
+records from controlled dry-run experiment rows and controlled-apply result
+records. Controlled dry-run rows are summarized by experiment count, experiment
+id, selected group members, intent count, command-candidate count, apply-gate
+count, intended/skipped/applied/failed/safety-gate-blocked command counts,
+candidate classification/reason counts, apply-gate result counts, safety-gate
+block reason counts, command-scope source and missing-reason counts,
+scope-violation count, selected ship counts, and selected-scope missing
+reasons. Controlled live apply rows with an `experimentId` are summarized
+separately by attempts, applied, skipped, failed, reason counts, command path
+counts, counts by experiment, counts by selected ship, assigned shots by
+selected ship, visible spent shots by selected ship when present, and explicit
+mismatch evidence when assigned/spent or selected/command scope counts disagree.
+
+The parser also treats same-team missile target snapshots as a failed verdict.
+Those snapshots can indicate that a controlled command or external combat state
+set a friendly ship as the missile target, so they must be inspected before
+using the log as safe live-apply evidence.
 
 Battle-level shot totals are taken from `recordType="cycle"` rows only. When any
 cycle has an unknown value, the corresponding total remains `unknown` rather
@@ -290,6 +489,13 @@ conservative buckets:
 - `missing-evidence-limited`
 - `impossible`
 - `ambiguous`
+
+Controlled dry-run rows such as `dryRunExperiment`, `dryRunIntent`,
+`dryRunCommandCandidate`, `dryRunApplyGate`, and `dryRunResult` are not
+allocation-quality rows. The fitting report summarizes them separately with
+experiment, candidate, apply-gate, classification, reason, command-scope,
+selected-scope, scope-violation, safety-gate-blocked, and applied/failed command
+counts instead of treating them as ambiguous allocation decisions.
 
 `command-safety no-op` means no allocation was made because no concrete
 launcher-selected target identity was visible. It is safe skip evidence, not

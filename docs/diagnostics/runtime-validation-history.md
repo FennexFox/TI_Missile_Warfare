@@ -442,3 +442,401 @@ defaulted no-op path. The fixture fitting report correctly classified observed
 target PD evidence as `provisional`; the aggregate readiness verdict remained
 `Not ready` because fixtures are synthetic and do not count as real combat
 evidence.
+
+## Issue #36 apply-gate hard stop
+
+Issue #36 adds the final diagnostics-only hard stop before any live command
+application. It introduces the default-off `AllowCommandApply` setting, emits a
+named `controlledCommandApplyGate` row for eligible controlled dry-run command
+candidates, and keeps `appliedCommands="0"` in the current build.
+
+Static fixture validation used
+`tools/fixtures/apply_gate_hard_stop.txt` to prove a gate-reachable candidate is
+blocked by `blockedBySafetyToggle` with zero applied commands.
+
+Fresh runtime smoke on the active `Player.log` written 2026-06-22 15:19 local
+time validated the same path in a real combat:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 169, no sequence gaps
+- MissileWeapon.TryFire rows: 46
+- SnapshotLog entries: 46
+- target identity: 46/46 snapshots, all `targetIdentitySource=tryFireTarget`
+- target velocity: 46/46 cycles from `tryFireTargetDamageableVelocity`
+- observed target PD evidence: 46/46 cycles with
+  `pdEvidenceQuality=observedTemplateCapability`
+- shadow cycles: 46 evaluated, 0 skipped
+- allocations: 46
+- controlled dry-run experiments: 1
+- controlled dry-run command candidates: 1
+- candidate classification: `eligible: 1`
+- selected command scope: one selected ship, `El Alamein` id `276`
+- candidate launcher: `El Alamein` id `276`
+- target: `Centaur` id `277`
+- apply-gate records: 1
+- apply-gate result: `blocked: 1`
+- safety-gate reason: `blockedBySafetyToggle: 1`
+- `safetyGateBlockedCommands`: 1
+- applied commands: 0
+- failed commands: 0
+- scope violations: 0
+
+Interpretation: #36 is validated as a diagnostics-only hard-stop proof. A
+real selected single-ship candidate reached the named apply gate and was blocked
+because command application was not explicitly allowed. No live command was
+applied. #37 remains the first behavior-changing slice.
+
+## Issue #37 first single-ship live controlled apply
+
+Issue #37 introduces the first behavior-changing controlled command path behind
+the #36 gate. The implementation keeps `AllowCommandApply` default-off and
+requires an explicitly armed controlled experiment plus exactly one selected
+command-panel ship before attempting any live command.
+
+The reviewed live path is the vanilla single-ship salvo target command:
+
+- `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState, CombatTargetableState)`
+- internally queues `SetCombatPrimaryTargetAction`
+- internally queues `SetWeaponModeAction(..., FireMode.Salvo)` for salvo-capable
+  weapons on that one ship
+
+Static fixture validation uses `tools/fixtures/first_live_apply.txt` to prove
+the parser recognizes one `gateResult="allowed"` row, one
+`recordType="appliedDecision"` row, one controlled live apply attempt, one
+applied command, zero skipped live attempts, zero failed live attempts, zero
+safety-gate blocks, and no unknown record types.
+
+Runtime smoke is still required before claiming a successful live game apply.
+The expected live smoke must show one explicit experiment trigger, exactly one
+selected player missile ship, at most one applied or failed command result, no
+scope violations, no AI or unselected-player application, no unknown parser
+record types, and no MissileWarfare warnings/errors.
+
+## 2026-06-22 Issue #37 follow-up: selected command launcher vs allocator launcher
+
+A later Lake Maracaibo combat log confirmed that the first controlled apply
+reached `SelectSalvoTargetCommand.OnCommandExecute`, but also exposed a command
+scope limitation in the first #37 implementation:
+
+- selected command ship: `Lake Maracaibo` id `276`
+- first controlled target: `Persephone` id `280`
+- first controlled apply: one `appliedDecision`, one applied command, zero
+  failed commands
+- Lake Maracaibo missile `TryFire` rows: 15 total, five missile slots, each
+  observed from pre-fire ammo `15` down to `13`
+- other friendly ships continued to emit 75 missile `TryFire` rows each
+- second controlled experiment: stayed pending across cycles 226-240 because
+  the selected ship was no longer the projectile-fire launcher
+- late rejection reason: `not enough ammo/gate budget shots to form a useful
+  package`, with per-module `ammoGateBudgetShots` values of `1` or `2`
+
+The important conclusion is that `ammoGateBudgetShots` is per observed
+projectile-fire module, while `SelectSalvoTargetCommand` is ship-level and uses
+the command-panel selected ship. The controlled apply path now keeps the
+selected ship runtime object separately from the allocator snapshot launcher.
+New candidate/apply rows log `launcherId` as the selected command ship and
+`allocatorLauncherId` as the ship that produced the allocator cycle. When the
+allocator only rejects a target because the observed module budget is too small,
+an explicit controlled trigger may still issue the selected-ship command with
+`candidateSource="selectedShipRejectedTarget"`, provided the selected ship still
+reports `CanPerformShipCommands()` and `AnyOffensiveMissileWeaponCanFire()`.
+
+## 2026-06-22 Issue #37 follow-up: enemy allocator and friendly target guard
+
+A later Sadowa combat log showed that the selected-command-launcher follow-up
+was too permissive. The controlled experiment accepted an allocator cycle from
+an enemy ship and attempted to command the selected friendly ship at a friendly
+target:
+
+- selected command ship: `Sadowa` id `276`, team `47`
+- allocator snapshot launcher: `Tempest` id `283`, team `50`
+- resolved target: `Vella Gulf` id `279`, team `47`
+- command result: `failedCommand`, `reason="commandInvocationFailed"`,
+  `exceptionType="NullReferenceException"`
+- subsequent controlled-ship missile snapshots targeted friendly
+  `Vella Gulf`, matching the observed circular/near-self missile behavior
+
+Interpretation: the vanilla command can mutate primary-target state before a
+later invocation failure. #37 now requires known selected launcher, allocator
+launcher, and target teams; the selected command ship team must match the
+allocator launcher team; and the target team must differ. Enemy allocator
+cycles classify as `allocatorLauncherOutsideSelectedTeam`, friendly targets
+classify as `hostileTargetRequired`, and the experiment waits for a later
+selected-team hostile candidate instead of applying. The parser now fails logs
+with same-team missile target snapshots so this condition is not reported as a
+clean smoke.
+
+Post-fix runtime smoke on the latest `Player.log` validated the intended guard
+and recovery path:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 1,790, no sequence gaps or duplicates
+- MissileWeapon.TryFire rows: 252
+- SnapshotLog entries: 252
+- AllocationLog entries: 518: 252 `cycle`, 216 `allocation`, 36 `rejection`,
+  three `dryRunExperiment`, three `dryRunIntent`, three
+  `dryRunCommandCandidate`, one `dryRunApplyGate`, one `appliedDecision`, and
+  three `dryRunResult` rows
+- controlled dry-run command candidates: three total, with two `wouldSkip` and
+  one `eligible`
+- skipped candidate reason: `allocatorLauncherOutsideSelectedTeam: 2`
+- selected command ship: `Cape St. George` id `276`, team `47`
+- skipped allocator launcher: enemy `Yayoi` id `285`, team `50`, targeting
+  friendly `Verdun` id `278`, team `47`
+- applied candidate: selected `Cape St. George` team `47` targeting hostile
+  `Taiho` id `280`, team `50`
+- apply gate: one `allowed` result with `AllowCommandApply=True`
+- live apply: one `appliedDecision` through
+  `SelectSalvoTargetCommand.OnCommandExecute`
+- applied commands: one
+- failed commands: zero
+- scope violations: zero
+- same-team missile target snapshots: zero
+- parser suspicious patterns: none
+
+Interpretation: the post-fix log matches the intended #37 containment behavior.
+Enemy allocator / friendly-target candidates wait without applying, and the
+first selected-team hostile candidate can apply exactly one single-ship vanilla
+salvo-target command. This is still selected single-ship evidence only; it does
+not validate selected-group or fleet-wide allocation.
+
+## 2026-06-23 Issue #38 selected-group controlled smoke
+
+Issue #38 expands the controlled live experiment from the #37 single selected
+ship path to a small explicitly selected player group. The group remains
+default-off, explicitly triggered, capped at one live attempt per selected ship,
+and capped at three live attempts per trigger.
+
+Fresh runtime smoke on the latest `Player.log`, written 2026-06-23 06:03 local
+time, validated selected-group scope visibility and bounded command behavior:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=3`, `skipped=0`
+- LaunchLog entries: 899, no sequence gaps or duplicates
+- MissileWeapon.TryFire rows: 152
+- SnapshotLog entries: 152
+- AllocationLog entries: 412: 152 `cycle`, 147 `allocation`, five
+  `rejection`, 22 `dryRunExperiment`, 22 `dryRunIntent`, 22
+  `dryRunCommandCandidate`, 10 `dryRunApplyGate`, six `appliedDecision`, four
+  `skippedDecision`, and 22 `dryRunResult` rows
+- controlled experiment ids: `dryrun-20260622T210249826Z-1` and
+  `dryrun-20260622T210303457Z-2`
+- selected group source:
+  `GameControl.spaceCombat.combatHUD.groupSelectedFriendlyShips`
+- selected ship count: three in every controlled dry-run experiment row
+- selected ships: `Shiloh` id `276`, `Carrhae` id `278`, and `Puebla` id
+  `279`, all team `47`
+- command candidates: 10 `eligible`, 12 `wouldSkip`
+- skip reason before the apply gate: `allocatorLauncherOutsideSelectedGroup: 12`
+- apply-gate records: 10, all `allowed`
+- live apply attempts: 10
+- applied decisions: six
+- skipped live decisions: four
+- skipped live reason: `perShipCommandCapReached: 4`
+- failed commands: zero
+- scope violations: zero
+- safety-gate blocked commands: zero
+- same-team missile target snapshots: zero
+- parser suspicious patterns: none
+- MissileWarfare issues: none
+
+Per experiment:
+
+- `dryrun-20260622T210249826Z-1`: three applied, two skipped
+- `dryrun-20260622T210303457Z-2`: three applied, two skipped
+
+Per selected ship:
+
+- `Shiloh#276[team=47]`: two applied, two skipped
+- `Carrhae#278[team=47]`: two applied, two skipped
+- `Puebla#279[team=47]`: two applied
+
+Interpretation: the selected-group probe now sees the in-game battle-menu group
+selection through `groupSelectedFriendlyShips`. Live command application stayed
+inside the selected three-ship group, ignored allocator cycles from outside the
+group, respected the per-ship cap, and produced no failed commands, scope
+violations, same-team target snapshots, parser suspicious patterns, or
+MissileWarfare warnings/errors. This validates the #38 selected-group safety
+rung. It does not validate fleet-wide #43 allocation.
+
+Remaining limitation: controlled result rows still report command-result
+`missilesSpent` as `unknown`. LaunchLog pre/post ammo deltas are visible
+elsewhere in the log, but they are not yet directly correlated back to each
+controlled command result row.
+
+## Issue #39 controlled-correlation instrumentation attempt
+
+Issue #39 reviewed the #38 selected-group controlled evidence as the first
+selected-group learning-loop checkpoint. The selected-group smoke is sufficient
+to show bounded command behavior: two controlled experiment ids, three selected
+ships, six applied commands, four `perShipCommandCapReached` skips, zero failed
+commands, zero scope violations, zero same-team missile target snapshots, no
+parser suspicious patterns, and no MissileWarfare issues.
+
+The regenerated pre-instrumentation #39 fitting artifact includes a controlled
+command result evidence table tied to experiment id, selected ship, allocator
+launcher, target, command result, and immediate same-launcher/same-target launch
+evidence where visible. It found 10 command result rows: six applied and four
+skipped. Direct command-result `missilesSpent` remained numeric on 0/10 rows.
+All 10 rows had one immediate same-launcher/same-target `MissileWeapon.TryFire`
+ammo delta, but the skipped rows also accounted for four observed deltas. That
+means nearby launch evidence is visible, but it is not causal command-spend
+proof.
+
+#39 now adds diagnostics-only correlation support for fresh runtime evidence:
+controlled apply-gate/result rows log `commandResultId`, successful applied
+commands register a matching launch context, and later `MissileWeapon.TryFire`
+rows can report `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots` when
+the launcher/target context matches.
+
+No allocator parameters changed. The old controlled log still has 0/10 directly
+stamped rows and 10/10 line-window heuristic rows, so it remains insufficient to
+justify a heuristic/rule/parameter-family change. A fresh instrumented
+selected-group controlled run is required before #39 can decide whether one
+specific heuristic family should be tuned or whether a final no-tuning/blocker
+decision is warranted.
+
+## Issue #39 fresh instrumented log target identity follow-up
+
+A fresh instrumented `Player.log` after the first #39 correlation slice confirmed
+that launch-side telemetry fields are emitted, including launcher/target ids,
+`visibleAmmoDelta`, `experimentId`, `commandResultId`,
+`controlledCommandCorrelation`, and `controlledCommandObservedSpentShots`.
+However, direct command correlation still did not occur in that log.
+
+The identified blocker was target identity mismatch rather than missing launch
+telemetry. Controlled command result rows used allocator target ids such as
+`280` / `283`, while `MissileWeapon.TryFire` launch rows reported a runtime
+`CombatShipController` stable id for `targetId`. The target text still exposed
+the tactical target id, so line-window evidence remained visible, but the direct
+runtime context match could not attribute the launch to the command result.
+
+The follow-up fix adds a diagnostics-only target identity bridge: launch rows now
+also report `targetStateId`, runtime context matching accepts either launch
+`targetId` or bridged `targetStateId`, and the fitting report prefers
+`targetStateId` / target-text id fallback before falling back to runtime stable
+`targetId`. A new instrumented selected-group smoke is still required before #39
+can decide whether direct stamped launch/spend evidence justifies one bounded
+heuristic change.
+
+## Issue #39 direct command-spend correlation smoke success
+
+A fresh selected-group controlled smoke after the target identity bridge
+confirmed direct command-result launch/spend correlation:
+
+- selected ship count was 3, within `selectedGroupMaxShips=3`;
+- controlled command result rows were 4 total: three `appliedDecision` rows and
+  one `skippedDecision` row with `perShipCommandCapReached`;
+- failed controlled commands remained zero;
+- `MissileWeapon.TryFire` rows with `controlledCommandCorrelation="directRuntimeContext"`
+  were observed for the applied commands;
+- each applied command produced six directly stamped launch rows and observed
+  spent shots of six;
+- the skipped command produced no direct launch attribution.
+
+This resolves the selected-group command-spend attribution blocker. The remaining
+#39 evidence gap is outcome quality: the logs now show that controlled commands
+spent missiles, but they still need conservative evidence about overkill,
+under-saturation, target mismatch, or point-defense absorption before any
+heuristic family should be tuned.
+
+The fitting report now also records best-effort target destruction hints from
+vanilla `CombatManager ActiveShip(DestroyShip)` lines when they occur after a
+controlled command for the same target id. This is deliberately labeled as
+post-command outcome evidence, not unique projectile/hit/kill attribution.
+
+## Issue #39 multi-target direct-correlation smoke follow-up
+
+A later controlled smoke produced direct launch/spend evidence across multiple
+controlled targets. Applied commands produced direct `MissileWeapon.TryFire`
+correlation rows, while repeated `perShipCommandCapReached` skipped rows did not
+receive direct launch attribution. Vanilla `DestroyShip` text later appeared for
+Medusa and Yudachi after directly correlated launches to those targets.
+
+The fitting report now attaches target destruction hints only to command rows
+with direct launch evidence, preventing skipped same-target rows from inheriting
+a misleading outcome hint. The evidence remains conservative: target destruction
+after directly correlated launches is useful outcome-quality evidence, but still
+not exact projectile, hit, or kill attribution.
+
+## Issue #39 Sphinx/Ghost direct-correlation smoke follow-up
+
+A later controlled smoke provided another successful direct-correlation sample:
+Puebla spent six directly correlated shots on Sphinx before Sphinx appeared in
+vanilla `DestroyShip` text, while Friedland and Ramillies each spent eight
+directly correlated shots on Ghost before Ghost appeared in vanilla `DestroyShip`
+text. Repeated `perShipCommandCapReached` skipped rows had no direct launch
+attribution.
+
+This further confirms that the #39 command-spend attribution path is functioning
+and that post-direct-launch destruction hints can support outcome-quality review.
+The Ghost case is now a concrete tuning candidate for a later implementation
+slice: same-target duplicate kill packages or target-level aggregate salvo caps.
+No additional diagnostics code is needed for the current #39 evidence closeout;
+heuristic/rule changes should be handled separately from the instrumentation PR.
+
+## Issue #39 pre-tuning diagnostic closeout
+
+The fitting report now includes a report-only `Controlled tuning candidates`
+section. It groups directly correlated applied commands by experiment and target
+and flags same-target duplicate kill-package candidates when multiple direct
+commands spend on the same target and aggregate observed spend exceeds available
+kill-size evidence.
+
+This closes the useful diagnostics work before a heuristic change: command-spend
+correlation is validated, target identity bridging is validated, skipped rows are
+separated from applied direct launches, conservative post-direct-launch
+DestroyShip hints are available, and duplicate same-target kill-package evidence
+is now mechanically visible for the next focused rule-change PR.
+
+## Issue #39 same-target controlled-command cap follow-up
+
+The focused follow-up implements a selected-group controlled command gate for the
+same-target duplicate kill-package candidate. Within one controlled experiment,
+after a target receives an applied command package, later eligible commands to
+that same target are skipped with
+`targetAggregateControlledCommandCapReached` when they would exceed the
+experiment's target-level assigned-shot budget.
+
+The rule is scoped to the controlled selected-group command path and preserves
+the existing selected-scope, hostile-target, per-ship, and group command caps.
+It is not a fleet-wide allocator rewrite.
+
+Issue #39.1 corrects the interpretation of this follow-up: commit `92ebc65` is
+not an actual missile expenditure cap. It only prevents duplicate controlled
+command application and direct command-spend attribution for the same target
+inside the controlled selected-group experiment. Vanilla same-target launches
+from skipped selected ships can still occur and remain visible as
+none-correlated `MissileWeapon.TryFire` rows.
+
+Evidence came from a regenerated local report at
+`artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`: the
+Yudachi experiment spent 14 directly correlated shots across two same-target
+commands, and the Ghost experiment spent 16 directly correlated shots across two
+same-target commands. Both targets later appeared in vanilla `DestroyShip` text,
+which remains conservative post-direct-launch outcome evidence rather than exact
+projectile, hit, or kill attribution.
+
+Build validation passed locally.
+
+Fresh runtime smoke on the active `Player.log` written 2026-06-23 11:04 local
+verified the new skip reason in real combat logs. Experiment
+`dryrun-20260623T020248174Z-1` applied one direct command from Pharsalos to
+Dragon#281 for eight assigned and eight directly observed spent shots. Later
+same-target eligible commands from El Alamein and Kasserine Pass were skipped
+with the target aggregate controlled-command cap. Older artifacts show the
+pre-rename reason `targetAggregateSalvoCapReached`; newly generated logs use
+`targetAggregateControlledCommandCapReached`. Dragon later appeared in
+conservative post-direct-launch `DestroyShip` outcome text.
+
+The fitting report now has a `Controlled cap spillover diagnostics` section that
+keeps direct controlled command spend separate from later same-target
+none-correlated vanilla spillover. Actual vanilla salvo suppression and
+selected-ship budget distribution remain unresolved and are out of scope for
+#39.1; they require a later focused design before or during #43. The regenerated
+report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.
+
+A subsequent rename smoke log also showed the applied-launcher post-budget spillover pattern: after the applied launcher consumed its direct controlled assigned-shot budget, later same-launcher/same-target `TryFire` rows could still appear with `controlledCommandCorrelation="none"`. The fitting report now separates this as `Applied launcher post-budget spillover diagnostics`, distinct from skipped-launcher controlled cap spillover.
