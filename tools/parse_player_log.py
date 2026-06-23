@@ -41,9 +41,18 @@ CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES = {
     "dryRunApplyGate",
     "dryRunResult",
 }
+FLEET_WIDE_REPORT_ONLY_ALLOCATION_RECORD_TYPES = {
+    "fleetWideDryRunExperiment",
+    "fleetWideLauncher",
+    "fleetWideTarget",
+    "fleetWideCommandCandidate",
+    "fleetWideCapState",
+    "fleetWideResult",
+}
 KNOWN_ALLOCATION_RECORD_TYPES = (
     SHADOW_ALLOCATION_RECORD_TYPES
     | CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES
+    | FLEET_WIDE_REPORT_ONLY_ALLOCATION_RECORD_TYPES
     | APPLIED_ALLOCATION_RECORD_TYPES
     | SKIPPED_ALLOCATION_RECORD_TYPES
     | FAILED_ALLOCATION_RECORD_TYPES
@@ -107,6 +116,32 @@ class AllocationBattleSummary:
     controlled_dry_run_scope_violations: int = 0
     controlled_dry_run_selected_ship_counts: dict[str, int] = field(default_factory=dict)
     controlled_dry_run_missing_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_experiments: int = 0
+    fleet_wide_report_only_launchers: int = 0
+    fleet_wide_report_only_targets: int = 0
+    fleet_wide_report_only_command_candidates: int = 0
+    fleet_wide_report_only_cap_state_records: int = 0
+    fleet_wide_report_only_results: int = 0
+    fleet_wide_report_only_experiment_ids: list[str] = field(default_factory=list)
+    fleet_wide_report_only_eligible_launchers: int = 0
+    fleet_wide_report_only_excluded_launchers: int = 0
+    fleet_wide_report_only_visible_hostile_targets: int = 0
+    fleet_wide_report_only_candidate_rows: int = 0
+    fleet_wide_report_only_emitted_candidate_rows: int = 0
+    fleet_wide_report_only_eligible_candidate_rows: int = 0
+    fleet_wide_report_only_cap_would_block_candidates: int = 0
+    fleet_wide_report_only_missing_evidence_candidates: int = 0
+    fleet_wide_report_only_applied_commands: int = 0
+    fleet_wide_report_only_launcher_classification_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_launcher_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_target_classification_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_target_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_candidate_classification_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_candidate_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_candidate_source_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_scope_mode_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_source_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_report_only_target_source_counts: dict[str, int] = field(default_factory=dict)
     controlled_live_apply_attempts: int = 0
     controlled_live_apply_applied: int = 0
     controlled_live_apply_skipped: int = 0
@@ -680,11 +715,31 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     controlled_live_apply_spent_shots_by_ship: Counter[str] = Counter()
     controlled_live_apply_spent_unknown_by_ship: Counter[str] = Counter()
     controlled_live_apply_mismatch_counts: Counter[str] = Counter()
+    fleet_wide_report_only_experiment_ids: set[str] = set()
+    fleet_wide_report_only_launcher_classification_counts: Counter[str] = Counter()
+    fleet_wide_report_only_launcher_reason_counts: Counter[str] = Counter()
+    fleet_wide_report_only_target_classification_counts: Counter[str] = Counter()
+    fleet_wide_report_only_target_reason_counts: Counter[str] = Counter()
+    fleet_wide_report_only_candidate_classification_counts: Counter[str] = Counter()
+    fleet_wide_report_only_candidate_reason_counts: Counter[str] = Counter()
+    fleet_wide_report_only_candidate_source_counts: Counter[str] = Counter()
+    fleet_wide_report_only_scope_mode_counts: Counter[str] = Counter()
+    fleet_wide_report_only_source_counts: Counter[str] = Counter()
+    fleet_wide_report_only_target_source_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
     controlled_live_apply_attempts = 0
     controlled_live_apply_applied = 0
     controlled_live_apply_skipped = 0
     controlled_live_apply_failed = 0
+    fleet_wide_report_only_eligible_launchers = 0
+    fleet_wide_report_only_excluded_launchers = 0
+    fleet_wide_report_only_visible_hostile_targets = 0
+    fleet_wide_report_only_candidate_rows = 0
+    fleet_wide_report_only_emitted_candidate_rows = 0
+    fleet_wide_report_only_eligible_candidate_rows = 0
+    fleet_wide_report_only_cap_would_block_candidates = 0
+    fleet_wide_report_only_missing_evidence_candidates = 0
+    fleet_wide_report_only_applied_commands = 0
     controlled_dry_run_intended_commands = 0
     controlled_dry_run_skipped_commands = 0
     controlled_dry_run_applied_commands = 0
@@ -928,6 +983,12 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if experiment_id:
                         controlled_dry_run_experiment_ids.add(experiment_id)
 
+                if record_type in FLEET_WIDE_REPORT_ONLY_ALLOCATION_RECORD_TYPES:
+                    experiment_id = pairs.get("experimentId")
+                    if experiment_id:
+                        fleet_wide_report_only_experiment_ids.add(experiment_id)
+                    fleet_wide_report_only_scope_mode_counts[pairs.get("scopeMode", "unknown")] += 1
+
                 if record_type == "dryRunExperiment":
                     experiment_id = pairs.get("experimentId")
                     if experiment_id:
@@ -988,6 +1049,57 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     controlled_dry_run_result_safety_gate_blocked_commands += (
                         try_parse_int(pairs.get("safetyGateBlockedCommands")) or 0
                     )
+
+                if record_type == "fleetWideDryRunExperiment":
+                    fleet_wide_report_only_eligible_launchers += try_parse_int(pairs.get("eligibleLaunchers")) or 0
+                    fleet_wide_report_only_excluded_launchers += try_parse_int(pairs.get("excludedLaunchers")) or 0
+                    fleet_wide_report_only_visible_hostile_targets += (
+                        try_parse_int(pairs.get("visibleHostileTargets")) or 0
+                    )
+                    fleet_wide_report_only_candidate_rows += try_parse_int(pairs.get("candidateRows")) or 0
+                    fleet_wide_report_only_emitted_candidate_rows += (
+                        try_parse_int(pairs.get("emittedCandidateRows")) or 0
+                    )
+                    fleet_wide_report_only_eligible_candidate_rows += (
+                        try_parse_int(pairs.get("eligibleCandidateRows")) or 0
+                    )
+                    fleet_wide_report_only_cap_would_block_candidates += (
+                        try_parse_int(pairs.get("capWouldBlockCandidates")) or 0
+                    )
+                    fleet_wide_report_only_missing_evidence_candidates += (
+                        try_parse_int(pairs.get("missingAllocatorEvidenceCandidates")) or 0
+                    )
+                    fleet_wide_report_only_applied_commands += try_parse_int(pairs.get("appliedCommands")) or 0
+                    source = pairs.get("fleetEligibilitySource")
+                    if source:
+                        fleet_wide_report_only_source_counts[source] += 1
+                    target_source = pairs.get("visibleTargetSource")
+                    if target_source:
+                        fleet_wide_report_only_target_source_counts[target_source] += 1
+
+                if record_type == "fleetWideLauncher":
+                    fleet_wide_report_only_launcher_classification_counts[
+                        pairs.get("classification", "unknown")
+                    ] += 1
+                    fleet_wide_report_only_launcher_reason_counts[pairs.get("reason", "unknown")] += 1
+
+                if record_type == "fleetWideTarget":
+                    fleet_wide_report_only_target_classification_counts[
+                        pairs.get("classification", "unknown")
+                    ] += 1
+                    fleet_wide_report_only_target_reason_counts[pairs.get("reason", "unknown")] += 1
+
+                if record_type == "fleetWideCommandCandidate":
+                    fleet_wide_report_only_candidate_classification_counts[
+                        pairs.get("classification", "unknown")
+                    ] += 1
+                    fleet_wide_report_only_candidate_reason_counts[pairs.get("reason", "unknown")] += 1
+                    candidate_source = pairs.get("candidateSource")
+                    if candidate_source:
+                        fleet_wide_report_only_candidate_source_counts[candidate_source] += 1
+
+                if record_type == "fleetWideResult":
+                    fleet_wide_report_only_applied_commands += try_parse_int(pairs.get("appliedCommands")) or 0
 
                 if record_type in (
                     APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
@@ -1377,6 +1489,71 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.controlled_dry_run_missing_reason_counts = dict(
         sorted(controlled_dry_run_missing_reason_counts.items())
     )
+    allocation_summary.fleet_wide_report_only_experiments = allocation_record_type_counts.get(
+        "fleetWideDryRunExperiment",
+        0,
+    )
+    allocation_summary.fleet_wide_report_only_launchers = allocation_record_type_counts.get("fleetWideLauncher", 0)
+    allocation_summary.fleet_wide_report_only_targets = allocation_record_type_counts.get("fleetWideTarget", 0)
+    allocation_summary.fleet_wide_report_only_command_candidates = allocation_record_type_counts.get(
+        "fleetWideCommandCandidate",
+        0,
+    )
+    allocation_summary.fleet_wide_report_only_cap_state_records = allocation_record_type_counts.get(
+        "fleetWideCapState",
+        0,
+    )
+    allocation_summary.fleet_wide_report_only_results = allocation_record_type_counts.get("fleetWideResult", 0)
+    allocation_summary.fleet_wide_report_only_experiment_ids = sorted(fleet_wide_report_only_experiment_ids)
+    allocation_summary.fleet_wide_report_only_eligible_launchers = fleet_wide_report_only_eligible_launchers
+    allocation_summary.fleet_wide_report_only_excluded_launchers = fleet_wide_report_only_excluded_launchers
+    allocation_summary.fleet_wide_report_only_visible_hostile_targets = (
+        fleet_wide_report_only_visible_hostile_targets
+    )
+    allocation_summary.fleet_wide_report_only_candidate_rows = fleet_wide_report_only_candidate_rows
+    allocation_summary.fleet_wide_report_only_emitted_candidate_rows = (
+        fleet_wide_report_only_emitted_candidate_rows
+    )
+    allocation_summary.fleet_wide_report_only_eligible_candidate_rows = (
+        fleet_wide_report_only_eligible_candidate_rows
+    )
+    allocation_summary.fleet_wide_report_only_cap_would_block_candidates = (
+        fleet_wide_report_only_cap_would_block_candidates
+    )
+    allocation_summary.fleet_wide_report_only_missing_evidence_candidates = (
+        fleet_wide_report_only_missing_evidence_candidates
+    )
+    allocation_summary.fleet_wide_report_only_applied_commands = fleet_wide_report_only_applied_commands
+    allocation_summary.fleet_wide_report_only_launcher_classification_counts = dict(
+        sorted(fleet_wide_report_only_launcher_classification_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_launcher_reason_counts = dict(
+        sorted(fleet_wide_report_only_launcher_reason_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_target_classification_counts = dict(
+        sorted(fleet_wide_report_only_target_classification_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_target_reason_counts = dict(
+        sorted(fleet_wide_report_only_target_reason_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_candidate_classification_counts = dict(
+        sorted(fleet_wide_report_only_candidate_classification_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_candidate_reason_counts = dict(
+        sorted(fleet_wide_report_only_candidate_reason_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_candidate_source_counts = dict(
+        sorted(fleet_wide_report_only_candidate_source_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_scope_mode_counts = dict(
+        sorted(fleet_wide_report_only_scope_mode_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_source_counts = dict(
+        sorted(fleet_wide_report_only_source_counts.items())
+    )
+    allocation_summary.fleet_wide_report_only_target_source_counts = dict(
+        sorted(fleet_wide_report_only_target_source_counts.items())
+    )
     allocation_summary.controlled_live_apply_attempts = controlled_live_apply_attempts
     allocation_summary.controlled_live_apply_applied = controlled_live_apply_applied
     allocation_summary.controlled_live_apply_skipped = controlled_live_apply_skipped
@@ -1586,6 +1763,97 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print("- controlled selected groups:")
             for experiment_id, members in summary.controlled_selected_group_members_by_experiment.items():
                 print(f"  {experiment_id}: {members}")
+    if (
+        summary.fleet_wide_report_only_experiments
+        or summary.fleet_wide_report_only_launchers
+        or summary.fleet_wide_report_only_targets
+        or summary.fleet_wide_report_only_command_candidates
+        or summary.fleet_wide_report_only_cap_state_records
+        or summary.fleet_wide_report_only_results
+    ):
+        print(f"- fleet-wide report-only experiments: {summary.fleet_wide_report_only_experiments}")
+        print(
+            "- fleet-wide report-only experiment ids: "
+            + (", ".join(summary.fleet_wide_report_only_experiment_ids) or "none")
+        )
+        print(
+            "- fleet-wide report-only scope modes: "
+            + format_count_dict(summary.fleet_wide_report_only_scope_mode_counts)
+        )
+        print(
+            "- fleet-wide report-only launchers: "
+            f"{summary.fleet_wide_report_only_launchers} rows, "
+            f"{summary.fleet_wide_report_only_eligible_launchers} eligible, "
+            f"{summary.fleet_wide_report_only_excluded_launchers} excluded"
+        )
+        print(
+            "- fleet-wide report-only visible hostile targets: "
+            f"{summary.fleet_wide_report_only_visible_hostile_targets} "
+            f"({summary.fleet_wide_report_only_targets} target rows)"
+        )
+        print(
+            "- fleet-wide report-only command candidates: "
+            f"{summary.fleet_wide_report_only_command_candidates} rows, "
+            f"{summary.fleet_wide_report_only_candidate_rows} possible, "
+            f"{summary.fleet_wide_report_only_emitted_candidate_rows} emitted, "
+            f"{summary.fleet_wide_report_only_eligible_candidate_rows} eligible"
+        )
+        print(
+            "- fleet-wide report-only cap would-block candidates: "
+            f"{summary.fleet_wide_report_only_cap_would_block_candidates}"
+        )
+        print(
+            "- fleet-wide report-only missing-evidence candidates: "
+            f"{summary.fleet_wide_report_only_missing_evidence_candidates}"
+        )
+        print(f"- fleet-wide report-only applied commands: {summary.fleet_wide_report_only_applied_commands}")
+        if summary.fleet_wide_report_only_launcher_classification_counts:
+            print(
+                "- fleet-wide report-only launcher classifications: "
+                + format_count_dict(summary.fleet_wide_report_only_launcher_classification_counts)
+            )
+        if summary.fleet_wide_report_only_launcher_reason_counts:
+            print(
+                "- fleet-wide report-only launcher reasons: "
+                + format_count_dict(summary.fleet_wide_report_only_launcher_reason_counts)
+            )
+        if summary.fleet_wide_report_only_target_classification_counts:
+            print(
+                "- fleet-wide report-only target classifications: "
+                + format_count_dict(summary.fleet_wide_report_only_target_classification_counts)
+            )
+        if summary.fleet_wide_report_only_target_reason_counts:
+            print(
+                "- fleet-wide report-only target reasons: "
+                + format_count_dict(summary.fleet_wide_report_only_target_reason_counts)
+            )
+        if summary.fleet_wide_report_only_candidate_classification_counts:
+            print(
+                "- fleet-wide report-only candidate classifications: "
+                + format_count_dict(summary.fleet_wide_report_only_candidate_classification_counts)
+            )
+        if summary.fleet_wide_report_only_candidate_reason_counts:
+            print(
+                "- fleet-wide report-only candidate reasons: "
+                + format_count_dict(summary.fleet_wide_report_only_candidate_reason_counts)
+            )
+        if summary.fleet_wide_report_only_candidate_source_counts:
+            print(
+                "- fleet-wide report-only candidate sources: "
+                + format_count_dict(summary.fleet_wide_report_only_candidate_source_counts)
+            )
+        if summary.fleet_wide_report_only_source_counts:
+            print(
+                "- fleet-wide report-only eligibility sources: "
+                + format_count_dict(summary.fleet_wide_report_only_source_counts)
+            )
+        if summary.fleet_wide_report_only_target_source_counts:
+            print(
+                "- fleet-wide report-only visible-target sources: "
+                + format_count_dict(summary.fleet_wide_report_only_target_source_counts)
+            )
+        print(f"- fleet-wide report-only cap-state records: {summary.fleet_wide_report_only_cap_state_records}")
+        print(f"- fleet-wide report-only results: {summary.fleet_wide_report_only_results}")
     if summary.controlled_live_apply_attempts:
         print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")
         print(f"- controlled live apply applied: {summary.controlled_live_apply_applied}")

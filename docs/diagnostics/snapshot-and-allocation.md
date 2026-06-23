@@ -211,6 +211,32 @@ gate. The rows do not call
 `SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
 report `appliedCommands="0"` for Issues #34 through #36.
 
+Issue #43.1 adds a separate fleet-wide dry-run report trigger. It is not the
+controlled dry-run trigger, does not broaden selected command scope, and does
+not emit `appliedDecision`, `skippedDecision`, or `failedCommand` rows. Every
+fleet-wide row carries `scopeMode="fleetWideReportOnly"` and
+`appliedCommands="0"`.
+
+Fleet-wide report rows use active player-side combatants only as an eligibility
+source and visible hostile combat ships only as a target universe. They report
+source, confidence, missing-reason, launcher exclusion, visible-target, command
+candidate, diagnostic cap would-block, and missing allocator-evidence fields:
+
+```text
+[AllocationLog] recordType="fleetWideDryRunExperiment" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" fleetEligibilitySource="GameControl.spaceCombat.leftHandCombatants" fleetEligibilityConfidence="activePlayerSideCombatants" fleetEligibilityMissingReason="none" visibleTargetSource="GameControl.spaceCombat.activeShips" visibleTargetConfidence="visibleCombatants" visibleTargetMissingReason="none" eligibleLaunchers="2" excludedLaunchers="1" visibleHostileTargets="2" candidateRows="4" emittedCandidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" missingAllocatorEvidenceCandidates="2" appliedCommands="0"
+[AllocationLog] recordType="fleetWideLauncher" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="eligible" reason="none" fleetEligibilitySource="..." fleetEligibilityConfidence="..." launcherId="..." launcher="..." launcherTeam="..." playerControlEvidence="True" commandAuthorityKnown="True" canPerformCommands="True" missileReadinessKnown="True" canFireMissiles="True" appliedCommands="0"
+[AllocationLog] recordType="fleetWideTarget" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="visibleHostile" reason="none" targetId="..." target="..." targetTeam="..." visibleTargetSource="..." visibleTargetConfidence="..." appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandCandidate" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="wouldSkip" reason="missingAllocatorSnapshotEvidence" candidateSource="visibleTargetOnlyMissingAllocatorEvidence" commandIntent="fleetWideSalvoTargetReportOnly" launcherId="..." targetId="..." allocatorEvidence="missingAllocatorSnapshotEvidence" fleetReportOnlyPerTargetCapWouldBlock="False" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCapState" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" candidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" fleetReportOnlyGlobalCommandCap="12" fleetReportOnlyPerShipCommandCap="3" fleetReportOnlyPerTargetCommandCap="3" fleetReportOnlyPerTriggerCommandCap="12" appliedCommands="0"
+[AllocationLog] recordType="fleetWideResult" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" candidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" missingEvidenceCandidates="2" result="reportOnly" resultReason="fleetWideReportOnly" appliedCommands="0"
+```
+
+Visible hostile targets that are not backed by the current allocator/snapshot
+cycle are reported as candidates with missing allocator evidence, not as
+allocator-approved recommendations. The fleet report-only caps are diagnostics
+for would-block state only and do not affect the existing selected-group live
+caps.
+
 Issue #36 routes only `eligible` candidates to a named
 `controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
 setting, the gate emits `recordType="dryRunApplyGate"` with

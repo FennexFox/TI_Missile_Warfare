@@ -55,6 +55,9 @@ namespace MissileFireControl.Mod
             Settings.EnableControlledDryRunDiagnostics = GUILayout.Toggle(
                 Settings.EnableControlledDryRunDiagnostics,
                 "Enable controlled command experiment diagnostics");
+            Settings.EnableFleetWideDryRunReportDiagnostics = GUILayout.Toggle(
+                Settings.EnableFleetWideDryRunReportDiagnostics,
+                "Enable fleet-wide dry-run report diagnostics (report-only)");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
                 "Allow controlled command apply (selected group, capped)");
@@ -80,6 +83,11 @@ namespace MissileFireControl.Mod
             if (GUILayout.Button("Trigger controlled command experiment"))
             {
                 Log.Info(ShadowAllocationDiagnostics.RequestControlledDryRun());
+            }
+
+            if (GUILayout.Button("Trigger fleet-wide dry-run report"))
+            {
+                Log.Info(ShadowAllocationDiagnostics.RequestFleetWideDryRunReport());
             }
         }
 

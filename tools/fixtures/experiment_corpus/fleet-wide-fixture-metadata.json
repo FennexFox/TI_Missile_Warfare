@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-FLEET-WIDE-FIXTURE-0001",
+  "runMode": "fixture",
+  "selectedMode": "fleet-wide",
+  "selectedShipCount": 0,
+  "friendlyMissileShipCount": 2,
+  "enemyShipCount": 2,
+  "launcherWeaponCount": 2,
+  "missileFamily": "synthetic",
+  "targetIds": ["target-red-1", "target-red-2"],
+  "pdEvidenceCategory": "mixed-visible-and-allocator-evidence",
+  "rangeBand": "fixture",
+  "closingSpeedBand": "fixture",
+  "knownMissingEvidence": [
+    "allocator evidence for visible target candidates not present in current snapshot"
+  ],
+  "evidenceSummary": {
+    "missing_evidence_counts": {
+      "fleet-wide report-only missing allocator evidence": 2
+    },
+    "skipped_command_counts": {
+      "fleet-wide report-only missing allocator evidence": 2,
+      "fleet-wide report-only diagnostic cap would block": 1
+    },
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Synthetic #43.1 report-only fixture. Uses fleet-wide eligibility and visible hostile targets only for diagnostics; appliedCommands remains zero."
+}
