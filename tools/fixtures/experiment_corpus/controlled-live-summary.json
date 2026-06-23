@@ -1,0 +1,52 @@
+{
+  "input": "fixture-controlled-live",
+  "log_count": 1,
+  "evidence_log_count": 1,
+  "real_evidence_log_count": 0,
+  "synthetic_fixture_count": 1,
+  "parser_failures": 0,
+  "classification_counts": {
+    "plausible": 2,
+    "partial saturation": 0,
+    "overkill": 0,
+    "underkill": 0,
+    "target-value mismatch": 0,
+    "missing-evidence-limited": 0,
+    "command-safety no-op": 0
+  },
+  "limitation_counts": {},
+  "logs": [
+    {
+      "controlled_cap_spillover_diagnostics": [
+        {
+          "experiment_id": "dryrun-fixture-cap-1",
+          "target_id": "live-target-1",
+          "target": "Fixture Target#live-target-1[team=enemy]",
+          "same_target_none_correlated_try_fire_count": 1
+        }
+      ],
+      "applied_launcher_post_budget_spillover_diagnostics": [
+        {
+          "experiment_id": "dryrun-fixture-cap-1",
+          "target_id": "live-target-1",
+          "target": "Fixture Target#live-target-1[team=enemy]",
+          "same_target_none_correlated_try_fire_count": 1
+        }
+      ],
+      "parser_summary": {
+        "allocation_summary": {
+          "missing_input_counts": {},
+          "controlled_live_apply_skipped": 1,
+          "controlled_live_apply_failed": 0,
+          "controlled_live_apply_reason_counts": {
+            "none": 1,
+            "targetAggregateControlledCommandCapReached": 1
+          },
+          "controlled_live_apply_mismatch_counts": {},
+          "same_team_missile_target_snapshots": 0,
+          "suspicious_patterns": ["none"]
+        }
+      }
+    }
+  ]
+}

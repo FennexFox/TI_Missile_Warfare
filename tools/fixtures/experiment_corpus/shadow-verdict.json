@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "verdict": "needs-live-validation",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-23T00:10:00Z",
+  "summary": "Shadow replay has candidate-filter value but no causal combat proof.",
+  "evidenceGaps": ["controlled live validation", "exact kill attribution"],
+  "nextAction": "Compare against corpus but require controlled-live validation before tuning."
+}

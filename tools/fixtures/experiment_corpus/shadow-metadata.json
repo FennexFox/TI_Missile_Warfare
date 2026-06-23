@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-SHADOW-0001",
+  "runMode": "shadow-replay",
+  "selectedMode": "shadow-only",
+  "friendlyMissileShipCount": 3,
+  "enemyShipCount": 2,
+  "launcherWeaponCount": 6,
+  "missileFamily": "synthetic",
+  "targetIds": ["shadow-target-1", "shadow-target-2"],
+  "pdEvidenceCategory": "observedTemplateCapability",
+  "rangeBand": "medium",
+  "closingSpeedBand": "closing",
+  "knownMissingEvidence": ["exact kill attribution"],
+  "evidenceSummary": {
+    "missing_evidence_counts": {
+      "exact kill attribution": 1
+    },
+    "skipped_command_counts": {},
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Candidate filter only; needs controlled live validation."
+}

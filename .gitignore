@@ -22,6 +22,7 @@ logs/
 *.log
 *.csv
 *.jsonl
+!tools/fixtures/**/*.jsonl
 .chatgpt/
 
 # Graphify local cache/temp state

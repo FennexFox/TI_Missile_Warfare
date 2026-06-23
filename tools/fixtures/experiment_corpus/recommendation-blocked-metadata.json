@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-BLOCKED-0001",
+  "runMode": "controlled-live",
+  "selectedMode": "selected-single-ship",
+  "selectedShipNames": ["Fixture Blocked"],
+  "selectedShipCount": 1,
+  "friendlyMissileShipCount": 1,
+  "enemyShipCount": 1,
+  "launcherWeaponCount": 2,
+  "missileFamily": "synthetic",
+  "targetIds": ["blocked-target-1"],
+  "pdEvidenceCategory": "observedTemplateCapability",
+  "knownMissingEvidence": [],
+  "commandGateSummary": "blocked by recommendation-only mode",
+  "evidenceSummary": {
+    "missing_evidence_counts": {},
+    "skipped_command_counts": {
+      "blockedByRecommendationOnlyMode": 1
+    },
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Safety gate fixture."
+}

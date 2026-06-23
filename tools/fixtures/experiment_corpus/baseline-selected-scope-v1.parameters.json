@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "heuristicCandidateId": "baseline-selected-scope-v1",
+  "description": "Synthetic baseline parameter snapshot for corpus tooling fixtures.",
+  "targetValueWeights": {
+    "hullClass": 1.0,
+    "missionKillPriority": 1.0,
+    "currentTargetPriority": 1.0
+  },
+  "pdRisk": {
+    "evidenceMode": "observed-template-capability",
+    "riskScale": 1.0,
+    "defaultWeight": 0.0
+  },
+  "launchWindow": {
+    "minimumScore": 0.25,
+    "rangeWeight": 1.0,
+    "closingSpeedWeight": 1.0
+  },
+  "salvoSizing": {
+    "killSizeMultiplier": 1.0,
+    "saturationSizeMultiplier": 1.0,
+    "partialSaturationThreshold": 0.5
+  },
+  "commandSafety": {
+    "selectedGroupMaxShips": 3,
+    "perShipCommandCap": 1,
+    "commandTriggerCap": 3,
+    "targetAggregateControlledCommandCap": true
+  },
+  "ruleToggles": {
+    "selectedScopeOnly": true,
+    "recommendationOnlyMode": false,
+    "allowCommandApply": true
+  }
+}
