@@ -30,7 +30,7 @@ Relevant recent commits on branch `issue_39`:
 
 Observed state after `92ebc65`:
 
-- `targetAggregateSalvoCapReached` can appear as the skip reason for later same-target controlled command candidates.
+- `targetAggregateControlledCommandCapReached` is the renamed skip reason for later same-target controlled command candidates; older artifacts show the previous label `targetAggregateSalvoCapReached`.
 - The first same-target selected ship can receive the controlled command and produce `directRuntimeContext` launch rows.
 - Later same-target selected ships can still launch missiles through vanilla / existing fire behavior with `controlledCommandCorrelation="none"` and `commandResultId="none"`.
 - The first applied ship can also launch additional none-correlated shots after its assigned controlled shots are consumed.
@@ -52,8 +52,8 @@ Target:
 
 Controlled result:
 - Pharsalos#276 -> Dragon#281 appliedDecision, assignedShots=8
-- El Alamein#278 -> Dragon#281 skippedDecision, reason=targetAggregateSalvoCapReached
-- Kasserine Pass#279 -> Dragon#281 skippedDecision, reason=targetAggregateSalvoCapReached
+- El Alamein#278 -> Dragon#281 skippedDecision, reason=targetAggregateControlledCommandCapReached in new logs; historical artifact reason=targetAggregateSalvoCapReached
+- Kasserine Pass#279 -> Dragon#281 skippedDecision, reason=targetAggregateControlledCommandCapReached in new logs; historical artifact reason=targetAggregateSalvoCapReached
 
 Launch attribution:
 - Pharsalos directRuntimeContext rows cover the assigned controlled shots.
@@ -69,13 +69,13 @@ Actual vanilla salvo suppression did not occur.
 
 ## Terminology correction
 
-Current wording is potentially misleading:
+Previous wording was potentially misleading:
 
 ```text
 target aggregate command cap
 ```
 
-More accurate wording:
+Current wording:
 
 ```text
 target aggregate controlled-command cap
@@ -87,13 +87,13 @@ or:
 duplicate controlled command attribution guard
 ```
 
-If the skip reason is renamed before merge, prefer:
+The skip reason is renamed before merge to:
 
 ```text
 targetAggregateControlledCommandCapReached
 ```
 
-If the skip reason is kept for log continuity, every document and report section must state explicitly that it only gates controlled command application and does not suppress vanilla salvo launches.
+The parser/report keeps compatibility with the old reason for historical log continuity, but every document and report section must state explicitly that both labels only gate controlled command application and do not suppress vanilla salvo launches.
 
 ## Scope boundary
 
@@ -109,7 +109,7 @@ Allowed work:
 
 Non-goals:
 
-- do not claim `targetAggregateSalvoCapReached` prevents all missile launches;
+- do not claim `targetAggregateControlledCommandCapReached` or the historical `targetAggregateSalvoCapReached` prevents all missile launches;
 - do not suppress vanilla salvo launches without a separate design and validation plan;
 - do not implement selected-ship budget distribution in this slice;
 - do not broaden command scope;
@@ -131,7 +131,7 @@ The section should group by at least:
 - `experimentId`;
 - target id / target name;
 - controlled applied command rows;
-- controlled skipped rows with `targetAggregateSalvoCapReached` or renamed equivalent;
+- controlled skipped rows with `targetAggregateControlledCommandCapReached` or historical equivalent;
 - same-target TryFire rows after the skip with `controlledCommandCorrelation="none"`;
 - launcher id / launcher name for those none-correlated launches;
 - conservative interpretation.
@@ -181,7 +181,7 @@ Issue #39.1 is complete when the next worker can state all of the following with
 
 - #39 direct command-spend attribution is available.
 - `targetStateId` bridge works.
-- `targetAggregateSalvoCapReached` or its renamed equivalent gates controlled command application only.
+- `targetAggregateControlledCommandCapReached` or its historical equivalent gates controlled command application only.
 - Vanilla same-target spillover launches are detected and reported separately.
 - Conservative `DestroyShip` lines remain outcome hints, not exact kill attribution.
 - Actual vanilla salvo suppression / selected-ship distribution is out of scope and belongs to a later focused design before or during #43.

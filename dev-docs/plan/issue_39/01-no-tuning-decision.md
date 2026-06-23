@@ -249,14 +249,14 @@ without changing allocator behavior:
 - exact projectile/hit/kill attribution remains out of scope without a stable RE
   hook.
 
-## Focused Same-target Cap Follow-up
+## Focused Same-target Controlled-command Cap Follow-up
 
-A focused behavior-changing follow-up now implements the first bounded rule from
-the report-only candidate evidence: within one selected-group controlled command
-experiment, once a target has received an applied command package, later eligible
-commands to that same target are skipped with
-`targetAggregateSalvoCapReached` if they would exceed the experiment's
-target-level assigned-shot budget.
+A focused behavior-changing follow-up now implements the first bounded guard
+from the report-only candidate evidence: within one selected-group controlled
+command experiment, once a target has received an applied command package, later
+eligible controlled commands to that same target are skipped with
+`targetAggregateControlledCommandCapReached` if they would exceed the
+experiment's target-level assigned-shot budget.
 
 This is intentionally a controlled selected-group command gate, not a broad
 allocator rewrite. The current live path builds one-target allocation requests
@@ -264,6 +264,12 @@ from `MissileWeapon.TryFire` cycles, so the cross-ship duplicate evidence is onl
 visible in the controlled experiment state that spans selected ships and cycles.
 The existing selected-scope, hostile-target, per-ship, and group command caps are
 preserved.
+
+Correction for #39.1: commit `92ebc65` is not an actual missile expenditure cap.
+It is a controlled-command application and attribution guard. Later same-target
+vanilla launches from skipped selected ships can still appear as
+`controlledCommandCorrelation="none"` / `commandResultId="none"` and must be
+reported separately from direct controlled command spend.
 
 Evidence cited from the regenerated local report
 `artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`:
@@ -285,7 +291,15 @@ validated the new skip reason. In experiment `dryrun-20260623T020248174Z-1`,
 Pharsalos applied one direct command to Dragon#281 for eight assigned and eight
 directly observed spent shots. Later same-target eligible commands from El
 Alamein and Kasserine Pass were skipped with
-`targetAggregateSalvoCapReached` at report lines 88 and 90 in
+`targetAggregateControlledCommandCapReached` in newly generated logs, while
+older artifacts show the previous label `targetAggregateSalvoCapReached` at
+report lines 88 and 90 in
 `artifacts\shadow-fitting\issue_39_20260623_1104_local\shadow-fitting-report.md`.
 Dragon later appeared in conservative post-direct-launch `DestroyShip` outcome
 text.
+
+#39.1 adds a fitting-report spillover diagnostic for the observed boundary:
+the controlled cap blocked duplicate controlled application/attribution, but
+actual vanilla same-target salvo suppression and selected-ship budget
+distribution remain unresolved. Those behavior changes are out of scope here and
+belong to a later focused design before or during #43.

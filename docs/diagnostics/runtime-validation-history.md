@@ -792,17 +792,25 @@ separated from applied direct launches, conservative post-direct-launch
 DestroyShip hints are available, and duplicate same-target kill-package evidence
 is now mechanically visible for the next focused rule-change PR.
 
-## Issue #39 same-target aggregate salvo cap follow-up
+## Issue #39 same-target controlled-command cap follow-up
 
 The focused follow-up implements a selected-group controlled command gate for the
 same-target duplicate kill-package candidate. Within one controlled experiment,
 after a target receives an applied command package, later eligible commands to
-that same target are skipped with `targetAggregateSalvoCapReached` when they
-would exceed the experiment's target-level assigned-shot budget.
+that same target are skipped with
+`targetAggregateControlledCommandCapReached` when they would exceed the
+experiment's target-level assigned-shot budget.
 
 The rule is scoped to the controlled selected-group command path and preserves
 the existing selected-scope, hostile-target, per-ship, and group command caps.
 It is not a fleet-wide allocator rewrite.
+
+Issue #39.1 corrects the interpretation of this follow-up: commit `92ebc65` is
+not an actual missile expenditure cap. It only prevents duplicate controlled
+command application and direct command-spend attribution for the same target
+inside the controlled selected-group experiment. Vanilla same-target launches
+from skipped selected ships can still occur and remain visible as
+none-correlated `MissileWeapon.TryFire` rows.
 
 Evidence came from a regenerated local report at
 `artifacts\shadow-fitting\issue_39_latest_local\shadow-fitting-report.md`: the
@@ -819,6 +827,14 @@ verified the new skip reason in real combat logs. Experiment
 `dryrun-20260623T020248174Z-1` applied one direct command from Pharsalos to
 Dragon#281 for eight assigned and eight directly observed spent shots. Later
 same-target eligible commands from El Alamein and Kasserine Pass were skipped
-with `targetAggregateSalvoCapReached`, and Dragon later appeared in conservative
-post-direct-launch `DestroyShip` outcome text. The regenerated report is in
-`artifacts\shadow-fitting\issue_39_20260623_1104_local`.
+with the target aggregate controlled-command cap. Older artifacts show the
+pre-rename reason `targetAggregateSalvoCapReached`; newly generated logs use
+`targetAggregateControlledCommandCapReached`. Dragon later appeared in
+conservative post-direct-launch `DestroyShip` outcome text.
+
+The fitting report now has a `Controlled cap spillover diagnostics` section that
+keeps direct controlled command spend separate from later same-target
+none-correlated vanilla spillover. Actual vanilla salvo suppression and
+selected-ship budget distribution remain unresolved and are out of scope for
+#39.1; they require a later focused design before or during #43. The regenerated
+report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.

@@ -283,19 +283,28 @@ uses direct command-spend rows and available kill-size/outcome hints to identify
 candidate target-level aggregate salvo caps. The actual allocator behavior change
 remains a separate focused follow-up.
 
-### Issue #39 same-target cap follow-up
+### Issue #39 same-target controlled-command cap follow-up
 
 The focused follow-up implements the first bounded rule from that evidence:
 selected-group controlled command experiments now skip later eligible commands to
-the same target with `targetAggregateSalvoCapReached` after the experiment has
-already applied that target's assigned-shot budget. The change is deliberately
-limited to the controlled selected-group command gate and does not expand command
-scope or claim fleet-wide allocation readiness.
+the same target with `targetAggregateControlledCommandCapReached` after the
+experiment has already applied that target's assigned-shot budget. The change is
+deliberately limited to the controlled selected-group command gate and does not
+expand command scope or claim fleet-wide allocation readiness.
 
 Fresh runtime smoke on `Player.log` written 2026-06-23 11:04 local confirmed the
 new skip reason in a same-target selected-group case: after one direct Dragon
 command, later eligible Dragon commands were skipped with
-`targetAggregateSalvoCapReached`.
+the target aggregate controlled-command cap. Older artifacts use the pre-rename
+label `targetAggregateSalvoCapReached`; newly generated logs use
+`targetAggregateControlledCommandCapReached`.
+
+Issue #39.1 closes the fitting-readiness boundary around that smoke: commit
+`92ebc65` is a controlled-command application and attribution guard, not an
+actual missile expenditure cap. The fitting report now separates direct
+controlled command spend from same-target none-correlated vanilla spillover
+launches. Actual vanilla salvo suppression and selected-ship budget distribution
+remain unresolved and belong to a later focused design before or during #43.
 
 ### Future combat outcome hook RE issue
 

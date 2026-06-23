@@ -568,7 +568,7 @@ namespace MissileFireControl.Mod.Diagnostics
             if (dryRun.WouldExceedTargetBudget(candidate.TargetId, candidate.AssignedShots))
             {
                 dryRun.MarkAttempted(candidate.LauncherId);
-                return CommandApplyResult.Skipped("targetAggregateSalvoCapReached");
+                return CommandApplyResult.Skipped("targetAggregateControlledCommandCapReached");
             }
 
             dryRun.MarkAttempted(candidate.LauncherId);

@@ -69,6 +69,10 @@ REQUIRED_EVIDENCE_FIELDS = (
     "shadow allocation cycles",
 )
 CONTROLLED_COMMAND_LAUNCH_CORRELATION_MAX_LINES = 12
+CONTROLLED_TARGET_CAP_SKIP_REASONS = {
+    "targetAggregateControlledCommandCapReached",
+    "targetAggregateSalvoCapReached",
+}
 TARGET_DESTROY_RE = re.compile(
     r"removing ship from CombatManager ActiveShip\(DestroyShip\):\s*"
     r"(?P<target_id>[^,]+),\s*(?P<target>.+)$"
@@ -160,6 +164,21 @@ class ControlledCommandEvidence:
 
 
 @dataclass
+class ControlledCapSpilloverDiagnostic:
+    experiment_id: str
+    target_id: str
+    target: str
+    applied_launchers: list[str]
+    applied_assigned_shots: int
+    applied_direct_spent_shots: int
+    skipped_launchers: list[str]
+    skip_reasons: list[str]
+    same_target_none_correlated_try_fire_count: int
+    same_target_none_correlated_try_fire_lines: list[int]
+    interpretation: str
+
+
+@dataclass
 class CycleContext:
     cycle_id: str
     line: int
@@ -188,6 +207,7 @@ class FittingLogReport:
     limitation_counts: dict[str, int]
     representative_records: list[dict[str, object]]
     controlled_command_evidence: list[dict[str, object]]
+    controlled_cap_spillover_diagnostics: list[dict[str, object]]
     parser_summary: dict[str, object]
 
 
@@ -550,6 +570,154 @@ def controlled_command_rows(
     return rows
 
 
+def controlled_cap_spillover_diagnostics(
+    raw_records: list[dict[str, str | int]],
+    launch_records: list[LaunchEvidenceRecord],
+) -> list[ControlledCapSpilloverDiagnostic]:
+    """Find vanilla same-target launches after a controlled target-cap skip."""
+    command_records = [
+        raw
+        for raw in raw_records
+        if str(raw.get("recordType", "unknown")) in CONTROLLED_COMMAND_RESULT_RECORD_TYPES
+        and raw.get("experimentId")
+    ]
+    applied_rows = [
+        raw
+        for raw in command_records
+        if str(raw.get("result", "unknown")).lower() == "applied"
+    ]
+    skipped_rows = [
+        raw
+        for raw in command_records
+        if str(raw.get("result", "unknown")).lower() == "skipped"
+        and str(raw.get("reason", "unknown")) in CONTROLLED_TARGET_CAP_SKIP_REASONS
+    ]
+
+    diagnostics: list[ControlledCapSpilloverDiagnostic] = []
+    grouped_skips: dict[tuple[str, str], list[dict[str, str | int]]] = {}
+    for skipped in skipped_rows:
+        grouped_skips.setdefault(
+            (
+                str(skipped.get("experimentId", "unknown")),
+                str(skipped.get("targetId", "unknown")),
+            ),
+            [],
+        ).append(skipped)
+
+    for (experiment_id, target_id), skips in sorted(grouped_skips.items()):
+        first_skip_line = min(int(skip["line"]) for skip in skips)
+        same_target_applied = [
+            row
+            for row in applied_rows
+            if str(row.get("experimentId", "unknown")) == experiment_id
+            and str(row.get("targetId", "unknown")) == target_id
+            and int(row["line"]) < first_skip_line
+        ]
+        if not same_target_applied:
+            continue
+
+        skipped_by_launcher = {
+            str(skip.get("launcherId", "unknown")): skip for skip in skips
+        }
+        spillover_launches = [
+            launch
+            for launch in launch_records
+            if launch.launcher_id in skipped_by_launcher
+            and launch.target_id == target_id
+            and launch.line > int(skipped_by_launcher[launch.launcher_id]["line"])
+            and launch.controlled_command_correlation == "none"
+            and launch.command_result_id.lower() in {"", "none", "unknown", "null"}
+        ]
+        if not spillover_launches:
+            continue
+
+        direct_spent_by_result = direct_spent_by_command_result(launch_records, experiment_id)
+        applied_direct_spent = sum(
+            direct_spent_by_result.get(str(row.get("commandResultId", "unknown")), 0)
+            for row in same_target_applied
+        )
+        applied_assigned = sum(
+            first_int(row.get("missilesAssigned"), row.get("assignedShots")) or 0
+            for row in same_target_applied
+        )
+
+        diagnostics.append(
+            ControlledCapSpilloverDiagnostic(
+                experiment_id=experiment_id,
+                target_id=target_id,
+                target=compact_entity(
+                    str(same_target_applied[0].get("target", "unknown")),
+                    target_id,
+                    str(same_target_applied[0].get("targetTeam", "unknown")),
+                ),
+                applied_launchers=[
+                    launcher_summary(
+                        row,
+                        direct_spent_by_result.get(
+                            str(row.get("commandResultId", "unknown")),
+                            0,
+                        ),
+                    )
+                    for row in same_target_applied
+                ],
+                applied_assigned_shots=applied_assigned,
+                applied_direct_spent_shots=applied_direct_spent,
+                skipped_launchers=[launcher_summary(skip, None) for skip in skips],
+                skip_reasons=sorted({str(skip.get("reason", "unknown")) for skip in skips}),
+                same_target_none_correlated_try_fire_count=len(spillover_launches),
+                same_target_none_correlated_try_fire_lines=sorted(
+                    {launch.line for launch in spillover_launches}
+                ),
+                interpretation=(
+                    "controlled command cap worked, but vanilla same-target "
+                    "spillover launches remain visible from skipped launchers"
+                ),
+            )
+        )
+
+    return diagnostics
+
+
+def direct_spent_by_command_result(
+    launch_records: list[LaunchEvidenceRecord],
+    experiment_id: str,
+) -> dict[str, int]:
+    """Return max directly observed spend per command result id."""
+    spent: dict[str, int] = {}
+    for launch in launch_records:
+        if (
+            launch.experiment_id != experiment_id
+            or launch.controlled_command_correlation != "directRuntimeContext"
+            or launch.command_result_id.lower() in {"", "none", "unknown", "null"}
+        ):
+            continue
+        observed = launch.controlled_command_observed_spent_shots
+        if observed is None:
+            observed = launch.ammo_delta
+        if observed is None:
+            continue
+        spent[launch.command_result_id] = max(spent.get(launch.command_result_id, 0), observed)
+    return spent
+
+
+def launcher_summary(raw: dict[str, str | int], spent: int | None) -> str:
+    """Return compact launcher text for report rows."""
+    text = compact_entity(
+        str(raw.get("launcher", "unknown")),
+        str(raw.get("launcherId", "unknown")),
+        str(raw.get("launcherTeam", "unknown")),
+    )
+    assigned = first_int(raw.get("missilesAssigned"), raw.get("assignedShots"))
+    suffix_parts = []
+    if assigned is not None:
+        suffix_parts.append(f"assigned={assigned}")
+    if spent is not None:
+        suffix_parts.append(f"directSpent={spent}")
+    if suffix_parts:
+        text += " (" + ", ".join(suffix_parts) + ")"
+    return text
+
+
 def classify_records(
     cycles: dict[str, CycleContext],
     raw_records: list[dict[str, str | int]],
@@ -763,6 +931,7 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
     target_outcomes = scan_target_outcomes(path)
     classified_records = classify_records(cycles, raw_records)
     command_evidence = controlled_command_rows(raw_records, launch_records, target_outcomes)
+    spillover_diagnostics = controlled_cap_spillover_diagnostics(raw_records, launch_records)
     classification_counts = Counter(record.classification for record in classified_records)
     limitation_counts = Counter(
         limitation for record in classified_records for limitation in record.limitations
@@ -794,6 +963,9 @@ def fitting_log_report(path: Path, max_issues: int) -> FittingLogReport:
         limitation_counts=dict(sorted(limitation_counts.items())),
         representative_records=representative_records,
         controlled_command_evidence=[asdict(record) for record in command_evidence],
+        controlled_cap_spillover_diagnostics=[
+            asdict(record) for record in spillover_diagnostics
+        ],
         parser_summary=asdict(summary),
     )
 
@@ -1624,6 +1796,9 @@ def format_markdown_report(report: AggregateReport) -> str:
     lines.extend(["", "## Controlled tuning candidates", ""])
     lines.extend(controlled_tuning_candidate_markdown_lines(report.logs))
 
+    lines.extend(["", "## Controlled cap spillover diagnostics", ""])
+    lines.extend(controlled_cap_spillover_markdown_lines(report.logs))
+
     lines.extend(["", "## Per-log summaries", ""])
     for log in report.logs:
         parser_reasons = "; ".join(log.parser_reasons) if log.parser_reasons else "none"
@@ -1708,6 +1883,10 @@ def format_markdown_report(report: AggregateReport) -> str:
             "  launch rows as observation evidence only. It is not direct command-spend proof",
             "  unless the command result row itself reports numeric spent shots or",
             "  a future diagnostic stamps launch evidence with the command result.",
+            "- `targetAggregateControlledCommandCapReached` means the controlled",
+            "  command application/attribution cap fired. It does not suppress",
+            "  vanilla same-target launches, which are reported separately as",
+            "  none-correlated spillover when visible.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1966,6 +2145,61 @@ def controlled_tuning_candidate_markdown_lines(logs: list[FittingLogReport]) -> 
         )
     if len(candidates) > 20:
         lines.append(f"- table truncated to 20/{len(candidates)} tuning candidates")
+    return lines
+
+
+def controlled_cap_spillover_markdown_lines(logs: list[FittingLogReport]) -> list[str]:
+    """Return controlled target-cap spillover diagnostics Markdown lines."""
+    rows = [
+        row
+        for log in logs
+        for row in log.controlled_cap_spillover_diagnostics
+    ]
+    if not rows:
+        return [
+            "- no vanilla same-target spillover was detected after a controlled target-cap skip"
+        ]
+
+    lines = [
+        f"- spillover cases: {len(rows)}",
+        (
+            "- interpretation: controlled command cap prevented duplicate "
+            "controlled command application/attribution, but same-target "
+            "vanilla spillover launches remained visible from skipped launchers."
+        ),
+        "",
+        "| experiment | target | applied controlled launchers | controlled assigned | direct controlled spent | skipped launchers | skip reasons | none-correlated same-target TryFire after skip | interpretation |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows[:20]:
+        lines.append(
+            "| {experiment} | {target} | {applied} | {assigned} | {spent} | {skipped} | {reasons} | {try_fire} | {interpretation} |".format(
+                experiment=markdown_cell(str(row.get("experiment_id", "unknown"))),
+                target=markdown_cell(
+                    f"{row.get('target', 'unknown')} ({row.get('target_id', 'unknown')})"
+                ),
+                applied=markdown_cell("; ".join(str(value) for value in row.get("applied_launchers", []))),
+                assigned=format_optional_int(row.get("applied_assigned_shots")),
+                spent=format_optional_int(row.get("applied_direct_spent_shots")),
+                skipped=markdown_cell("; ".join(str(value) for value in row.get("skipped_launchers", []))),
+                reasons=markdown_cell(", ".join(str(value) for value in row.get("skip_reasons", []))),
+                try_fire=markdown_cell(
+                    "{count} @ {lines}".format(
+                        count=row.get("same_target_none_correlated_try_fire_count", 0),
+                        lines=",".join(
+                            str(value)
+                            for value in row.get(
+                                "same_target_none_correlated_try_fire_lines",
+                                [],
+                            )
+                        ),
+                    )
+                ),
+                interpretation=markdown_cell(str(row.get("interpretation", "unknown"))),
+            )
+        )
+    if len(rows) > 20:
+        lines.append(f"- table truncated to 20/{len(rows)} spillover cases")
     return lines
 
 
