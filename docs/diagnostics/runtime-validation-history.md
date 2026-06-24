@@ -978,3 +978,41 @@ tools/fixtures/fleet_wide_bounded_live_apply.txt
 ```
 
 Runtime validation is pending. A clean smoke should show at most three `fleetWideBoundedLiveResult` rows with `result="applied"`, `failedCommands="0"`, no same-team target snapshots, no scope violations, and matching `directRuntimeContext` `LaunchLog` rows for each applied command result.
+
+## Issue #43.2b bounded fleet-wide live apply runtime smoke: clean cap=3 success
+
+A real combat `Player.log` from 2026-06-24 recorded a bounded fleet-wide live apply run after the command-authority proof and bounded-live trigger were enabled.
+
+Observed experiment:
+
+```text
+experimentId="fleetwide-bounded-live-20260624T125727207Z-1"
+fleetWideBoundedLiveCandidate: 3
+fleetWideBoundedLivePreState: 3
+fleetWideBoundedLiveResult: 5
+fleetWideBoundedLivePostState: 3
+result="applied": 3
+result="skipped": 2
+failedCommands="0"
+directRuntimeContext LaunchLog rows: 21
+scopeViolation markers: 0
+same-team markers: 0
+```
+
+Applied commands:
+
+```text
+cycleId="1" launcher="Thapsus" launcherId="276" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="1"
+cycleId="3" launcher="Salamis" launcherId="277" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="2"
+cycleId="5" launcher="Cannae" launcherId="278" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="3"
+```
+
+Each applied command produced seven `directRuntimeContext` `LaunchLog` rows for its `commandResultId`, matching `assignedShots="7"`. The two skipped rows used:
+
+```text
+reason="fleetWideBoundedLivePerShipCapBlocked"
+```
+
+Those skips are expected: the same already-commanded launcher appeared in later allocator snapshots and was blocked by `perShipCap="1"`. The run therefore validates the bounded-live slice at cap=3 with allocator evidence preserved across cycles, direct launch/spend correlation present, and no observed same-team or scope-violation marker.
+
+This is sufficient to close the #43.2 command-authority / bounded-live proof slice and hand off to #43.3 for allocator quality, corpus, spillover, and tuning work.
