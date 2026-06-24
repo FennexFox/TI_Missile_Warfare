@@ -64,6 +64,9 @@ namespace MissileFireControl.Mod
             Settings.EnableFleetWideCommandAuthorityProbeDiagnostics = GUILayout.Toggle(
                 Settings.EnableFleetWideCommandAuthorityProbeDiagnostics,
                 "Enable fleet-wide command-authority probe (#43.2b cap=1)");
+            Settings.EnableFleetWideBoundedLiveApplyDiagnostics = GUILayout.Toggle(
+                Settings.EnableFleetWideBoundedLiveApplyDiagnostics,
+                "Enable bounded fleet-wide live apply (#43.2b cap=3)");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
                 "Allow controlled command apply (selected group, capped)");
@@ -104,6 +107,11 @@ namespace MissileFireControl.Mod
             if (GUILayout.Button("Trigger fleet-wide command-authority probe"))
             {
                 Log.Info(ShadowAllocationDiagnostics.RequestFleetWideCommandAuthorityProbe());
+            }
+
+            if (GUILayout.Button("Trigger bounded fleet-wide live apply"))
+            {
+                Log.Info(ShadowAllocationDiagnostics.RequestFleetWideBoundedLiveApply());
             }
         }
 

@@ -212,3 +212,24 @@ clear command-authority blocker explaining why broader live apply remains unsafe
 ```
 
 If vanilla spillover remains large or direct correlation is missing, #43.3 should review it as measurement/authority work, not allocator tuning evidence.
+
+## Implementation note — multi-cycle bounded trigger
+
+The first bounded-live implementation should preserve current allocator evidence rather than infer commands for every visible launcher in one frame. The trigger may remain armed across allocation cycles and apply at most one allocator-evidence-backed command per cycle until the global cap is reached.
+
+Initial implementation shape:
+
+```text
+experiment id prefix: fleetwide-bounded-live-
+global cap: 3
+per-ship cap: 1
+per-target cap: 3
+scopeMode="fleetWideBoundedLiveApply"
+runMode="fleet-wide-controlled"
+recordType="fleetWideBoundedLiveCandidate"
+recordType="fleetWideBoundedLivePreState"
+recordType="fleetWideBoundedLiveResult"
+recordType="fleetWideBoundedLivePostState"
+```
+
+The trigger can re-arm after irrelevant or missing-evidence cycles, and after successful commands until `totalAppliedCommands` reaches the global cap. Each applied command must still have `candidateSource="currentAllocatorSnapshot"`, a concrete hostile target, cap pass, and direct command-result correlation must be checked in subsequent `LaunchLog` rows.

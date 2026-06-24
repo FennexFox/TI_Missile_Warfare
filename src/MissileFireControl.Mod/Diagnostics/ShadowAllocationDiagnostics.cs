@@ -23,6 +23,9 @@ namespace MissileFireControl.Mod.Diagnostics
         private const int FleetReportOnlyPerTargetCommandCap = 3;
         private const int FleetReportOnlyPerTriggerCommandCap = 12;
         private const int FleetReportOnlyMaxCandidateRows = 64;
+        private const int FleetWideBoundedLiveGlobalCommandCap = 3;
+        private const int FleetWideBoundedLivePerShipCommandCap = 1;
+        private const int FleetWideBoundedLivePerTargetCommandCap = 3;
 
         private static int _cycleSequence;
         private static int _experimentSequence;
@@ -31,6 +34,7 @@ namespace MissileFireControl.Mod.Diagnostics
         private static FleetWideReportRequest _pendingFleetWideReport;
         private static FleetWideLiveApplyRequest _pendingFleetWideLiveApply;
         private static FleetWideCommandAuthorityProbeRequest _pendingFleetWideCommandAuthorityProbe;
+        private static FleetWideBoundedLiveApplyRequest _pendingFleetWideBoundedLiveApply;
 
         private static readonly string[] SelectedScopeMemberNames =
         {
@@ -259,6 +263,54 @@ namespace MissileFireControl.Mod.Diagnostics
             return "Fleet-wide command-authority probe armed: experimentId=" + experimentId + ". This cap=1 trigger may attempt exactly one non-selected allocator-evidence-backed command.";
         }
 
+        public static string RequestFleetWideBoundedLiveApply()
+        {
+            if (!Main.IsEnabled())
+            {
+                return "Bounded fleet-wide live apply not armed: mod is disabled.";
+            }
+
+            if (Main.Settings == null || !Main.Settings.EnableDiagnostics)
+            {
+                return "Bounded fleet-wide live apply not armed: diagnostics are disabled.";
+            }
+
+            if (!Main.Settings.EnableShadowAllocationDiagnostics)
+            {
+                return "Bounded fleet-wide live apply not armed: shadow allocation diagnostics are disabled.";
+            }
+
+            if (!Main.Settings.EnableFleetWideBoundedLiveApplyDiagnostics)
+            {
+                return "Bounded fleet-wide live apply not armed: bounded live diagnostics are disabled.";
+            }
+
+            if (!Main.Settings.AllowCommandApply)
+            {
+                return "Bounded fleet-wide live apply not armed: AllowCommandApply is disabled.";
+            }
+
+            if (Main.Settings.EnableRecommendationOnlyMode)
+            {
+                return "Bounded fleet-wide live apply not armed: recommendation-only mode is enabled.";
+            }
+
+            string requestedUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+            string compactUtc = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture);
+            string experimentId = "fleetwide-bounded-live-" + compactUtc + "-" + Interlocked.Increment(ref _experimentSequence).ToString(CultureInfo.InvariantCulture);
+            lock (DryRunLock)
+            {
+                if (_pendingFleetWideBoundedLiveApply != null)
+                {
+                    return "Bounded fleet-wide live apply already armed: experimentId=" + _pendingFleetWideBoundedLiveApply.ExperimentId + ". Waiting for allocator-evidence-backed missile allocation cycles.";
+                }
+
+                _pendingFleetWideBoundedLiveApply = new FleetWideBoundedLiveApplyRequest(experimentId, requestedUtc);
+            }
+
+            return "Bounded fleet-wide live apply armed: experimentId=" + experimentId + ". This trigger can apply up to 3 allocator-evidence-backed fleet commands across allocation cycles.";
+        }
+
         private static bool ShouldLog()
         {
             return Main.IsEnabled()
@@ -274,6 +326,7 @@ namespace MissileFireControl.Mod.Diagnostics
             FleetWideReportRequest fleetReport = ConsumePendingFleetWideReport();
             FleetWideLiveApplyRequest fleetLiveApply = ConsumePendingFleetWideLiveApply();
             FleetWideCommandAuthorityProbeRequest fleetCommandAuthorityProbe = ConsumePendingFleetWideCommandAuthorityProbe();
+            FleetWideBoundedLiveApplyRequest fleetBoundedLiveApply = ConsumePendingFleetWideBoundedLiveApply();
             SelectedScopeEvidence selectedScope = dryRun == null ? null : CaptureSelectedScopeEvidence();
             CommandScopeEvidence commandScope = dryRun == null ? null : ResolveCommandScope(selectedScope, snapshot);
             List<CommandCandidateDecision> commandCandidates = new List<CommandCandidateDecision>();
@@ -294,6 +347,7 @@ namespace MissileFireControl.Mod.Diagnostics
             WriteFleetWideReport(fleetReport, cycleId, snapshot, result, missingInputs, canAllocate);
             WriteFleetWideLiveApplyProbe(fleetLiveApply, cycleId, snapshot, result, missingInputs, canAllocate);
             WriteFleetWideCommandAuthorityProbe(fleetCommandAuthorityProbe, cycleId, snapshot, result, missingInputs, canAllocate, selectedScope);
+            WriteFleetWideBoundedLiveApply(fleetBoundedLiveApply, cycleId, snapshot, result, missingInputs, canAllocate, selectedScope);
             if (dryRun != null)
             {
                 WriteDryRunExperimentRecord(dryRun, cycleId, snapshot, missingInputs, canAllocate, selectedScope, commandScope);
@@ -520,6 +574,27 @@ namespace MissileFireControl.Mod.Diagnostics
 
                 FleetWideLiveApplyRequest request = _pendingFleetWideLiveApply;
                 _pendingFleetWideLiveApply = null;
+                return request;
+            }
+        }
+
+        private static FleetWideBoundedLiveApplyRequest ConsumePendingFleetWideBoundedLiveApply()
+        {
+            lock (DryRunLock)
+            {
+                if (_pendingFleetWideBoundedLiveApply == null)
+                {
+                    return null;
+                }
+
+                if (Main.Settings == null || !Main.Settings.EnableFleetWideBoundedLiveApplyDiagnostics)
+                {
+                    _pendingFleetWideBoundedLiveApply = null;
+                    return null;
+                }
+
+                FleetWideBoundedLiveApplyRequest request = _pendingFleetWideBoundedLiveApply;
+                _pendingFleetWideBoundedLiveApply = null;
                 return request;
             }
         }
@@ -1049,6 +1124,451 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "recordType", recordType);
             AppendPair(builder, "scopeMode", "fleetWideCommandAuthorityProbe");
             AppendPair(builder, "runMode", "fleet-wide-command-authority-probe");
+            AppendPair(builder, "experimentId", request.ExperimentId);
+            AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
+            return builder;
+        }
+
+        private static void WriteFleetWideBoundedLiveApply(
+            FleetWideBoundedLiveApplyRequest request,
+            int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult result,
+            List<string> missingInputs,
+            bool canAllocate,
+            SelectedScopeEvidence selectedScope)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            selectedScope = selectedScope ?? CaptureSelectedScopeEvidence();
+            FleetWideScopeEvidence scope = CaptureFleetWideScopeEvidence();
+            CommandCandidateDecision candidate;
+            TargetAllocation allocation;
+            FleetWideTargetEvidence target;
+            string skipReason;
+            bool found = TryBuildFleetWideBoundedLiveCandidate(
+                cycleId,
+                snapshot,
+                result,
+                scope,
+                selectedScope,
+                request,
+                out candidate,
+                out allocation,
+                out target,
+                out skipReason);
+
+            if (!found || candidate == null)
+            {
+                WriteFleetWideBoundedLiveResult(
+                    request,
+                    cycleId,
+                    null,
+                    "none",
+                    CommandApplyResult.Skipped(string.IsNullOrWhiteSpace(skipReason) ? "noAllocatorEvidenceCandidate" : skipReason),
+                    null,
+                    null,
+                    selectedScope,
+                    "none",
+                    "none");
+                ReArmFleetWideBoundedLiveApplyIfNeeded(request, skipReason);
+                return;
+            }
+
+            string commandResultId = request.ExperimentId + ":" + candidate.CandidateId;
+            string selectionRelation = selectedScope == null || selectedScope.Count == 0
+                ? "selectionUnknownFleetEligible"
+                : selectedScope.ContainsShip(candidate.LauncherId) ? "selected" : "nonSelected";
+            CommandAuthorityStateSnapshot preState = CaptureCommandAuthorityState(candidate.CommandLauncherRuntimeObject);
+            string capReason = FleetWideBoundedLiveCapReason(request, candidate);
+            WriteFleetWideBoundedLiveCandidate(request, cycleId, candidate, allocation, selectedScope, selectionRelation, capReason);
+            WriteFleetWideBoundedLiveState("fleetWideBoundedLivePreState", request, cycleId, candidate, commandResultId, preState, selectionRelation);
+
+            CommandApplyResult applyResult;
+            if (selectionRelation == "selected")
+            {
+                applyResult = CommandApplyResult.Skipped("nonSelectedLauncherRequired");
+            }
+            else if (capReason != "none")
+            {
+                applyResult = CommandApplyResult.Skipped(capReason);
+            }
+            else if (!Main.Settings.AllowCommandApply)
+            {
+                applyResult = CommandApplyResult.Skipped("blockedBySafetyToggle");
+            }
+            else if (Main.Settings.EnableRecommendationOnlyMode)
+            {
+                applyResult = CommandApplyResult.Skipped("blockedByRecommendationOnlyMode");
+            }
+            else
+            {
+                object targetRuntime = snapshot != null && snapshot.Target != null && string.Equals(snapshot.Target.Id, candidate.TargetId, StringComparison.Ordinal)
+                    ? snapshot.TargetRuntimeObject
+                    : null;
+
+                applyResult = TryApplyFleetWideLiveCommand(request.ExperimentId, candidate, targetRuntime, commandResultId);
+            }
+
+            if (applyResult.AppliedCommands > 0)
+            {
+                request.AppliedCommands += applyResult.AppliedCommands;
+                request.CommandedShipIds.Add(candidate.LauncherId);
+                request.CommandedTargetIds.Add(candidate.TargetId);
+            }
+
+            if (applyResult.FailedCommands > 0)
+            {
+                request.FailedCommands += applyResult.FailedCommands;
+            }
+
+            CommandAuthorityStateSnapshot postState = CaptureCommandAuthorityState(candidate.CommandLauncherRuntimeObject);
+            WriteFleetWideBoundedLiveResult(request, cycleId, candidate, commandResultId, applyResult, preState, postState, selectedScope, selectionRelation, capReason);
+            WriteFleetWideBoundedLiveState("fleetWideBoundedLivePostState", request, cycleId, candidate, commandResultId, postState, selectionRelation);
+
+            if (request.AppliedCommands < FleetWideBoundedLiveGlobalCommandCap
+                && applyResult.FailedCommands == 0
+                && applyResult.Reason != "nonSelectedLauncherRequired"
+                && applyResult.Reason != "blockedBySafetyToggle"
+                && applyResult.Reason != "blockedByRecommendationOnlyMode")
+            {
+                ReArmFleetWideBoundedLiveApply(request);
+            }
+        }
+
+        private static bool TryBuildFleetWideBoundedLiveCandidate(
+            int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult result,
+            FleetWideScopeEvidence scope,
+            SelectedScopeEvidence selectedScope,
+            FleetWideBoundedLiveApplyRequest request,
+            out CommandCandidateDecision candidate,
+            out TargetAllocation allocation,
+            out FleetWideTargetEvidence target,
+            out string skipReason)
+        {
+            bool found = TryBuildFleetWideCommandAuthorityCandidate(
+                cycleId,
+                snapshot,
+                result,
+                scope,
+                selectedScope,
+                out candidate,
+                out allocation,
+                out skipReason);
+            target = null;
+            if (!found || candidate == null)
+            {
+                return false;
+            }
+
+            if (request.CommandedShipIds.Contains(candidate.LauncherId))
+            {
+                skipReason = "fleetWideBoundedLivePerShipCapBlocked";
+                return false;
+            }
+
+            if (scope != null)
+            {
+                target = FindFleetWideTargetById(scope, candidate.TargetId);
+            }
+
+            candidate.CandidateId = "cycle-" + cycleId.ToString(CultureInfo.InvariantCulture) + "-fleetwide-bounded-live-" + (request.AppliedCommands + 1).ToString(CultureInfo.InvariantCulture);
+            candidate.CommandScopeSource = "fleetWideBoundedLiveApply";
+            candidate.CommandScopeMissingReason = "none";
+            return true;
+        }
+
+        private static FleetWideTargetEvidence FindFleetWideTargetById(FleetWideScopeEvidence scope, string targetId)
+        {
+            if (scope == null || !HasConcreteToken(targetId))
+            {
+                return null;
+            }
+
+            foreach (FleetWideTargetEvidence target in scope.Targets)
+            {
+                if (target != null && string.Equals(target.Id, targetId, StringComparison.Ordinal))
+                {
+                    return target;
+                }
+            }
+
+            return null;
+        }
+
+        private static string FleetWideBoundedLiveCapReason(FleetWideBoundedLiveApplyRequest request, CommandCandidateDecision candidate)
+        {
+            if (request.AppliedCommands >= FleetWideBoundedLiveGlobalCommandCap)
+            {
+                return "fleetWideBoundedLiveGlobalCapBlocked";
+            }
+
+            if (candidate != null && request.CommandedShipIds.Contains(candidate.LauncherId))
+            {
+                return "fleetWideBoundedLivePerShipCapBlocked";
+            }
+
+            if (candidate != null && request.CommandedTargetIds.Contains(candidate.TargetId))
+            {
+                string targetId = candidate.TargetId;
+                int targetCommandCount = 0;
+                foreach (string commandedTargetId in request.CommandedTargetIds)
+                {
+                    if (string.Equals(commandedTargetId, targetId, StringComparison.Ordinal))
+                    {
+                        targetCommandCount++;
+                    }
+                }
+
+                if (targetCommandCount >= FleetWideBoundedLivePerTargetCommandCap)
+                {
+                    return "fleetWideBoundedLivePerTargetCapBlocked";
+                }
+            }
+
+            return "none";
+        }
+
+        private static void ReArmFleetWideBoundedLiveApplyIfNeeded(FleetWideBoundedLiveApplyRequest request, string reason)
+        {
+            if (request == null || request.AppliedCommands >= FleetWideBoundedLiveGlobalCommandCap)
+            {
+                return;
+            }
+
+            if (string.Equals(reason, "allocatorLauncherNotFleetEligible", StringComparison.Ordinal)
+                || string.Equals(reason, "missingSnapshotLauncherOrTarget", StringComparison.Ordinal)
+                || string.Equals(reason, "noAllocatorAllocation", StringComparison.Ordinal)
+                || string.Equals(reason, "allocatorTargetNotVisibleHostile", StringComparison.Ordinal)
+                || string.Equals(reason, "missingAllocatorSnapshotEvidence", StringComparison.Ordinal)
+                || string.Equals(reason, "fleetWideBoundedLivePerShipCapBlocked", StringComparison.Ordinal))
+            {
+                ReArmFleetWideBoundedLiveApply(request);
+            }
+        }
+
+        private static void ReArmFleetWideBoundedLiveApply(FleetWideBoundedLiveApplyRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            lock (DryRunLock)
+            {
+                if (_pendingFleetWideBoundedLiveApply == null
+                    && Main.Settings != null
+                    && Main.Settings.EnableFleetWideBoundedLiveApplyDiagnostics)
+                {
+                    _pendingFleetWideBoundedLiveApply = request;
+                }
+            }
+        }
+
+        private static void WriteFleetWideBoundedLiveCandidate(
+            FleetWideBoundedLiveApplyRequest request,
+            int cycleId,
+            CommandCandidateDecision candidate,
+            TargetAllocation allocation,
+            SelectedScopeEvidence selectedScope,
+            string selectionRelation,
+            string capReason)
+        {
+            StringBuilder builder = FleetWideBoundedLiveRecordBuilder("fleetWideBoundedLiveCandidate", request, cycleId);
+            AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", request.ExperimentId + ":" + candidate.CandidateId);
+            AppendPair(builder, "candidateSource", candidate.CandidateSource);
+            AppendPair(builder, "commandIntent", "fleetWideBoundedLiveApply");
+            AppendPair(builder, "commandGranularity", "shipAllSalvoCapableWeapons");
+            AppendPair(builder, "commandPath", "SelectSalvoTargetCommand.OnCommandExecute");
+            AppendPair(builder, "selectedScopeSource", selectedScope == null ? "unknown" : selectedScope.Source);
+            AppendPair(builder, "selectedShipCount", selectedScope == null ? "unknown" : selectedScope.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedShipIds", selectedScope == null || selectedScope.Count == 0 ? "none" : string.Join(",", selectedScope.Ids.ToArray()));
+            AppendPair(builder, "launcherSelectionRelation", selectionRelation);
+            AppendPair(builder, "selectionEvidenceLimit", SelectionEvidenceLimit(selectionRelation));
+            AppendPair(builder, "launcherId", candidate.LauncherId);
+            AppendPair(builder, "launcher", candidate.LauncherName);
+            AppendPair(builder, "launcherTeam", candidate.CommandLauncherTeamId);
+            AppendPair(builder, "allocatorLauncherId", candidate.AllocatorLauncherId);
+            AppendPair(builder, "allocatorLauncher", candidate.AllocatorLauncherName);
+            AppendPair(builder, "allocatorLauncherTeam", candidate.AllocatorLauncherTeamId);
+            AppendPair(builder, "targetId", candidate.TargetId);
+            AppendPair(builder, "target", candidate.TargetName);
+            AppendPair(builder, "targetTeam", candidate.TargetTeamId);
+            AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
+            AppendPair(builder, "capReason", capReason);
+            AppendPair(builder, "globalCap", FleetWideBoundedLiveGlobalCommandCap.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "perShipCap", FleetWideBoundedLivePerShipCommandCap.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "perTargetCap", FleetWideBoundedLivePerTargetCommandCap.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteFleetWideBoundedLiveState(
+            string recordType,
+            FleetWideBoundedLiveApplyRequest request,
+            int cycleId,
+            CommandCandidateDecision candidate,
+            string commandResultId,
+            CommandAuthorityStateSnapshot state,
+            string selectionRelation)
+        {
+            StringBuilder builder = FleetWideBoundedLiveRecordBuilder(recordType, request, cycleId);
+            AppendPair(builder, "candidateId", candidate.CandidateId);
+            AppendPair(builder, "commandResultId", commandResultId);
+            AppendPair(builder, "launcherId", candidate.LauncherId);
+            AppendPair(builder, "targetId", candidate.TargetId);
+            AppendPair(builder, "launcherSelectionRelation", selectionRelation);
+            AppendPair(builder, "selectionEvidenceLimit", SelectionEvidenceLimit(selectionRelation));
+            AppendPair(builder, "launcherPrimaryTargetId", state.PrimaryTargetId);
+            AppendPair(builder, "launcherPrimaryTarget", state.PrimaryTargetName);
+            AppendPair(builder, "launcherWeaponModeSummary", state.WeaponModeSummary);
+            AppendPair(builder, "uiGlobalTargetingMode", state.UiGlobalTargetingMode);
+            AppendPair(builder, "canPerformCommands", state.CanPerformCommands);
+            AppendPair(builder, "canFireMissiles", state.CanFireMissiles);
+            AppendPair(builder, "appliedCommands", "0");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static void WriteFleetWideBoundedLiveResult(
+            FleetWideBoundedLiveApplyRequest request,
+            int cycleId,
+            CommandCandidateDecision candidate,
+            string commandResultId,
+            CommandApplyResult result,
+            CommandAuthorityStateSnapshot preState,
+            CommandAuthorityStateSnapshot postState,
+            SelectedScopeEvidence selectedScope,
+            string selectionRelation,
+            string capReason)
+        {
+            StringBuilder builder = FleetWideBoundedLiveRecordBuilder("fleetWideBoundedLiveResult", request, cycleId);
+            AppendPair(builder, "candidateId", candidate == null ? "none" : candidate.CandidateId);
+            AppendPair(builder, "commandResultId", commandResultId);
+            AppendPair(builder, "result", result.Result);
+            AppendPair(builder, "reason", result.Reason);
+            AppendPair(builder, "exceptionType", result.ExceptionType);
+            AppendPair(builder, "capReason", capReason);
+            AppendPair(builder, "selectedScopeSource", selectedScope == null ? "unknown" : selectedScope.Source);
+            AppendPair(builder, "selectedShipCount", selectedScope == null ? "unknown" : selectedScope.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "launcherSelectionRelation", selectionRelation);
+            AppendPair(builder, "selectionEvidenceLimit", SelectionEvidenceLimit(selectionRelation));
+            if (candidate != null)
+            {
+                AppendPair(builder, "launcherId", candidate.LauncherId);
+                AppendPair(builder, "launcher", candidate.LauncherName);
+                AppendPair(builder, "launcherTeam", candidate.CommandLauncherTeamId);
+                AppendPair(builder, "targetId", candidate.TargetId);
+                AppendPair(builder, "target", candidate.TargetName);
+                AppendPair(builder, "targetTeam", candidate.TargetTeamId);
+                AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            }
+
+            AppendPair(builder, "preLauncherPrimaryTargetId", preState == null ? "unknown" : preState.PrimaryTargetId);
+            AppendPair(builder, "postLauncherPrimaryTargetId", postState == null ? "unknown" : postState.PrimaryTargetId);
+            AppendPair(builder, "preStateVisible", result.PreStateVisible);
+            AppendPair(builder, "postState", result.PostState);
+            AppendPair(builder, "appliedCommands", result.AppliedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "failedCommands", result.FailedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "totalAppliedCommands", request.AppliedCommands.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "globalCap", FleetWideBoundedLiveGlobalCommandCap.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "controlledCommandCorrelation", result.AppliedCommands > 0 ? "pendingRuntimeContext" : "none");
+            Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static CommandApplyResult TryApplyFleetWideLiveCommand(
+            string experimentId,
+            CommandCandidateDecision candidate,
+            object targetRuntime,
+            string commandResultId)
+        {
+            if (!IsHostileSelectedCommandTarget(candidate))
+            {
+                return CommandApplyResult.Skipped("hostileTargetRequired");
+            }
+
+            object launcher = candidate.CommandLauncherRuntimeObject;
+            if (launcher == null)
+            {
+                return CommandApplyResult.Failed("commandLauncherRuntimeObjectUnavailable");
+            }
+
+            if (targetRuntime == null)
+            {
+                return CommandApplyResult.Failed("targetRuntimeObjectUnavailable");
+            }
+
+            if (!SameLoggedIdentity(launcher, candidate.LauncherId, "launcher"))
+            {
+                return CommandApplyResult.Failed("commandLauncherIdentityMismatch");
+            }
+
+            if (!SameLoggedIdentity(targetRuntime, candidate.TargetId, "target"))
+            {
+                return CommandApplyResult.Failed("targetIdentityMismatch");
+            }
+
+            Type commandType = ResolveType("SelectSalvoTargetCommand");
+            if (commandType == null)
+            {
+                return CommandApplyResult.Failed("commandTypeUnavailable");
+            }
+
+            MethodInfo executeMethod = FindCompatibleMethod(commandType, "OnCommandExecute", launcher, targetRuntime);
+            if (executeMethod == null)
+            {
+                return CommandApplyResult.Failed("commandMethodUnavailable");
+            }
+
+            object command;
+            try
+            {
+                command = Activator.CreateInstance(commandType);
+            }
+            catch (Exception ex)
+            {
+                return CommandApplyResult.Failed("commandCreateFailed", ex.GetType().Name);
+            }
+
+            try
+            {
+                CombatLaunchDiagnostics.RegisterControlledCommandContext(
+                    commandResultId,
+                    experimentId,
+                    candidate.CandidateId,
+                    candidate.LauncherId,
+                    candidate.LauncherName,
+                    candidate.TargetId,
+                    candidate.TargetName,
+                    candidate.AssignedShots);
+                executeMethod.Invoke(command, new[] { launcher, targetRuntime });
+            }
+            catch (TargetInvocationException ex)
+            {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
+                return CommandApplyResult.Failed("commandInvocationFailed", ex.InnerException == null ? ex.GetType().Name : ex.InnerException.GetType().Name);
+            }
+            catch (Exception ex)
+            {
+                CombatLaunchDiagnostics.ClearControlledCommandContext(commandResultId);
+                return CommandApplyResult.Failed("commandInvocationFailed", ex.GetType().Name);
+            }
+
+            return CommandApplyResult.Applied();
+        }
+
+        private static StringBuilder FleetWideBoundedLiveRecordBuilder(string recordType, FleetWideBoundedLiveApplyRequest request, int cycleId)
+        {
+            StringBuilder builder = new StringBuilder(512);
+            AppendPair(builder, "recordType", recordType);
+            AppendPair(builder, "scopeMode", "fleetWideBoundedLiveApply");
+            AppendPair(builder, "runMode", "fleet-wide-controlled");
             AppendPair(builder, "experimentId", request.ExperimentId);
             AppendPair(builder, "cycleId", cycleId.ToString(CultureInfo.InvariantCulture));
             return builder;
@@ -3585,6 +4105,27 @@ namespace MissileFireControl.Mod.Diagnostics
             public string ExperimentId { get; }
 
             public string RequestedUtc { get; }
+        }
+
+        private sealed class FleetWideBoundedLiveApplyRequest
+        {
+            public FleetWideBoundedLiveApplyRequest(string experimentId, string requestedUtc)
+            {
+                ExperimentId = experimentId;
+                RequestedUtc = requestedUtc;
+            }
+
+            public string ExperimentId { get; }
+
+            public string RequestedUtc { get; }
+
+            public int AppliedCommands { get; set; }
+
+            public int FailedCommands { get; set; }
+
+            public HashSet<string> CommandedShipIds { get; } = new HashSet<string>();
+
+            public HashSet<string> CommandedTargetIds { get; } = new HashSet<string>();
         }
 
         private sealed class FleetWideCommandAuthorityProbeRequest

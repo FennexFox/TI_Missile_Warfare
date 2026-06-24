@@ -87,7 +87,7 @@ EnableRecommendationOnlyMode=False
 new command-authority probe setting=True
 explicit one-shot command-authority trigger armed
 launcher is player-controlled friendly missile-capable commandable ship
-launcher is not the currently selected command-panel ship if non-selected evidence is required
+launcher is not known to be the currently selected command-panel ship; if selected scope is unavailable, label the attempt `selectionUnknownFleetEligible` and `selectionScopeUnavailable`
 target is a concrete hostile combat ship
 candidateSource=currentAllocatorSnapshot
 missing allocator evidence is false
@@ -197,8 +197,8 @@ The experiment should consume the one-shot trigger after one decisive candidate/
 1. #43.1 `fleetWideReportOnly` rows still imply no live application and `appliedCommands="0"`.
 2. #43.2 RE-blocked probe still works and never calls the command API.
 3. Command-authority probe requires its own default-off setting, `AllowCommandApply=True`, `EnableRecommendationOnlyMode=False`, and an explicit trigger.
-4. At most one non-selected launcher-target command can be attempted per trigger.
-5. Missing allocator evidence and selected-only candidates are skipped/blocked with explicit reasons.
+4. At most one launcher-target command can be attempted per trigger.
+5. Missing allocator evidence and known selected-only candidates are skipped/blocked with explicit reasons; selected-scope-unavailable attempts must be labeled evidence-limited.
 6. Pre/post launcher target and weapon/salvo state are logged where visible.
 7. Command result has a stable `commandResultId` and parser-visible result row.
 8. Applied, skipped, blocked, and failed outcomes are parser-visible.
@@ -239,3 +239,24 @@ dev-docs/plan/issue_43/43.2/03-bounded-fleet-wide-live-apply-context.md
 ```
 
 If it fails, update `01-re-blocker-summary.md` or add a follow-up blocker summary with the exact failed reason, post-state evidence, and whether the command mutated partial state before failing.
+
+## Completion note — runtime smoke success
+
+The command-authority rung has runtime evidence from 2026-06-24. Two cap=1 probes applied vanilla `SelectSalvoTargetCommand.OnCommandExecute` commands for fleet-eligible player launchers in selected-scope-unavailable mode:
+
+```text
+launcherSelectionRelation="selectionUnknownFleetEligible"
+result="applied"
+appliedCommands="1"
+failedCommands="0"
+controlledCommandCorrelation="directRuntimeContext" on subsequent LaunchLog rows
+```
+
+Observed runs:
+
+```text
+fleetwide-authority-20260624T115715853Z-1: Dogger Bank -> Equinox, 7 directRuntimeContext launches
+fleetwide-authority-20260624T115723690Z-2: Marengo -> Equinox, 7 directRuntimeContext launches
+```
+
+This completes the command-authority proof needed to enter `03-bounded-fleet-wide-live-apply-context.md`. The proof is evidence-limited because command-panel selected scope was unavailable, but the launcher was fleet-eligible, player-side, commandable, missile-ready, and allocator-evidence-backed.

@@ -655,3 +655,37 @@ Expected runtime result:
 - LaunchLog entries remain present and contiguous;
 - SnapshotLog entries are present;
 - MissileWarfare issues remain empty.
+
+## Bounded fleet-wide live apply rows
+
+After the #43.2b command-authority smoke, bounded fleet-wide live apply expands the same command path to a small multi-cycle batch. It remains default-off, explicitly triggered, and gated by `AllowCommandApply=True` plus recommendation-only mode disabled.
+
+The bounded trigger preserves current allocator evidence by attempting at most one allocator-evidence-backed command per allocation cycle, then re-arming until its global cap is reached. Initial caps are conservative:
+
+```text
+globalCap="3"
+perShipCap="1"
+perTargetCap="3"
+```
+
+Bounded rows use:
+
+```text
+scopeMode="fleetWideBoundedLiveApply"
+runMode="fleet-wide-controlled"
+recordType="fleetWideBoundedLiveCandidate"
+recordType="fleetWideBoundedLivePreState"
+recordType="fleetWideBoundedLiveResult"
+recordType="fleetWideBoundedLivePostState"
+```
+
+A row may use `launcherSelectionRelation="selectionUnknownFleetEligible"` when command-panel selected scope is unavailable but the launcher is fleet-eligible, player-side, commandable, missile-ready, and allocator-evidence-backed. This is evidence-limited command authority, not selected-scope proof.
+
+A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
+
+```text
+controlledCommandCorrelation="directRuntimeContext"
+commandResultId="fleetwide-bounded-live-...:cycle-..."
+```
+
+Rows with `controlledCommandCorrelation="none"` or `commandResultId="none"` remain vanilla or uncorrelated spillover.

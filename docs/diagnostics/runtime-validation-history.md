@@ -956,3 +956,25 @@ evidence-limited selected-scope-unavailable state. It proves that the mod can
 invoke a fleet-eligible player launcher command and correlate resulting launches
 through `directRuntimeContext`. It does not yet prove broad bounded fleet-wide
 apply safety.
+
+## Issue #43.2b bounded fleet-wide live apply implementation note
+
+Following the command-authority smoke success, bounded fleet-wide live apply adds a separate default-off trigger intended to apply a small batch of real fleet commands while preserving current allocator evidence.
+
+The first implementation is multi-cycle rather than all-at-once:
+
+```text
+experiment id prefix: fleetwide-bounded-live-
+global cap: 3
+per-ship cap: 1
+per-target cap: 3
+one allocator-evidence-backed command attempt per allocation cycle
+```
+
+The new synthetic parser fixture is:
+
+```text
+tools/fixtures/fleet_wide_bounded_live_apply.txt
+```
+
+Runtime validation is pending. A clean smoke should show at most three `fleetWideBoundedLiveResult` rows with `result="applied"`, `failedCommands="0"`, no same-team target snapshots, no scope violations, and matching `directRuntimeContext` `LaunchLog` rows for each applied command result.
