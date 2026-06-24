@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "verdict": "fixture-only",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-23T01:00:00Z",
+  "summary": "Synthetic #43.1 fleet-wide report-only schema smoke entry.",
+  "evidenceGaps": [
+    "No live combat validation.",
+    "No live command application."
+  ],
+  "nextAction": "Use runtime Player.log parsing to validate fleet-wide report-only diagnostics in game."
+}
