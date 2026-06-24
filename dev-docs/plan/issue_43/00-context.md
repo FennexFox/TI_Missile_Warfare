@@ -1,6 +1,6 @@
 # Issue #43 umbrella context — Fleet-wide controlled missile allocation path
 
-Updated: 2026-06-23
+Updated: 2026-06-24
 Repo: `FennexFox/TI_Missile_Warfare`
 Local path: `dev-docs/plan/issue_43/00-context.md`
 
@@ -80,6 +80,8 @@ Purpose: enable the first behavior-changing fleet-wide controlled path only afte
 This slice may apply controlled commands to fleet-wide eligible player-controlled launchers, but only when explicitly player-triggered and explicitly enabled. It must preserve global, per-ship, per-target, and per-trigger caps; hostile-target gates; same-team safety failures; command-result ids; and parser/corpus evidence separation.
 
 Exit condition: a bounded live run can be recorded as `fleet-wide-controlled` without confusing direct controlled spend with vanilla / none-correlated spillover.
+
+Status update: #43.2 has met this exit condition. Runtime smoke `fleetwide-bounded-live-20260624T125727207Z-1` applied 3 bounded fleet-wide commands, produced 21 `directRuntimeContext` launch correlations, had 0 failed commands, and had 0 observed same-team or scope-violation markers. The remaining #43 work should move to #43.3 corpus review / no-tuning decision rather than further command-authority proof.
 
 ### #43.3 — Corpus review and fitting/no-tuning handoff
 

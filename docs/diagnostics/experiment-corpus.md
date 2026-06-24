@@ -8,13 +8,14 @@ a reviewer judged the result.
 The evidence rule is strict:
 
 - `shadow-replay` is a candidate filter and regression check.
-- `controlled-live` is the causal evidence source for controlled command
-  behavior.
-- `fleet-wide-controlled` is reserved for later #43+ work.
+- `controlled-live` is the causal evidence source for selected-scope controlled command behavior.
+- `fleet-wide-controlled` is the causal evidence source for bounded fleet-wide controlled command behavior; use it only for real live runs with bounded fleet-wide command application, not report-only rows.
 - `fixture` proves schema and tooling behavior only.
 
 Summaries may show these modes side by side, but they must not collapse them
 into one proof score.
+
+As of #43.2, `fleet-wide-controlled` is no longer only a future placeholder. A valid entry should still separate direct controlled command spend from vanilla / none-correlated spillover and should state whether command-result correlation such as `controlledCommandCorrelation="directRuntimeContext"` was observed.
 
 ## Local layout
 
