@@ -840,3 +840,39 @@ selected-ship budget distribution remain unresolved and are out of scope for
 report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.
 
 A subsequent rename smoke log also showed the applied-launcher post-budget spillover pattern: after the applied launcher consumed its direct controlled assigned-shot budget, later same-launcher/same-target `TryFire` rows could still appear with `controlledCommandCorrelation="none"`. The fitting report now separates this as `Applied launcher post-budget spillover diagnostics`, distinct from skipped-launcher controlled cap spillover.
+
+## Issue #43.2 fleet-wide live apply RE-blocked handoff
+
+Issue #43.2 reviewed the fleet-wide expansion path after #43.1 made active
+player-side fleet eligibility, visible hostile targets, candidate rows, missing
+allocator evidence, and report-only caps visible. Static RE confirmed that the
+vanilla salvo command path ultimately accepts explicit launcher and target
+runtime objects through `SelectSalvoTargetCommand.OnCommandExecute`, and selected
+single/group controlled live apply already uses that reviewed command path.
+
+The same review did not prove the safety of invoking that command for
+non-selected fleet-wide launchers from the mod path. The command can mutate
+combat primary target, salvo fire mode, and UI global targeting state, and no
+runtime smoke in this slice proves that a non-selected fleet-wide call preserves
+manual state, avoids no-op/failure surprises, and produces direct command-result
+correlation.
+
+The implementation therefore leaves #43.2 live behavior RE-blocked. It adds a
+separate default-off fleet-wide live apply diagnostics setting and explicit
+one-shot trigger, but the trigger emits only:
+
+- `fleetWideLiveCommandPathStatus`
+- `fleetWideLiveApplyDecision`
+- `fleetWideLiveResult`
+
+All #43.2 blocked rows use `scopeMode="fleetWideLiveReBlocked"`,
+`runMode="blocked"`, and `appliedCommands="0"`. No `fleet-wide-controlled`
+evidence is produced by this path. The synthetic parser fixture is
+`tools/fixtures/fleet_wide_live_re_blocked.txt`; it covers the blocked RE gate,
+allocator-evidence-backed candidate blocking, missing allocator evidence skips,
+cap-blocked vocabulary, and zero applied/failed commands.
+
+Handoff: #43.3 should receive this as an explicit RE blocker, not as tuning
+input. A later focused command-authority/runtime-smoke issue must prove safe
+non-selected launcher invocation before bounded fleet-wide live apply can be
+unblocked.

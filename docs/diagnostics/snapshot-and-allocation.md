@@ -237,6 +237,31 @@ allocator-approved recommendations. The fleet report-only caps are diagnostics
 for would-block state only and do not affect the existing selected-group live
 caps.
 
+Issue #43.2 adds a separate fleet-wide live-apply probe trigger, but the current
+implementation intentionally keeps the RE gate blocked. Decompiled-source review
+shows the vanilla salvo command path accepts explicit launcher and target runtime
+objects through `SelectSalvoTargetCommand.OnCommandExecute`, but the command also
+mutates combat primary target, salvo fire mode, and UI global targeting state.
+Until a real runtime smoke proves non-selected fleet-wide invocation is safe and
+correlatable, the #43.2 path emits blocker diagnostics only and must not call the
+command API.
+
+The #43.2 blocked rows use `scopeMode="fleetWideLiveReBlocked"` and always keep
+`appliedCommands="0"`. They are distinct from #43.1 `fleetWideReportOnly` rows
+and from selected-scope `controlled-live` rows:
+
+```text
+[AllocationLog] recordType="fleetWideLiveCommandPathStatus" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" fleetWideLiveCommandPathStatus="blocked" reGateStatus="blocked" blockReason="nonSelectedFleetWideRuntimeSmokeMissing" commandPath="SelectSalvoTargetCommand.OnCommandExecute" underlyingCommandApi="explicitLauncherAndTargetObjects" uiSelectionRequiredForExecute="False" nonSelectedCommandPathProven="False" knownStateMutations="combatPrimaryTarget,salvoFireMode,uiGlobalTargetingModeShutdown" runMode="blocked" appliedCommands="0"
+[AllocationLog] recordType="fleetWideLiveApplyDecision" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" candidateId="cycle-1-fleetwide-live-1" commandResultId="none" decision="blocked" result="blocked" reason="reGateBlockedUnprovenNonSelectedCommandPath" candidateSource="currentAllocatorSnapshot" commandIntent="fleetWideSalvoTargetLiveApply" launcherId="..." targetId="..." allocatorEvidence="currentAllocatorSnapshot" controlledCommandCorrelation="none" appliedCommands="0" failedCommands="0"
+[AllocationLog] recordType="fleetWideLiveResult" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" candidateRows="4" emittedDecisionRows="4" allocatorEvidenceCandidates="1" capBlockedCandidates="1" missingEvidenceCandidates="3" reBlockedCandidates="1" result="blocked" resultReason="reGateBlockedUnprovenNonSelectedCommandPath" runMode="blocked" appliedCommands="0" failedCommands="0"
+```
+
+These rows are useful #43.2 evidence because they make the failed live attempt
+explicit and parser-visible. They are not `fleet-wide-controlled` evidence and
+must not be used as direct controlled command spend. A later command-authority or
+runtime-smoke issue must prove non-selected command invocation safety before this
+probe can become bounded live apply.
+
 Issue #36 routes only `eligible` candidates to a named
 `controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
 setting, the gate emits `recordType="dryRunApplyGate"` with

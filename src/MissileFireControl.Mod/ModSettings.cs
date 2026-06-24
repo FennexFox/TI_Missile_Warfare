@@ -12,6 +12,7 @@ namespace MissileFireControl.Mod
         public bool EnableShadowAllocationDiagnostics = false;
         public bool EnableControlledDryRunDiagnostics = false;
         public bool EnableFleetWideDryRunReportDiagnostics = false;
+        public bool EnableFleetWideLiveApplyDiagnostics = false;
         public bool AllowCommandApply = false;
         public bool EnableRecommendationOnlyMode = true;
         public bool EnableLaunchDiscipline = false;
