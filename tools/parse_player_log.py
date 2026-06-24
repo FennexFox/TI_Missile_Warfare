@@ -54,11 +54,18 @@ FLEET_WIDE_LIVE_ALLOCATION_RECORD_TYPES = {
     "fleetWideLiveApplyDecision",
     "fleetWideLiveResult",
 }
+FLEET_WIDE_COMMAND_AUTHORITY_ALLOCATION_RECORD_TYPES = {
+    "fleetWideCommandAuthorityCandidate",
+    "fleetWideCommandAuthorityPreState",
+    "fleetWideCommandAuthorityResult",
+    "fleetWideCommandAuthorityPostState",
+}
 KNOWN_ALLOCATION_RECORD_TYPES = (
     SHADOW_ALLOCATION_RECORD_TYPES
     | CONTROLLED_DRY_RUN_ALLOCATION_RECORD_TYPES
     | FLEET_WIDE_REPORT_ONLY_ALLOCATION_RECORD_TYPES
     | FLEET_WIDE_LIVE_ALLOCATION_RECORD_TYPES
+    | FLEET_WIDE_COMMAND_AUTHORITY_ALLOCATION_RECORD_TYPES
     | APPLIED_ALLOCATION_RECORD_TYPES
     | SKIPPED_ALLOCATION_RECORD_TYPES
     | FAILED_ALLOCATION_RECORD_TYPES
@@ -166,6 +173,18 @@ class AllocationBattleSummary:
     fleet_wide_live_re_blocked_candidates: int = 0
     fleet_wide_live_applied_commands: int = 0
     fleet_wide_live_failed_commands: int = 0
+    fleet_wide_command_authority_candidate_records: int = 0
+    fleet_wide_command_authority_pre_state_records: int = 0
+    fleet_wide_command_authority_result_records: int = 0
+    fleet_wide_command_authority_post_state_records: int = 0
+    fleet_wide_command_authority_experiment_ids: list[str] = field(default_factory=list)
+    fleet_wide_command_authority_scope_mode_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_command_authority_result_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_command_authority_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_command_authority_selection_relation_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_command_authority_correlation_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_command_authority_applied_commands: int = 0
+    fleet_wide_command_authority_failed_commands: int = 0
     controlled_live_apply_attempts: int = 0
     controlled_live_apply_applied: int = 0
     controlled_live_apply_skipped: int = 0
@@ -757,6 +776,12 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_live_decision_counts: Counter[str] = Counter()
     fleet_wide_live_reason_counts: Counter[str] = Counter()
     fleet_wide_live_candidate_source_counts: Counter[str] = Counter()
+    fleet_wide_command_authority_experiment_ids: set[str] = set()
+    fleet_wide_command_authority_scope_mode_counts: Counter[str] = Counter()
+    fleet_wide_command_authority_result_counts: Counter[str] = Counter()
+    fleet_wide_command_authority_reason_counts: Counter[str] = Counter()
+    fleet_wide_command_authority_selection_relation_counts: Counter[str] = Counter()
+    fleet_wide_command_authority_correlation_counts: Counter[str] = Counter()
     controlled_dry_run_scope_violations = 0
     controlled_live_apply_attempts = 0
     controlled_live_apply_applied = 0
@@ -779,6 +804,8 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_live_re_blocked_candidates = 0
     fleet_wide_live_applied_commands = 0
     fleet_wide_live_failed_commands = 0
+    fleet_wide_command_authority_applied_commands = 0
+    fleet_wide_command_authority_failed_commands = 0
     controlled_dry_run_intended_commands = 0
     controlled_dry_run_skipped_commands = 0
     controlled_dry_run_applied_commands = 0
@@ -1034,6 +1061,12 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         fleet_wide_live_experiment_ids.add(experiment_id)
                     fleet_wide_live_scope_mode_counts[pairs.get("scopeMode", "unknown")] += 1
 
+                if record_type in FLEET_WIDE_COMMAND_AUTHORITY_ALLOCATION_RECORD_TYPES:
+                    experiment_id = pairs.get("experimentId")
+                    if experiment_id:
+                        fleet_wide_command_authority_experiment_ids.add(experiment_id)
+                    fleet_wide_command_authority_scope_mode_counts[pairs.get("scopeMode", "unknown")] += 1
+
                 if record_type == "dryRunExperiment":
                     experiment_id = pairs.get("experimentId")
                     if experiment_id:
@@ -1182,6 +1215,24 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     fleet_wide_live_reason_counts[pairs.get("resultReason", "unknown")] += 1
                     fleet_wide_live_applied_commands += try_parse_int(pairs.get("appliedCommands")) or 0
                     fleet_wide_live_failed_commands += try_parse_int(pairs.get("failedCommands")) or 0
+
+                if record_type in FLEET_WIDE_COMMAND_AUTHORITY_ALLOCATION_RECORD_TYPES:
+                    relation = pairs.get("launcherSelectionRelation")
+                    if relation:
+                        fleet_wide_command_authority_selection_relation_counts[relation] += 1
+                    correlation = pairs.get("controlledCommandCorrelation")
+                    if correlation:
+                        fleet_wide_command_authority_correlation_counts[correlation] += 1
+                    fleet_wide_command_authority_applied_commands += (
+                        try_parse_int(pairs.get("appliedCommands")) or 0
+                    )
+                    fleet_wide_command_authority_failed_commands += (
+                        try_parse_int(pairs.get("failedCommands")) or 0
+                    )
+
+                if record_type == "fleetWideCommandAuthorityResult":
+                    fleet_wide_command_authority_result_counts[pairs.get("result", "unknown")] += 1
+                    fleet_wide_command_authority_reason_counts[pairs.get("reason", "unknown")] += 1
 
                 if record_type in (
                     APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
@@ -1679,6 +1730,46 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.fleet_wide_live_re_blocked_candidates = fleet_wide_live_re_blocked_candidates
     allocation_summary.fleet_wide_live_applied_commands = fleet_wide_live_applied_commands
     allocation_summary.fleet_wide_live_failed_commands = fleet_wide_live_failed_commands
+    allocation_summary.fleet_wide_command_authority_candidate_records = allocation_record_type_counts.get(
+        "fleetWideCommandAuthorityCandidate",
+        0,
+    )
+    allocation_summary.fleet_wide_command_authority_pre_state_records = allocation_record_type_counts.get(
+        "fleetWideCommandAuthorityPreState",
+        0,
+    )
+    allocation_summary.fleet_wide_command_authority_result_records = allocation_record_type_counts.get(
+        "fleetWideCommandAuthorityResult",
+        0,
+    )
+    allocation_summary.fleet_wide_command_authority_post_state_records = allocation_record_type_counts.get(
+        "fleetWideCommandAuthorityPostState",
+        0,
+    )
+    allocation_summary.fleet_wide_command_authority_experiment_ids = sorted(
+        fleet_wide_command_authority_experiment_ids
+    )
+    allocation_summary.fleet_wide_command_authority_scope_mode_counts = dict(
+        sorted(fleet_wide_command_authority_scope_mode_counts.items())
+    )
+    allocation_summary.fleet_wide_command_authority_result_counts = dict(
+        sorted(fleet_wide_command_authority_result_counts.items())
+    )
+    allocation_summary.fleet_wide_command_authority_reason_counts = dict(
+        sorted(fleet_wide_command_authority_reason_counts.items())
+    )
+    allocation_summary.fleet_wide_command_authority_selection_relation_counts = dict(
+        sorted(fleet_wide_command_authority_selection_relation_counts.items())
+    )
+    allocation_summary.fleet_wide_command_authority_correlation_counts = dict(
+        sorted(fleet_wide_command_authority_correlation_counts.items())
+    )
+    allocation_summary.fleet_wide_command_authority_applied_commands = (
+        fleet_wide_command_authority_applied_commands
+    )
+    allocation_summary.fleet_wide_command_authority_failed_commands = (
+        fleet_wide_command_authority_failed_commands
+    )
     allocation_summary.controlled_live_apply_attempts = controlled_live_apply_attempts
     allocation_summary.controlled_live_apply_applied = controlled_live_apply_applied
     allocation_summary.controlled_live_apply_skipped = controlled_live_apply_skipped
@@ -2029,6 +2120,52 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
         print(f"- fleet-wide live applied commands: {summary.fleet_wide_live_applied_commands}")
         print(f"- fleet-wide live failed commands: {summary.fleet_wide_live_failed_commands}")
         print(f"- fleet-wide live result records: {summary.fleet_wide_live_result_records}")
+    if (
+        summary.fleet_wide_command_authority_candidate_records
+        or summary.fleet_wide_command_authority_pre_state_records
+        or summary.fleet_wide_command_authority_result_records
+        or summary.fleet_wide_command_authority_post_state_records
+    ):
+        print(
+            "- fleet-wide command-authority experiment ids: "
+            + (", ".join(summary.fleet_wide_command_authority_experiment_ids) or "none")
+        )
+        print(
+            "- fleet-wide command-authority records: "
+            f"{summary.fleet_wide_command_authority_candidate_records} candidate, "
+            f"{summary.fleet_wide_command_authority_pre_state_records} pre-state, "
+            f"{summary.fleet_wide_command_authority_result_records} result, "
+            f"{summary.fleet_wide_command_authority_post_state_records} post-state"
+        )
+        print(
+            "- fleet-wide command-authority scope modes: "
+            + format_count_dict(summary.fleet_wide_command_authority_scope_mode_counts)
+        )
+        if summary.fleet_wide_command_authority_result_counts:
+            print(
+                "- fleet-wide command-authority results: "
+                + format_count_dict(summary.fleet_wide_command_authority_result_counts)
+            )
+        if summary.fleet_wide_command_authority_reason_counts:
+            print(
+                "- fleet-wide command-authority reasons: "
+                + format_count_dict(summary.fleet_wide_command_authority_reason_counts)
+            )
+        if summary.fleet_wide_command_authority_selection_relation_counts:
+            print(
+                "- fleet-wide command-authority selection relation: "
+                + format_count_dict(summary.fleet_wide_command_authority_selection_relation_counts)
+            )
+        if summary.fleet_wide_command_authority_correlation_counts:
+            print(
+                "- fleet-wide command-authority correlations: "
+                + format_count_dict(summary.fleet_wide_command_authority_correlation_counts)
+            )
+        print(
+            "- fleet-wide command-authority applied/failed commands: "
+            f"{summary.fleet_wide_command_authority_applied_commands}/"
+            f"{summary.fleet_wide_command_authority_failed_commands}"
+        )
     if summary.controlled_live_apply_attempts:
         print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")
         print(f"- controlled live apply applied: {summary.controlled_live_apply_applied}")

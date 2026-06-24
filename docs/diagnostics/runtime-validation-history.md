@@ -876,3 +876,83 @@ Handoff: #43.3 should receive this as an explicit RE blocker, not as tuning
 input. A later focused command-authority/runtime-smoke issue must prove safe
 non-selected launcher invocation before bounded fleet-wide live apply can be
 unblocked.
+
+## Issue #43.2b command-authority probe implementation note
+
+After the #43.2 RE-blocked runtime smoke, the next implementation rung adds a
+separate default-off fleet-wide command-authority probe. This probe is intended
+for one real non-selected command only. It requires explicit diagnostics,
+`AllowCommandApply=True`, recommendation-only mode disabled, a distinct
+command-authority setting, and an explicit one-shot trigger.
+
+The new synthetic parser fixture is:
+
+```text
+tools/fixtures/fleet_wide_command_authority_probe.txt
+```
+
+Runtime validation remains pending until a real battle log is collected. The
+expected first smoke should show one command-authority experiment id, at most one
+applied command, zero scope violations, zero same-team missile target snapshots,
+and either direct command-result launch/spend correlation or an explicit
+evidence-limited result.
+
+## Issue #43.2b command-authority runtime smoke: evidence-limited success
+
+A real combat `Player.log` from 2026-06-24 recorded two command-authority probe
+runs after allowing `selectionUnknownFleetEligible` candidates. Both runs used a
+fleet-eligible player launcher with `candidateSource="currentAllocatorSnapshot"`,
+`targetTeam="50"`, cap=1 command application, and selected command-panel scope
+unavailable through `groupSelectedFriendlyShips`.
+
+Observed command-authority rows:
+
+```text
+fleetWideCommandAuthorityCandidate: 2
+fleetWideCommandAuthorityPreState: 2
+fleetWideCommandAuthorityResult: 2
+fleetWideCommandAuthorityPostState: 2
+```
+
+Run 1:
+
+```text
+experimentId="fleetwide-authority-20260624T115715853Z-1"
+launcher="Dogger Bank" launcherId="276" launcherTeam="47"
+target="Equinox" targetId="283" targetTeam="50"
+launcherSelectionRelation="selectionUnknownFleetEligible"
+selectedShipCount="0"
+result="applied"
+appliedCommands="1"
+failedCommands="0"
+preLauncherPrimaryTargetId="none"
+postLauncherPrimaryTargetId="283"
+```
+
+The resulting `LaunchLog` rows included 7 direct runtime-context correlations for
+that command result, matching `assignedShots="7"`.
+
+Run 2:
+
+```text
+experimentId="fleetwide-authority-20260624T115723690Z-2"
+launcher="Marengo" launcherId="278" launcherTeam="47"
+target="Equinox" targetId="283" targetTeam="50"
+launcherSelectionRelation="selectionUnknownFleetEligible"
+selectedShipCount="0"
+result="applied"
+appliedCommands="1"
+failedCommands="0"
+preLauncherPrimaryTargetId="none"
+postLauncherPrimaryTargetId="283"
+```
+
+The resulting `LaunchLog` rows included 7 direct runtime-context correlations for
+that command result, matching `assignedShots="7"`.
+
+No same-team target snapshot or scope-violation marker was observed in this log.
+This is a successful command-authority smoke for a cap=1 vanilla command in an
+evidence-limited selected-scope-unavailable state. It proves that the mod can
+invoke a fleet-eligible player launcher command and correlate resulting launches
+through `directRuntimeContext`. It does not yet prove broad bounded fleet-wide
+apply safety.

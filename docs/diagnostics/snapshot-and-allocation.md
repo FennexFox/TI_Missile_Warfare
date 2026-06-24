@@ -262,6 +262,31 @@ must not be used as direct controlled command spend. A later command-authority o
 runtime-smoke issue must prove non-selected command invocation safety before this
 probe can become bounded live apply.
 
+The first #43.2b behavior-changing rung is the fleet-wide command-authority
+probe. It is still default-off and explicitly triggered, but unlike the
+RE-blocked probe it may call the vanilla command path exactly once when all
+safety gates pass. It requires `AllowCommandApply=True`,
+`EnableRecommendationOnlyMode=False`, a distinct command-authority setting, and a
+visible non-selected allocator-evidence-backed launcher-target candidate. It is
+capped at one command per trigger, one command per ship, and one command per
+target.
+
+Command-authority rows use `scopeMode="fleetWideCommandAuthorityProbe"` and
+`runMode="fleet-wide-command-authority-probe"`:
+
+```text
+[AllocationLog] recordType="fleetWideCommandAuthorityCandidate" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="fleetwide-authority-...:cycle-1-fleetwide-authority-1" classification="eligible" candidateSource="currentAllocatorSnapshot" launcherSelectionRelation="nonSelected" commandIntent="fleetWideCommandAuthorityProbe" commandPath="SelectSalvoTargetCommand.OnCommandExecute" launcherId="..." allocatorLauncherId="..." targetId="..." assignedShots="4" globalCap="1" perTriggerCap="1" perShipCap="1" perTargetCap="1" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandAuthorityPreState" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." launcherSelectionRelation="nonSelected" launcherPrimaryTargetId="..." launcherWeaponModeSummary="..." uiGlobalTargetingMode="..." canPerformCommands="True" canFireMissiles="True" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandAuthorityResult" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." result="applied" reason="none" exceptionType="none" launcherSelectionRelation="nonSelected" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0" controlledCommandCorrelation="pendingRuntimeContext"
+[AllocationLog] recordType="fleetWideCommandAuthorityPostState" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." launcherPrimaryTargetId="..." launcherWeaponModeSummary="..." uiGlobalTargetingMode="..." canPerformCommands="True" canFireMissiles="True" appliedCommands="0"
+```
+
+The probe fails closed when selected scope is unavailable, when the allocator
+candidate is selected rather than non-selected, or when allocator/hostile-target
+evidence is missing. A clean runtime smoke for this rung proves command
+authority only for the single non-selected command; it is not yet broad bounded
+fleet-wide live apply.
+
 Issue #36 routes only `eligible` candidates to a named
 `controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
 setting, the gate emits `recordType="dryRunApplyGate"` with
