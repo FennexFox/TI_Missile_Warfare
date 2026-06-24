@@ -445,6 +445,7 @@ namespace MissileFireControl.Mod.Diagnostics
             int missingEvidenceCount = 0;
             Dictionary<string, int> perShipCounts = new Dictionary<string, int>();
             Dictionary<string, int> perTargetCounts = new Dictionary<string, int>();
+            List<FleetWideCommandCandidateReport> emittedCandidates = new List<FleetWideCommandCandidateReport>();
 
             foreach (FleetWideLauncherEvidence launcher in eligibleLaunchers)
             {
@@ -477,15 +478,14 @@ namespace MissileFireControl.Mod.Diagnostics
 
                     if (emittedCandidateRows < FleetReportOnlyMaxCandidateRows)
                     {
-                        WriteFleetWideCommandCandidate(
-                            request,
-                            cycleId,
+                        emittedCandidates.Add(new FleetWideCommandCandidateReport(
+
                             evaluatedCandidateCount,
                             launcher,
                             target,
                             allocation,
                             hasAllocatorEvidence,
-                            capReason);
+                            capReason));
                         emittedCandidateRows++;
                     }
                 }
@@ -512,6 +512,19 @@ namespace MissileFireControl.Mod.Diagnostics
             foreach (FleetWideTargetEvidence target in scope.Targets)
             {
                 WriteFleetWideTargetRecord(request, cycleId, target);
+            }
+
+            foreach (FleetWideCommandCandidateReport candidate in emittedCandidates)
+            {
+                WriteFleetWideCommandCandidate(
+                    request,
+                    cycleId,
+                    candidate.CandidateIndex,
+                    candidate.Launcher,
+                    candidate.Target,
+                    candidate.Allocation,
+                    candidate.HasAllocatorEvidence,
+                    candidate.CapReason);
             }
 
             WriteFleetWideCapStateRecord(
@@ -2663,6 +2676,38 @@ namespace MissileFireControl.Mod.Diagnostics
             public string ExperimentId { get; }
 
             public string RequestedUtc { get; }
+        }
+
+        private sealed class FleetWideCommandCandidateReport
+        {
+            public FleetWideCommandCandidateReport(
+
+                int candidateIndex,
+                FleetWideLauncherEvidence launcher,
+                FleetWideTargetEvidence target,
+                TargetAllocation allocation,
+                bool hasAllocatorEvidence,
+                string capReason)
+            {
+                CandidateIndex = candidateIndex;
+                Launcher = launcher;
+                Target = target;
+                Allocation = allocation;
+                HasAllocatorEvidence = hasAllocatorEvidence;
+                CapReason = capReason;
+            }
+
+            public int CandidateIndex { get; }
+
+            public FleetWideLauncherEvidence Launcher { get; }
+
+            public FleetWideTargetEvidence Target { get; }
+
+            public TargetAllocation Allocation { get; }
+
+            public bool HasAllocatorEvidence { get; }
+
+            public string CapReason { get; }
         }
 
         private sealed class FleetWideScopeEvidence
