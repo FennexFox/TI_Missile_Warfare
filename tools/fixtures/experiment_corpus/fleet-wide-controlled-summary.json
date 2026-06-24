@@ -1,0 +1,89 @@
+{
+  "input": "redacted Player.log summary for fleetwide-bounded-live-20260624T125727207Z-1",
+  "log_count": 1,
+  "evidence_log_count": 1,
+  "real_evidence_log_count": 1,
+  "synthetic_fixture_count": 0,
+  "parser_failures": 0,
+  "classification_counts": {
+    "plausible": 1,
+    "partial saturation": 0,
+    "overkill": 0,
+    "underkill": 0,
+    "target-value mismatch": 0,
+    "missing-evidence-limited": 0,
+    "command-safety no-op": 0
+  },
+  "limitation_counts": {
+    "private raw Player.log omitted": 1,
+    "single bounded-live run is not allocator tuning evidence": 1
+  },
+  "logs": [
+    {
+      "parser_summary": {
+        "allocation_summary": {
+          "fleet_wide_bounded_live_experiment_ids": ["fleetwide-bounded-live-20260624T125727207Z-1"],
+          "fleet_wide_bounded_live_candidate_records": 3,
+          "fleet_wide_bounded_live_pre_state_records": 3,
+          "fleet_wide_bounded_live_result_records": 5,
+          "fleet_wide_bounded_live_post_state_records": 3,
+          "fleet_wide_bounded_live_applied_commands": 3,
+          "fleet_wide_bounded_live_failed_commands": 0,
+          "fleet_wide_bounded_live_scope_mode_counts": {
+            "fleetWideBoundedLiveApply": 14
+          },
+          "fleet_wide_bounded_live_result_counts": {
+            "applied": 3,
+            "skipped": 2
+          },
+          "fleet_wide_bounded_live_reason_counts": {
+            "fleetWideBoundedLivePerShipCapBlocked": 2,
+            "none": 3
+          },
+          "fleet_wide_bounded_live_selection_relation_counts": {
+            "selectionUnknownFleetEligible": 14
+          },
+          "fleet_wide_bounded_live_correlation_counts": {
+            "pendingRuntimeContext": 3
+          },
+          "same_team_missile_target_snapshots": 0,
+          "suspicious_patterns": ["none"]
+        }
+      },
+      "controlled_launch_correlation_summary": {
+        "directRuntimeContext": 21,
+        "none": 0,
+        "missing": 0
+      },
+      "applied_commands": [
+        {
+          "cycleId": 1,
+          "launcher": "Thapsus",
+          "launcherId": "276",
+          "target": "Volcano",
+          "targetId": "284",
+          "assignedShots": 7,
+          "directRuntimeContextRows": 7
+        },
+        {
+          "cycleId": 3,
+          "launcher": "Salamis",
+          "launcherId": "277",
+          "target": "Volcano",
+          "targetId": "284",
+          "assignedShots": 7,
+          "directRuntimeContextRows": 7
+        },
+        {
+          "cycleId": 5,
+          "launcher": "Cannae",
+          "launcherId": "278",
+          "target": "Volcano",
+          "targetId": "284",
+          "assignedShots": 7,
+          "directRuntimeContextRows": 7
+        }
+      ]
+    }
+  ]
+}

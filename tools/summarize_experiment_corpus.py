@@ -43,6 +43,7 @@ REQUIRED_FIELDS = (
     "scenarioTags",
 )
 COUNT_FIELDS = (
+    "direct_command_spend_counts",
     "missing_evidence_counts",
     "skipped_command_counts",
     "failed_command_counts",
@@ -279,6 +280,25 @@ def summarize_parsed_artifact(parsed: dict[str, Any]) -> dict[str, dict[str, int
             failed = allocation_summary.get("controlled_live_apply_failed")
             if isinstance(failed, int) and failed:
                 counts["failed_command_counts"]["controlled live failed"] += failed
+            applied = allocation_summary.get("controlled_live_apply_applied")
+            if isinstance(applied, int) and applied:
+                counts["direct_command_spend_counts"]["controlled live applied command results"] += applied
+            bounded_applied = allocation_summary.get("fleet_wide_bounded_live_applied_commands")
+            if isinstance(bounded_applied, int) and bounded_applied:
+                counts["direct_command_spend_counts"]["fleet-wide bounded live applied command results"] += bounded_applied
+            bounded_failed = allocation_summary.get("fleet_wide_bounded_live_failed_commands")
+            if isinstance(bounded_failed, int) and bounded_failed:
+                counts["failed_command_counts"]["fleet-wide bounded live failed"] += bounded_failed
+            bounded_reasons = allocation_summary.get("fleet_wide_bounded_live_reason_counts")
+            if isinstance(bounded_reasons, dict):
+                add_counts(
+                    counts["skipped_command_counts"],
+                    {
+                        key: value
+                        for key, value in bounded_reasons.items()
+                        if key != "none"
+                    },
+                )
             add_counts(
                 counts["target_mismatch_counts"],
                 allocation_summary.get("controlled_live_apply_mismatch_counts"),
@@ -484,7 +504,7 @@ def format_markdown_summary(summary: dict[str, Any]) -> str:
         "",
         f"- registry: `{summary['registryPath']}`",
         f"- experiments: {summary['experimentCount']}",
-        "- evidence interpretation: shadow replay is a candidate filter/regression check; controlled live is causal command-behavior evidence.",
+        "- evidence interpretation: shadow replay is a candidate filter/regression check; controlled live and fleet-wide-controlled are causal command-behavior evidence for their respective scopes.",
         "",
         "## Run modes",
         "",

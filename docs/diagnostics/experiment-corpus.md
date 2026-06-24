@@ -84,6 +84,8 @@ cover categories that can affect allocation interpretation:
 When defaults change, create a new snapshot and candidate id instead of
 retroactively changing old experiment meaning.
 
+Direct command-spend summaries should use `direct_command_spend_counts` in parsed or metadata evidence summaries. For #43.2+ `fleet-wide-controlled` runs, include applied command-result counts and direct runtime launch correlation counts when available.
+
 ## Scenario metadata
 
 Scenario metadata is intentionally coarse. Use fields that are visible and
