@@ -70,3 +70,16 @@ This slice still cannot:
 ## Handoff
 
 #43.3 should receive this as an explicit RE blocker. If #43.3 needs live evidence, a later focused command-authority/runtime-smoke issue must first prove safe non-selected player-controlled launcher invocation and command-result correlation.
+
+## Next context files
+
+The next work should not jump directly from this blocker to broad multi-ship apply. It should use these local contexts in order:
+
+```text
+dev-docs/plan/issue_43/43.2/02-command-authority-rung-context.md
+dev-docs/plan/issue_43/43.2/03-bounded-fleet-wide-live-apply-context.md
+```
+
+`02-command-authority-rung-context.md` is the first behavior-changing rung: one non-selected player-controlled allocator-evidence-backed command at cap=1, with pre/post state and command-result correlation instrumentation.
+
+`03-bounded-fleet-wide-live-apply-context.md` is the follow-up expansion after the cap=1 rung has clean runtime evidence or a maintainer explicitly accepts the remaining evidence limitation.
