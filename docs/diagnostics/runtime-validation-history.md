@@ -1016,3 +1016,50 @@ reason="fleetWideBoundedLivePerShipCapBlocked"
 Those skips are expected: the same already-commanded launcher appeared in later allocator snapshots and was blocked by `perShipCap="1"`. The run therefore validates the bounded-live slice at cap=3 with allocator evidence preserved across cycles, direct launch/spend correlation present, and no observed same-team or scope-violation marker.
 
 This is sufficient to close the #43.2 command-authority / bounded-live proof slice and hand off to #43.3 for allocator quality, corpus, spillover, and tuning work.
+
+## Issue #43.3 expanded bounded fleet-wide corpus import: 8 real runs
+
+A private `Player.log` from 2026-06-25/2026-06-26 was imported with `tools/import_player_log_experiments.py` into ignored local artifacts:
+
+```text
+artifacts/experiments/bounded-live-playerlog-20260626/
+artifacts/fitting/bounded-live-playerlog-20260626-summary/
+```
+
+The raw `Player.log` is not committed. The generated local corpus summary recorded:
+
+```text
+experimentCount: 8
+runModeCounts.fleet-wide-controlled: 8
+warnings: []
+directRuntimeContext launch rows: 167
+fleet-wide bounded live applied command results: 24
+failed command results: 0
+pdEvidenceCategory: observedTemplateCapability for all 8 imported experiments
+```
+
+The import also validated the battle-aware importer behavior added for #43.3:
+
+```text
+EXP-IMPORTED-NONE: not generated after placeholder experimentId filtering
+battleSegmentBreakdown: present in per-experiment summary/metadata
+same-battle same-cycle PD context: recovered row-locally for all 8 experiments
+```
+
+Battle/window provenance notes:
+
+```text
+Z-5: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-6: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-7: BATTLE-0001 contains one skipped/noAllocatorAllocation row; the applied commands and launch runtime rows are in BATTLE-0002.
+```
+
+The final aggregate missing-evidence counters after deduplication are provenance limitations, not command failures:
+
+```text
+source Player.log path omitted from registry: 8
+launch runtime context spans multiple detected battle segments: 2
+allocation rows span multiple detected battle segments: 1
+```
+
+This expanded corpus is sufficient to say that the additional bounded-live evidence collection prerequisite for #43.3 has been met locally. It still does not justify broad allocator tuning without a repeated allocator-quality failure pattern or better outcome/spillover measurement.

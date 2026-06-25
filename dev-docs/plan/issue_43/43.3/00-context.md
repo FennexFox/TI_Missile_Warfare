@@ -1,6 +1,6 @@
 # Issue #43.3 context — Corpus review and no-tuning handoff
 
-Updated: 2026-06-24
+Updated: 2026-06-26
 Repo: `FennexFox/TI_Missile_Warfare`
 Local path: `dev-docs/plan/issue_43/43.3/00-context.md`
 Parent umbrella: `dev-docs/plan/issue_43/00-context.md`
@@ -117,7 +117,7 @@ The #44 corpus layer should let this slice group or compare by:
 
 If the current corpus cannot express one of these, record that as a handoff gap instead of inventing a metric.
 
-Current known corpus gap: the committed corpus fixtures include `fleetWideReportOnly` schema coverage, but no committed `fleet-wide-controlled` corpus artifact for the successful #43.2 runtime smoke yet. Raw private `Player.log` should not be committed by default. The next worker should create a redacted/private artifact entry under ignored `artifacts/experiments/` or add a synthetic fixture only for schema coverage, depending on the review goal.
+Current local corpus state: #43.3 now has a private/raw-log-derived local corpus import under ignored `artifacts/experiments/bounded-live-playerlog-20260626/`, summarized at `artifacts/fitting/bounded-live-playerlog-20260626-summary/`. The import produced 8 real `fleet-wide-controlled` experiments, 24 applied bounded-live command results, 167 direct runtime launch rows, and `warnings: []`. Raw private `Player.log` remains uncommitted by policy; commit only code, docs, fixtures, and redacted summaries unless a later decision explicitly approves raw-log handling.
 
 ## Possible conclusions
 
@@ -132,13 +132,13 @@ Current known corpus gap: the committed corpus fixtures include `fleetWideReport
 
 Each conclusion should name the next issue or sub-slice that should own the follow-up.
 
-Given the current prior evidence, the default starting hypothesis for #43.3 is:
+Given the expanded 2026-06-26 corpus import, the current #43.3 conclusion remains conservative:
 
 ```text
-No allocator tuning yet from this single bounded-live run alone.
+No allocator tuning yet from command-authority evidence alone.
 ```
 
-The first task is to turn the #43.2 bounded-live smoke into a corpus-level entry or blocker note, then decide whether more bounded live runs, outcome-hook measurement, vanilla salvo suppression, or allocator-quality review should own the next issue.
+The earlier first task, collecting 2-3 additional bounded fleet-wide live runs, is complete for local/private evidence. The remaining decision is whether the 8-run corpus shows a repeated allocator-quality failure pattern strong enough to justify a narrow tuning issue, or whether outcome-hook measurement, vanilla-spillover separation, and battle/window provenance should own the next work.
 
 ## Non-goals
 

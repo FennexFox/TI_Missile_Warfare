@@ -681,6 +681,19 @@ recordType="fleetWideBoundedLivePostState"
 
 A row may use `launcherSelectionRelation="selectionUnknownFleetEligible"` when command-panel selected scope is unavailable but the launcher is fleet-eligible, player-side, commandable, missile-ready, and allocator-evidence-backed. This is evidence-limited command authority, not selected-scope proof.
 
+For target-over-concentration tuning review, bounded-live candidate/result rows should preserve real fleet-wide target alternative denominators from `FleetWideScopeEvidence`, such as:
+
+```text
+visibleTargetSource="GameControl.spaceCombat.activeShips"
+visibleTargetConfidence="visibleCombatants"
+visibleTargetSourceCount="..."
+visibleHostileTargets="..."
+targetAlternativeDenominator="..."
+targetAlternativeEvidence="visibleHostileTargetsFromActiveShips"
+```
+
+These fields should be treated as the denominator for later target-over-concentration review. Do not use the older cycle-level `targetCount` field as that denominator; it only records whether the current snapshot has a target object.
+
 A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
 
 ```text
