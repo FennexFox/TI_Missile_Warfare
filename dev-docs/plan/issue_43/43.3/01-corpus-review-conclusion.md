@@ -134,6 +134,8 @@ The next task should not be a broad tuning pass. It should be one of the followi
 2. improve measurement if vanilla / none-correlated spillover or outcome attribution blocks interpretation;
 3. open a narrow tuning issue only if the expanded corpus shows a repeated allocator-quality failure.
 
+Implementation support now exists for the first item: use `tools/import_player_log_experiments.py` to group `Player.log` rows by diagnostics `experimentId` and generate local `summary.json`, `metadata.json`, `verdict.json`, and `registry.jsonl` drafts under ignored `artifacts/experiments/...` paths. This is not yet full battle-boundary splitting; it is the safer experimentId-based importer.
+
 Suggested future tuning issue title, once evidence supports it:
 
 ```text

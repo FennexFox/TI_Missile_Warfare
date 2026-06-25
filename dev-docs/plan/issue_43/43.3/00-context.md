@@ -179,5 +179,6 @@ A future worker should be able to read the #43.3 output and know:
 - `docs/diagnostics/snapshot-and-allocation.md`
 - `dev-docs/plan/issue_39.1/00-context.md`
 - `tools/summarize_experiment_corpus.py`
+- `tools/import_player_log_experiments.py`
 - `tools/fit_shadow_allocation.py`
 - `tools/fixtures/experiment_corpus/`

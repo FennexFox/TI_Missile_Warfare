@@ -138,6 +138,42 @@ Example:
 }
 ```
 
+## Player.log import workflow
+
+Use `tools/import_player_log_experiments.py` to turn one `Player.log` into one or more local corpus artifact drafts grouped by diagnostics `experimentId`. This is an experiment-level importer, not a full battle-boundary splitter.
+
+Example for a bounded fleet-wide live run:
+
+```powershell
+python tools\import_player_log_experiments.py `
+  --log Player.log `
+  --output artifacts\experiments\fleet-wide-import `
+  --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json `
+  --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 `
+  --scenario-tag issue-43.3 `
+  --scenario-tag bounded-live `
+  --mod-commit <commit-sha>
+```
+
+The importer writes, per source `experimentId`:
+
+- `summary.json`
+- `metadata.json`
+- `verdict.json`
+
+and writes a registry at `<output>/registry.jsonl` unless `--registry` is supplied. By default it omits `sourceLogPath` so private raw `Player.log` files are not recorded in committed corpus entries. Use `--include-source-log-path` only for private/local registries where that path is safe.
+
+Useful validation flow:
+
+```powershell
+python tools\import_player_log_experiments.py --log Player.log --output artifacts\experiments\fleet-wide-import --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 --scenario-tag issue-43.3
+python tools\summarize_experiment_corpus.py --registry artifacts\experiments\fleet-wide-import\registry.jsonl --output artifacts\fitting\fleet-wide-import-summary
+```
+
+If a `Player.log` contains several experiments, the importer emits one artifact directory per `experimentId`. Full battle-level splitting is still future work.
+
+Because the importer only groups rows carrying an `experimentId`, nearby `SnapshotLog` or untagged `cycle` context is not attached yet. If PD evidence is not present on the grouped rows, generated metadata keeps `pdEvidenceCategory` as `unknown` and records `pd evidence context not attached by experimentId importer` as missing evidence.
+
 ## Summary workflow
 
 Run the file-based summary command from the repo root:
