@@ -9,7 +9,7 @@ interpreted in a battle-local namespace instead of as Player.log-global ids.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
@@ -100,6 +100,7 @@ class LogRow:
     line_number: int
     kind: str
     pairs: dict[str, str]
+    battle_segment_id: str | None = None
 
 
 @dataclass
@@ -110,6 +111,7 @@ class ExperimentGroup:
     rows: list[LogRow] = field(default_factory=list)
     battle_segment: BattleSegment | None = None
     battle_segment_ids: set[str] = field(default_factory=set)
+    battle_segments_by_id: dict[str, BattleSegment] = field(default_factory=dict)
     nearby_cycle_context_rows: list[LogRow] = field(default_factory=list)
 
     @property
@@ -156,6 +158,16 @@ def experiment_from_command_result(command_result_id: str | None) -> str | None:
         return None
     prefix = command_result_id.split(":", 1)[0]
     return prefix or None
+
+
+def concrete_experiment_id(experiment_id: str | None) -> str | None:
+    """Return a concrete experiment id, excluding placeholder values."""
+    if not experiment_id:
+        return None
+    experiment_id = experiment_id.strip()
+    if experiment_id in {"", "none", "unknown"}:
+        return None
+    return experiment_id
 
 
 def is_battle_start_marker(line: str) -> bool:
@@ -277,17 +289,45 @@ def battle_for_line(segments: list[BattleSegment], line_number: int) -> BattleSe
     return None
 
 
+def row_battle_segment_ids(rows: list[LogRow]) -> list[str]:
+    """Return sorted concrete battle segment ids for rows."""
+    return sorted({row.battle_segment_id for row in rows if row.battle_segment_id})
+
+
+def primary_battle_segment_id(group: ExperimentGroup) -> str | None:
+    """Return the primary battle segment id for a group, preferring allocation rows."""
+    allocation_counter = Counter(
+        row.battle_segment_id for row in group.allocation_rows if row.battle_segment_id
+    )
+    if allocation_counter:
+        return allocation_counter.most_common(1)[0][0]
+    row_counter = Counter(row.battle_segment_id for row in group.rows if row.battle_segment_id)
+    if row_counter:
+        return row_counter.most_common(1)[0][0]
+    return None
+
+
 def battle_context_for_group(group: ExperimentGroup) -> dict[str, Any]:
     """Return battle context metadata for one experiment group."""
     segment_ids = sorted(group.battle_segment_ids)
-    if group.battle_segment is None:
+    primary_segment_id = primary_battle_segment_id(group)
+    primary_segment = (
+        group.battle_segments_by_id.get(primary_segment_id) if primary_segment_id else None
+    ) or group.battle_segment
+    if primary_segment is None:
         return {
             "sourceBattleId": "unknown",
+            "primaryBattleSegmentId": "unknown",
+            "allocationBattleSegmentIds": row_battle_segment_ids(group.allocation_rows),
+            "launchBattleSegmentIds": row_battle_segment_ids(group.launch_rows),
             "battleSegmentIds": segment_ids,
             "battleSegmentConfidence": "not-detected",
             "battleBoundarySource": "not-detected",
         }
-    context = group.battle_segment.to_json()
+    context = primary_segment.to_json()
+    context["primaryBattleSegmentId"] = primary_segment.battle_id
+    context["allocationBattleSegmentIds"] = row_battle_segment_ids(group.allocation_rows)
+    context["launchBattleSegmentIds"] = row_battle_segment_ids(group.launch_rows)
     context["battleSegmentIds"] = segment_ids
     context["battleSegmentConfidence"] = (
         "single-detected-segment" if len(segment_ids) <= 1 else "multiple-detected-segments"
@@ -297,11 +337,28 @@ def battle_context_for_group(group: ExperimentGroup) -> dict[str, Any]:
 
 def battle_missing_evidence(group: ExperimentGroup) -> list[str]:
     """Return battle-boundary evidence limitations for one experiment group."""
-    if group.battle_segment is None:
+    allocation_ids = row_battle_segment_ids(group.allocation_rows)
+    launch_ids = row_battle_segment_ids(group.launch_rows)
+    if not allocation_ids and not launch_ids:
         return ["battle boundary not detected by Player.log importer"]
-    if len(group.battle_segment_ids) > 1:
-        return ["experiment rows span multiple detected battle segments"]
-    return []
+    missing: list[str] = []
+    if len(allocation_ids) > 1:
+        missing.append("allocation rows span multiple detected battle segments")
+    if len(launch_ids) > 1:
+        missing.append("launch runtime context spans multiple detected battle segments")
+    return missing
+
+
+def unique_preserving_order(values: list[str]) -> list[str]:
+    """Return unique values while preserving first-seen order."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique
 
 
 def parse_log_groups(
@@ -318,18 +375,28 @@ def parse_log_groups(
             if not match:
                 continue
             pairs = parse_pairs(match.group("pairs"))
-            experiment_id = pairs.get("experimentId")
+            experiment_id = concrete_experiment_id(pairs.get("experimentId"))
             if not experiment_id and match.group("kind") == "LaunchLog":
-                experiment_id = experiment_from_command_result(pairs.get("commandResultId"))
+                experiment_id = concrete_experiment_id(
+                    experiment_from_command_result(pairs.get("commandResultId"))
+                )
             if not experiment_id:
                 continue
             if filters and experiment_id not in filters:
                 continue
-            group = groups.setdefault(experiment_id, ExperimentGroup(experiment_id))
-            group.rows.append(LogRow(line_number, match.group("kind"), pairs))
             segment = battle_for_line(segments, line_number)
+            group = groups.setdefault(experiment_id, ExperimentGroup(experiment_id))
+            group.rows.append(
+                LogRow(
+                    line_number,
+                    match.group("kind"),
+                    pairs,
+                    segment.battle_id if segment is not None else None,
+                )
+            )
             if segment is not None:
                 group.battle_segment_ids.add(segment.battle_id)
+                group.battle_segments_by_id[segment.battle_id] = segment
                 if group.battle_segment is None:
                     group.battle_segment = segment
     return groups
@@ -358,7 +425,7 @@ def collect_cycle_context_rows(
             if segment is None:
                 continue
             cycle_rows.setdefault((segment.battle_id, cycle_id), []).append(
-                LogRow(line_number, match.group("kind"), pairs)
+                LogRow(line_number, match.group("kind"), pairs, segment.battle_id)
             )
     return cycle_rows
 
@@ -383,12 +450,12 @@ def attach_cycle_context_rows(
 ) -> None:
     """Attach same-battle same-cycle context rows to experiment groups."""
     for group in groups.values():
-        if group.battle_segment is None or len(group.battle_segment_ids) != 1:
-            continue
-        battle_id = group.battle_segment.battle_id
-        cycle_ids = unique_values(group.allocation_rows, "cycleId")
         attached: dict[int, LogRow] = {}
-        for cycle_id in cycle_ids:
+        for experiment_row in group.allocation_rows:
+            battle_id = experiment_row.battle_segment_id
+            cycle_id = experiment_row.pairs.get("cycleId")
+            if not battle_id or not cycle_id or cycle_id in {"none", "unknown"}:
+                continue
             for row in cycle_context_rows.get((battle_id, cycle_id), []):
                 if line_distance_to_group(row, group) <= line_window:
                     attached[row.line_number] = row
@@ -690,6 +757,7 @@ def cycle_context_to_json(row: LogRow) -> dict[str, Any]:
     )
     result: dict[str, Any] = {
         "lineNumber": row.line_number,
+        "battleSegmentId": row.battle_segment_id,
         "attachmentConfidence": "same-battle-same-cycle",
     }
     for key in keys:
@@ -707,6 +775,85 @@ def nearby_context_for_group(group: ExperimentGroup) -> dict[str, Any]:
         "allocationCycleRows": [
             cycle_context_to_json(row) for row in group.nearby_cycle_context_rows
         ]
+    }
+
+
+def row_segment_id(row: LogRow) -> str:
+    """Return a stable segment id bucket for one row."""
+    return row.battle_segment_id or "unassigned"
+
+
+def segment_count_dict(counter: Counter[str]) -> dict[str, int]:
+    """Return deterministic segment count mapping."""
+    return dict(sorted(counter.items(), key=lambda item: (item[0] == "unassigned", item[0])))
+
+
+def nested_segment_counter_dict(counters: dict[str, Counter[str]]) -> dict[str, dict[str, int]]:
+    """Return deterministic nested counters keyed by battle segment id."""
+    return {segment: counter_dict(counters[segment]) for segment in sorted(counters)}
+
+
+def battle_segment_breakdown_for_group(group: ExperimentGroup) -> dict[str, Any]:
+    """Return row-kind and allocation-record breakdowns by detected battle segment."""
+    row_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    allocation_counts: Counter[str] = Counter()
+    launch_counts: Counter[str] = Counter()
+    allocation_record_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    allocation_result_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    allocation_reason_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    applied_command_counts: Counter[str] = Counter()
+    skipped_command_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    line_ranges: dict[str, dict[str, int]] = {}
+
+    for row in group.rows:
+        segment = row_segment_id(row)
+        row_counts[segment][row.kind] += 1
+        if segment not in line_ranges:
+            line_ranges[segment] = {"firstLine": row.line_number, "lastLine": row.line_number}
+        else:
+            line_ranges[segment]["firstLine"] = min(
+                line_ranges[segment]["firstLine"], row.line_number
+            )
+            line_ranges[segment]["lastLine"] = max(
+                line_ranges[segment]["lastLine"], row.line_number
+            )
+
+        if row.kind == "AllocationLog":
+            allocation_counts[segment] += 1
+            record_type = row.pairs.get("recordType", "unknown")
+            allocation_record_counts[segment][record_type] += 1
+            result = row.pairs.get("result")
+            if result and result not in {"none", "unknown"}:
+                allocation_result_counts[segment][result] += 1
+                if result == "applied":
+                    applied_command_counts[segment] += 1
+                if result == "skipped":
+                    reason = row.pairs.get("reason", "unknown")
+                    skipped_command_counts[segment][reason] += 1
+            reason = row.pairs.get("reason")
+            if reason and reason not in {"none", "unknown"}:
+                allocation_reason_counts[segment][reason] += 1
+        elif row.kind == "LaunchLog":
+            launch_counts[segment] += 1
+
+    return {
+        "rowCountsByBattleSegment": nested_segment_counter_dict(row_counts),
+        "allocationRowsByBattleSegment": segment_count_dict(allocation_counts),
+        "launchRowsByBattleSegment": segment_count_dict(launch_counts),
+        "allocationRecordTypeCountsByBattleSegment": nested_segment_counter_dict(
+            allocation_record_counts
+        ),
+        "allocationResultCountsByBattleSegment": nested_segment_counter_dict(
+            allocation_result_counts
+        ),
+        "allocationReasonCountsByBattleSegment": nested_segment_counter_dict(
+            allocation_reason_counts
+        ),
+        "appliedCommandCountsByBattleSegment": segment_count_dict(applied_command_counts),
+        "skippedCommandReasonCountsByBattleSegment": nested_segment_counter_dict(
+            skipped_command_counts
+        ),
+        "lineRangesByBattleSegment": dict(sorted(line_ranges.items())),
     }
 
 
@@ -730,6 +877,7 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
         "allocation_rows": len(group.allocation_rows),
         "launch_rows": len(group.launch_rows),
         "battle_context": battle_context_for_group(group),
+        "battle_segment_breakdown": battle_segment_breakdown_for_group(group),
         "nearby_context": nearby_context_for_group(group),
         "parser_summary": {"allocation_summary": allocation_summary},
         "controlled_launch_correlation_summary": launch_summary,
@@ -787,8 +935,6 @@ def evidence_summary_from_group(
     missing_counts = Counter(evidence["missing_evidence_counts"])
     if pd_category == "unknown":
         missing_counts["pd evidence context not attached by experimentId importer"] += 1
-    for missing in battle_missing_evidence(group):
-        missing_counts[missing] += 1
     evidence["missing_evidence_counts"] = counter_dict(missing_counts)
     return evidence
 
@@ -819,6 +965,7 @@ def build_metadata(
     if pd_category == "unknown":
         known_missing.append("pd evidence context not attached by experimentId importer")
     known_missing.extend(battle_missing_evidence(group))
+    known_missing = unique_preserving_order(known_missing)
 
     allocation_summary = summary["logs"][0]["parser_summary"]["allocation_summary"]
     direct_summary = summary["logs"][0]["controlled_launch_correlation_summary"]
@@ -837,6 +984,7 @@ def build_metadata(
         "targetIds": target_ids,
         "pdEvidenceCategory": pd_category,
         "pdEvidenceCategorySource": pd_category_source,
+        "battleSegmentBreakdown": battle_segment_breakdown_for_group(group),
         "nearbyContext": nearby_context_for_group(group),
         "rangeBand": "imported",
         "closingSpeedBand": "imported",
