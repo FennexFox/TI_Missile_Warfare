@@ -2,8 +2,9 @@
 """Import Player.log diagnostics into experiment-corpus artifact drafts.
 
 This tool groups AllocationLog/LaunchLog rows by experimentId and writes one
-corpus artifact directory per experiment. It is intentionally experimentId-based;
-it does not try to infer full Terra Invicta battle boundaries yet.
+corpus artifact directory per experiment. It also performs best-effort battle
+segmentation before any same-cycle context attachment, so cycle ids can later be
+interpreted in a battle-local namespace instead of as Player.log-global ids.
 """
 from __future__ import annotations
 
@@ -62,6 +63,37 @@ CONTROLLED_LIVE_RESULT_RECORDS = {
 
 
 @dataclass
+class BattleSegment:
+    """Best-effort Player.log combat/battle segment."""
+
+    battle_id: str
+    start_line: int
+    last_observed_line: int
+    boundary_source: str
+    first_ship_create_line: int | None = None
+    end_trigger_line: int | None = None
+    combat_will_end_line: int | None = None
+    label: str | None = None
+
+    def contains(self, line_number: int) -> bool:
+        """Return whether a source line is inside this segment."""
+        return self.start_line <= line_number <= self.last_observed_line
+
+    def to_json(self) -> dict[str, Any]:
+        """Return JSON metadata for this segment."""
+        return {
+            "sourceBattleId": self.battle_id,
+            "battleStartLine": self.start_line,
+            "battleFirstShipCreateLine": self.first_ship_create_line,
+            "battleEndTriggerLine": self.end_trigger_line,
+            "battleCombatWillEndLine": self.combat_will_end_line,
+            "battleLastObservedLine": self.last_observed_line,
+            "battleBoundarySource": self.boundary_source,
+            "battleLabel": self.label,
+        }
+
+
+@dataclass
 class LogRow:
     """One parsed diagnostics row from a Player.log file."""
 
@@ -76,6 +108,9 @@ class ExperimentGroup:
 
     source_experiment_id: str
     rows: list[LogRow] = field(default_factory=list)
+    battle_segment: BattleSegment | None = None
+    battle_segment_ids: set[str] = field(default_factory=set)
+    nearby_cycle_context_rows: list[LogRow] = field(default_factory=list)
 
     @property
     def allocation_rows(self) -> list[LogRow]:
@@ -123,8 +158,159 @@ def experiment_from_command_result(command_result_id: str | None) -> str | None:
     return prefix or None
 
 
-def parse_log_groups(path: Path, filters: set[str] | None = None) -> dict[str, ExperimentGroup]:
+def is_battle_start_marker(line: str) -> bool:
+    """Return whether a raw Player.log line looks like combat setup started."""
+    return (
+        "Init Canvas SpaceCombatCanvas" in line
+        or "Adding ship to CombatManager as ActiveShip(CreateShip)" in line
+        or "MaxShipsInCombat" in line
+    )
+
+
+def is_ship_create_marker(line: str) -> bool:
+    """Return whether a raw Player.log line adds an active ship to combat."""
+    return "Adding ship to CombatManager as ActiveShip(CreateShip)" in line
+
+
+def is_battle_end_marker(line: str) -> bool:
+    """Return whether a raw Player.log line looks like combat end scheduling."""
+    return "FLTS: Combat End Triggered" in line or "Combat Will End" in line
+
+
+def finalized_segment(segment: BattleSegment, last_line: int) -> BattleSegment:
+    """Return a segment with a nonzero last observed line."""
+    if segment.last_observed_line < segment.start_line:
+        segment.last_observed_line = last_line
+    return segment
+
+
+def detect_vanilla_battle_segments(path: Path) -> tuple[list[BattleSegment], int]:
+    """Detect battle segments from vanilla combat lifecycle markers."""
+    segments: list[BattleSegment] = []
+    current: BattleSegment | None = None
+    last_line = 0
+    with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            last_line = line_number
+            if is_battle_start_marker(line):
+                if current is None:
+                    current = BattleSegment(
+                        battle_id=f"BATTLE-{len(segments) + 1:04d}",
+                        start_line=line_number,
+                        last_observed_line=line_number,
+                        boundary_source="vanilla-combat-manager-log",
+                    )
+                elif current.end_trigger_line is not None and line_number > current.last_observed_line:
+                    segments.append(finalized_segment(current, line_number - 1))
+                    current = BattleSegment(
+                        battle_id=f"BATTLE-{len(segments) + 1:04d}",
+                        start_line=line_number,
+                        last_observed_line=line_number,
+                        boundary_source="vanilla-combat-manager-log",
+                    )
+                current.last_observed_line = line_number
+                if is_ship_create_marker(line) and current.first_ship_create_line is None:
+                    current.first_ship_create_line = line_number
+                continue
+
+            if current is not None:
+                current.last_observed_line = line_number
+                if is_ship_create_marker(line) and current.first_ship_create_line is None:
+                    current.first_ship_create_line = line_number
+                if "FLTS: Combat End Triggered" in line and current.end_trigger_line is None:
+                    current.end_trigger_line = line_number
+                if "Combat Will End" in line:
+                    current.combat_will_end_line = line_number
+
+    if current is not None:
+        segments.append(finalized_segment(current, last_line))
+    return segments, last_line
+
+
+def detect_cycle_battle_field_segments(path: Path, last_line: int) -> list[BattleSegment]:
+    """Fallback segments from AllocationLog cycle rows with a battle field."""
+    markers: list[tuple[int, str]] = []
+    with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            match = LOG_RE.search(line)
+            if not match or match.group("kind") != "AllocationLog":
+                continue
+            pairs = parse_pairs(match.group("pairs"))
+            if pairs.get("recordType") != "cycle":
+                continue
+            battle_label = pairs.get("battle")
+            if battle_label and battle_label not in {"none", "unknown"}:
+                if not markers or markers[-1][1] != battle_label:
+                    markers.append((line_number, battle_label))
+
+    if not markers:
+        return []
+
+    segments: list[BattleSegment] = []
+    for index, (line_number, label) in enumerate(markers):
+        next_line = markers[index + 1][0] if index + 1 < len(markers) else last_line + 1
+        segments.append(
+            BattleSegment(
+                battle_id=f"BATTLE-{index + 1:04d}",
+                start_line=line_number,
+                last_observed_line=max(line_number, next_line - 1),
+                boundary_source="allocation-cycle-battle-field",
+                label=label,
+            )
+        )
+    return segments
+
+
+def detect_battle_segments(path: Path) -> list[BattleSegment]:
+    """Detect battle segments with conservative fallback markers."""
+    vanilla_segments, last_line = detect_vanilla_battle_segments(path)
+    if vanilla_segments:
+        return vanilla_segments
+    return detect_cycle_battle_field_segments(path, last_line)
+
+
+def battle_for_line(segments: list[BattleSegment], line_number: int) -> BattleSegment | None:
+    """Return the detected battle segment containing a source line."""
+    for segment in segments:
+        if segment.contains(line_number):
+            return segment
+    return None
+
+
+def battle_context_for_group(group: ExperimentGroup) -> dict[str, Any]:
+    """Return battle context metadata for one experiment group."""
+    segment_ids = sorted(group.battle_segment_ids)
+    if group.battle_segment is None:
+        return {
+            "sourceBattleId": "unknown",
+            "battleSegmentIds": segment_ids,
+            "battleSegmentConfidence": "not-detected",
+            "battleBoundarySource": "not-detected",
+        }
+    context = group.battle_segment.to_json()
+    context["battleSegmentIds"] = segment_ids
+    context["battleSegmentConfidence"] = (
+        "single-detected-segment" if len(segment_ids) <= 1 else "multiple-detected-segments"
+    )
+    return context
+
+
+def battle_missing_evidence(group: ExperimentGroup) -> list[str]:
+    """Return battle-boundary evidence limitations for one experiment group."""
+    if group.battle_segment is None:
+        return ["battle boundary not detected by Player.log importer"]
+    if len(group.battle_segment_ids) > 1:
+        return ["experiment rows span multiple detected battle segments"]
+    return []
+
+
+def parse_log_groups(
+    path: Path,
+    filters: set[str] | None = None,
+    battle_segments: list[BattleSegment] | None = None,
+) -> dict[str, ExperimentGroup]:
     """Parse a Player.log and group AllocationLog/LaunchLog rows by experiment id."""
+    segments = battle_segments or []
     groups: dict[str, ExperimentGroup] = {}
     with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -141,7 +327,72 @@ def parse_log_groups(path: Path, filters: set[str] | None = None) -> dict[str, E
                 continue
             group = groups.setdefault(experiment_id, ExperimentGroup(experiment_id))
             group.rows.append(LogRow(line_number, match.group("kind"), pairs))
+            segment = battle_for_line(segments, line_number)
+            if segment is not None:
+                group.battle_segment_ids.add(segment.battle_id)
+                if group.battle_segment is None:
+                    group.battle_segment = segment
     return groups
+
+
+def collect_cycle_context_rows(
+    path: Path,
+    battle_segments: list[BattleSegment],
+) -> dict[tuple[str, str], list[LogRow]]:
+    """Collect AllocationLog cycle context rows by (battle id, cycle id)."""
+    cycle_rows: dict[tuple[str, str], list[LogRow]] = {}
+    if not battle_segments:
+        return cycle_rows
+    with path.open("r", encoding="utf-8-sig", errors="replace") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            match = LOG_RE.search(line)
+            if not match or match.group("kind") != "AllocationLog":
+                continue
+            pairs = parse_pairs(match.group("pairs"))
+            if pairs.get("recordType") != "cycle":
+                continue
+            cycle_id = pairs.get("cycleId")
+            if not cycle_id or cycle_id in {"none", "unknown"}:
+                continue
+            segment = battle_for_line(battle_segments, line_number)
+            if segment is None:
+                continue
+            cycle_rows.setdefault((segment.battle_id, cycle_id), []).append(
+                LogRow(line_number, match.group("kind"), pairs)
+            )
+    return cycle_rows
+
+
+def line_distance_to_group(row: LogRow, group: ExperimentGroup) -> int:
+    """Return line distance from a context row to an experiment group span."""
+    line_numbers = [experiment_row.line_number for experiment_row in group.rows]
+    if not line_numbers:
+        return 0
+    first_line = min(line_numbers)
+    last_line = max(line_numbers)
+    if first_line <= row.line_number <= last_line:
+        return 0
+    return min(abs(row.line_number - first_line), abs(row.line_number - last_line))
+
+
+def attach_cycle_context_rows(
+    groups: dict[str, ExperimentGroup],
+    cycle_context_rows: dict[tuple[str, str], list[LogRow]],
+    *,
+    line_window: int,
+) -> None:
+    """Attach same-battle same-cycle context rows to experiment groups."""
+    for group in groups.values():
+        if group.battle_segment is None or len(group.battle_segment_ids) != 1:
+            continue
+        battle_id = group.battle_segment.battle_id
+        cycle_ids = unique_values(group.allocation_rows, "cycleId")
+        attached: dict[int, LogRow] = {}
+        for cycle_id in cycle_ids:
+            for row in cycle_context_rows.get((battle_id, cycle_id), []):
+                if line_distance_to_group(row, group) <= line_window:
+                    attached[row.line_number] = row
+        group.nearby_cycle_context_rows = [attached[key] for key in sorted(attached)]
 
 
 def counter_dict(counter: Counter[str]) -> dict[str, int]:
@@ -165,6 +416,26 @@ def first_non_empty(values: list[str | None], default: str = "unknown") -> str:
         if value and value not in {"none", "unknown"}:
             return value
     return default
+
+
+def pd_category_for_group(group: ExperimentGroup) -> tuple[str, str]:
+    """Return PD evidence category and provenance for an experiment group."""
+    direct_category = first_non_empty(
+        [row.pairs.get("pdEvidenceQuality") for row in group.allocation_rows]
+        + [row.pairs.get("pdEvidenceCategory") for row in group.allocation_rows],
+        default="unknown",
+    )
+    if direct_category != "unknown":
+        return direct_category, "experiment-row"
+
+    cycle_category = first_non_empty(
+        [row.pairs.get("pdEvidenceQuality") for row in group.nearby_cycle_context_rows]
+        + [row.pairs.get("pdEvidenceCategory") for row in group.nearby_cycle_context_rows],
+        default="unknown",
+    )
+    if cycle_category != "unknown":
+        return cycle_category, "same-battle-same-cycle-context"
+    return "unknown", "not-attached"
 
 
 def unique_values(rows: list[LogRow], *keys: str) -> list[str]:
@@ -396,6 +667,49 @@ def applied_commands(group: ExperimentGroup, direct_by_command: Counter[str]) ->
     return commands
 
 
+def cycle_context_to_json(row: LogRow) -> dict[str, Any]:
+    """Return a compact JSON representation of an attached cycle context row."""
+    keys = (
+        "cycleId",
+        "battle",
+        "sourceHook",
+        "friendlyLaunchers",
+        "targetCount",
+        "totalAmmoGateBudgetShots",
+        "pdWeight",
+        "pdEvidenceQuality",
+        "pdEvidenceCategory",
+        "pdCapabilityEvidenceSource",
+        "pdCapabilityWeaponCount",
+        "pdCapabilityRangeKm",
+        "pdCapabilityCooldownSeconds",
+        "pdCapabilityObservedFields",
+        "pdCapabilityMissingReason",
+        "pdCapabilityLimitations",
+        "missingInputs",
+    )
+    result: dict[str, Any] = {
+        "lineNumber": row.line_number,
+        "attachmentConfidence": "same-battle-same-cycle",
+    }
+    for key in keys:
+        value = row.pairs.get(key)
+        if value and value not in {"none", "unknown"}:
+            result[key] = value
+    return result
+
+
+def nearby_context_for_group(group: ExperimentGroup) -> dict[str, Any]:
+    """Return attached nearby context rows for an experiment group."""
+    if not group.nearby_cycle_context_rows:
+        return {}
+    return {
+        "allocationCycleRows": [
+            cycle_context_to_json(row) for row in group.nearby_cycle_context_rows
+        ]
+    }
+
+
 def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, include_source: bool) -> dict[str, Any]:
     """Build parsed summary artifact for one experiment group."""
     allocation_summary = summarize_allocation(group)
@@ -406,6 +720,8 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
         limitation_counts["source Player.log path omitted from registry"] = 1
     if direct_launches == 0 and group.launch_rows:
         limitation_counts["direct runtime launch correlation not observed"] = 1
+    for missing in battle_missing_evidence(group):
+        limitation_counts[missing] = 1
 
     row_summary: dict[str, Any] = {
         "source_experiment_id": group.source_experiment_id,
@@ -413,6 +729,8 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
         "source_line_last": max((row.line_number for row in group.rows), default=None),
         "allocation_rows": len(group.allocation_rows),
         "launch_rows": len(group.launch_rows),
+        "battle_context": battle_context_for_group(group),
+        "nearby_context": nearby_context_for_group(group),
         "parser_summary": {"allocation_summary": allocation_summary},
         "controlled_launch_correlation_summary": launch_summary,
         "applied_commands": applied_commands(group, direct_by_command),
@@ -466,10 +784,12 @@ def evidence_summary_from_group(
     )
     if same_team:
         evidence["regression_counts"] = {"same-team missile target snapshots": same_team}
+    missing_counts = Counter(evidence["missing_evidence_counts"])
     if pd_category == "unknown":
-        evidence["missing_evidence_counts"] = {
-            "pd evidence context not attached by experimentId importer": 1
-        }
+        missing_counts["pd evidence context not attached by experimentId importer"] += 1
+    for missing in battle_missing_evidence(group):
+        missing_counts[missing] += 1
+    evidence["missing_evidence_counts"] = counter_dict(missing_counts)
     return evidence
 
 
@@ -490,11 +810,7 @@ def build_metadata(
     selected_count = max((int_value(row.pairs.get("selectedShipCount")) for row in allocation_rows), default=0)
     launcher_ids = unique_values(all_rows, "launcherId", "allocatorLauncherId")
     target_ids = unique_values(all_rows, "targetId", "targetStateId")
-    pd_category = first_non_empty(
-        [row.pairs.get("pdEvidenceQuality") for row in allocation_rows]
-        + [row.pairs.get("pdEvidenceCategory") for row in allocation_rows],
-        default="unknown",
-    )
+    pd_category, pd_category_source = pd_category_for_group(group)
     known_missing = [
         "imported by experimentId; review metadata and verdict before tuning",
     ]
@@ -502,13 +818,15 @@ def build_metadata(
         known_missing.extend(summary["limitation_counts"].keys())
     if pd_category == "unknown":
         known_missing.append("pd evidence context not attached by experimentId importer")
+    known_missing.extend(battle_missing_evidence(group))
 
     allocation_summary = summary["logs"][0]["parser_summary"]["allocation_summary"]
     direct_summary = summary["logs"][0]["controlled_launch_correlation_summary"]
-    return {
+    metadata = {
         "schemaVersion": 1,
         "experimentId": corpus_id,
         "sourceExperimentId": group.source_experiment_id,
+        **battle_context_for_group(group),
         "runMode": run_mode,
         "selectedMode": selected_mode,
         "selectedShipCount": selected_count,
@@ -518,6 +836,8 @@ def build_metadata(
         "missileFamily": missile_family,
         "targetIds": target_ids,
         "pdEvidenceCategory": pd_category,
+        "pdEvidenceCategorySource": pd_category_source,
+        "nearbyContext": nearby_context_for_group(group),
         "rangeBand": "imported",
         "closingSpeedBand": "imported",
         "knownMissingEvidence": known_missing,
@@ -537,6 +857,8 @@ def build_metadata(
         ),
         "reviewerNotes": reviewer_notes,
     }
+
+    return metadata
 
 
 def build_verdict(
@@ -701,6 +1023,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reviewer-notes", default="Generated by import_player_log_experiments.py; review before tuning.")
     parser.add_argument("--fixture", action="store_true", help="mark outputs as synthetic fixture evidence")
     parser.add_argument("--include-source-log-path", action="store_true", help="include sourceLogPath in registry; omit for private raw logs")
+    parser.add_argument("--context-line-window", type=int, default=200, help="max line distance for same-battle same-cycle context attachment; default: 200")
     parser.add_argument("--append-registry", action="store_true", help="append to registry instead of overwriting")
     parser.add_argument("--force", action="store_true", help="overwrite artifact files/registry when safe")
     parser.add_argument("--dry-run", action="store_true", help="print planned registry entries without writing files")
@@ -719,7 +1042,14 @@ def main() -> None:
         raise SystemExit(f"Parameter snapshot not found: {args.parameters}")
     parameter_hash = args.parameter_snapshot_hash or sha256_file(args.parameters)
     filters = set(args.experiment_id) if args.experiment_id else None
-    groups = parse_log_groups(args.log, filters=filters)
+    battle_segments = detect_battle_segments(args.log)
+    groups = parse_log_groups(args.log, filters=filters, battle_segments=battle_segments)
+    cycle_context_rows = collect_cycle_context_rows(args.log, battle_segments)
+    attach_cycle_context_rows(
+        groups,
+        cycle_context_rows,
+        line_window=args.context_line_window,
+    )
     if not groups:
         raise SystemExit("No experimentId-tagged AllocationLog/LaunchLog rows found.")
 

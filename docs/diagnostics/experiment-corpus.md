@@ -172,7 +172,9 @@ python tools\summarize_experiment_corpus.py --registry artifacts\experiments\fle
 
 If a `Player.log` contains several experiments, the importer emits one artifact directory per `experimentId`. Full battle-level splitting is still future work.
 
-Because the importer only groups rows carrying an `experimentId`, nearby `SnapshotLog` or untagged `cycle` context is not attached yet. If PD evidence is not present on the grouped rows, generated metadata keeps `pdEvidenceCategory` as `unknown` and records `pd evidence context not attached by experimentId importer` as missing evidence.
+Because the importer groups primary evidence rows by `experimentId`, raw `SnapshotLog` context is not attached yet. However, after battle segmentation it can attach nearby `AllocationLog recordType="cycle"` rows when they share the same detected battle segment and `cycleId` within `--context-line-window` lines. Generated metadata records attached rows under `nearbyContext`, sets `pdEvidenceCategorySource` to `same-battle-same-cycle-context` when PD evidence is recovered that way, and keeps `pd evidence context not attached by experimentId importer` as missing evidence only when no direct or attached PD context is available.
+
+The importer is battle-aware before it performs any same-cycle context attachment. It first tries to detect battle segments from vanilla combat lifecycle markers such as `Init Canvas SpaceCombatCanvas`, `Adding ship to CombatManager as ActiveShip(CreateShip)`, `MaxShipsInCombat`, `FLTS: Combat End Triggered`, and `Combat Will End`. If those markers are absent, it falls back to `AllocationLog recordType="cycle" battle="..."` markers when present. Generated artifacts record `sourceBattleId`, boundary line numbers, boundary source, and battle segment confidence. If no segment is detected, or if one experiment spans multiple detected segments, that is recorded as missing evidence instead of silently joining by `cycleId` alone.
 
 ## Summary workflow
 
