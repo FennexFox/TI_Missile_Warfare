@@ -1,6 +1,6 @@
 # Issue #43 umbrella context — Fleet-wide controlled missile allocation path
 
-Updated: 2026-06-24
+Updated: 2026-06-26
 Repo: `FennexFox/TI_Missile_Warfare`
 Local path: `dev-docs/plan/issue_43/00-context.md`
 
@@ -30,6 +30,8 @@ dev-docs/plan/issue_43/
     00-context.md           # bounded default-off fleet-wide live apply context
   43.3/
     00-context.md           # corpus review and fitting/no-tuning handoff context
+  43.4/
+    00-context.md           # bounded-live tuning-readiness measurement context
 ```
 
 Do not add `01-implementation.md`, `02-verification.md`, or similar execution documents here unless the next worker explicitly chooses to create them. Codex should derive the concrete implementation instructions from the relevant `00-context.md` when it starts a slice.
@@ -47,6 +49,7 @@ Relevant order:
        -> #43.1 fleet-wide dry-run/report scaffold
        -> #43.2 bounded fleet-wide live apply
        -> #43.3 corpus review and fitting/no-tuning handoff
+       -> #43.4 bounded-live tuning-readiness measurement
 ```
 
 #43 should consume the #44 corpus layer. If a branch does not yet contain the #44 docs/tooling, do not begin #43 live work; either merge/rebase onto that work or limit the slice to planning only.
@@ -90,6 +93,18 @@ Purpose: use the #44 corpus layer to evaluate fleet-wide evidence without overfi
 This slice should aggregate #43.1/#43.2 evidence by run mode, candidate id, parameter snapshot, scenario tags, direct command spend, spillover, missing evidence, and manual verdict. It may recommend one narrow next tuning or implementation issue, or explicitly decline tuning.
 
 Exit condition: the corpus can explain whether #43 produced enough evidence for a narrow heuristic/rule change, or whether remaining blockers belong to outcome hooks (#47), vanilla salvo suppression / selected-ship distribution (#48), more controlled live runs, or no tuning.
+
+Status update: #43.3 should remain a conservative no-tuning-yet handoff. The 8-run bounded-live corpus and the uploaded private `Player.log` prove command authority and direct spend correlation, but they do not preserve a real same-cycle target-alternative denominator. Observed same-target concentration therefore cannot yet be classified as reasonable concentration, over-concentration, target-value mismatch, cap-induced misallocation, or under-saturation.
+
+### #43.4 — Bounded-live tuning-readiness measurement
+
+Purpose: make the next bounded-live corpus capable of supporting or rejecting a narrow allocator tuning issue.
+
+This slice should add the missing diagnostic and corpus fields that #43.3 identified: real target-alternative denominators on bounded-live candidate/result rows, selected target decision features, saturation/kill-size evidence where available, cap-state context, launcher-state context, and corpus-level readiness counters. It should continue to separate controlled direct spend from vanilla or none-correlated spillover.
+
+#43.4 is not an allocator-tuning slice. It should not change scoring weights, shot-allocation heuristics, live command caps, or vanilla salvo behavior. Raw private `Player.log` files may be used for local ignored-artifact validation but must not be committed.
+
+Exit condition: a bounded-live corpus summary can classify each applied command as reasonable, target-over-concentration candidate, under-saturation candidate, cap-induced misallocation candidate, target-value mismatch candidate, command/execution failure, spillover-limited, or evidence-limited. A later narrow tuning issue may be opened only if this corpus proves a repeated allocator-quality failure with real target alternatives visible.
 
 ## Global invariants
 
