@@ -103,6 +103,17 @@ blocker. For #43.4+, active missile controller sources
 (`GameControl.spaceCombat._projectiles` / `_reverseProjectiles`) are the
 target-attribution source; `liveMissiles` is count-only fallback evidence.
 
+For #56 bounded-live pressure-aware tuning, corpus summaries also preserve
+pressure-decision counters. `boundedLiveRetargetedDecisionsAboveThreshold`
+counts applied commands where prior controlled pressure plus exact recovered
+in-flight pressure reached `max(killSize, saturationSize)` and the command was
+retargeted to a same-cycle alternative.
+`boundedLiveRetainedSelectedTargetDecisionsAboveThreshold` counts rows that
+stayed on an above-threshold selected target. Lower-bound pressure is counted
+separately by `boundedLivePressureDecisionLowerBoundInFlightRows` and
+`boundedLiveLowerBoundPressureDiagnosticOnlyRows`; those rows should not be
+treated as pressure-triggered retargets in v1.
+
 ## Scenario metadata
 
 Scenario metadata is intentionally coarse. Use fields that are visible and

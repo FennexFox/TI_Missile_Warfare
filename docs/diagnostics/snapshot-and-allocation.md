@@ -734,6 +734,37 @@ selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
 targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
 ```
 
+#56 bounded-live saturation-aware target distribution adds v1 pressure-decision
+fields to the same candidate/result rows:
+
+```text
+boundedLivePressureDecision="retained|retargeted|notEvaluated"
+boundedLivePressureDecisionReason="..."
+boundedLivePressureReference="maxKillSaturation"
+boundedLivePressureThreshold="..."
+boundedLiveDecisionPressure="..."
+boundedLiveDecisionPressureAtOrAboveThreshold="True|False"
+boundedLiveDecisionPriorControlledShots="..."
+boundedLiveDecisionExactInFlightShots="..."
+boundedLiveDecisionLowerBoundInFlightShots="..."
+boundedLiveDecisionInFlightEvidenceQuality="exact|lowerBound|unknown"
+boundedLiveOriginalTargetId="..."
+boundedLiveRetargetedToTargetId="..."
+boundedLiveSelectedTargetScore="..."
+boundedLiveRetargetedTargetScore="..."
+boundedLiveDecisionTargetAlternativeDenominator="..."
+```
+
+The v1 behavior reference is `max(killSize, saturationSize)`. Decision pressure
+is prior controlled assigned shots plus exact recovered in-flight pressure for
+the selected target. Lower-bound in-flight pressure remains diagnostic-only for
+v1: it is logged and summarized, but it does not contribute to
+`boundedLiveDecisionPressure` and cannot trigger retargeting by itself. When a
+target is already at or above the pressure reference and comparable same-cycle
+alternatives exist, the bounded-live path may retarget the one-shot controlled
+command to the best under-threshold visible hostile alternative with runtime
+target evidence.
+
 `selectedTargetScore` uses the allocator's current `scorePerShot` value with
 `selectedTargetScoreBasis="scorePerShot"` when that allocation evidence is
 available, but it is explicitly a launcher/candidate allocation score
