@@ -583,6 +583,15 @@ def has_concrete_value(value: Any) -> bool:
     return value not in (None, "", "none", "unknown")
 
 
+def has_cap_blocked_vs_applied_comparison(pairs: dict[str, str]) -> bool:
+    """Return whether a cap-skipped bounded-live row has comparison evidence."""
+    return (
+        has_concrete_value(pairs.get("blockedCandidateScore"))
+        and has_concrete_value(pairs.get("appliedCandidateScore"))
+        and pairs.get("blockedCandidateWasBetterThanApplied") in {"True", "False"}
+    )
+
+
 def first_non_empty(values: list[str | None], default: str = "unknown") -> str:
     """Return the first concrete diagnostics value."""
     for value in values:
@@ -736,6 +745,15 @@ def summarize_allocation(group: ExperimentGroup) -> dict[str, Any]:
         ]
         result_counts = Counter(row.pairs.get("result", "unknown") for row in result_rows)
         reason_counts = Counter(row.pairs.get("reason", "unknown") for row in result_rows)
+        cap_skip_rows = [
+            row for row in result_rows
+            if row.pairs.get("result") == "skipped"
+            and "CapBlocked" in row.pairs.get("reason", "")
+        ]
+        cap_skip_with_comparison = sum(
+            1 for row in cap_skip_rows
+            if has_cap_blocked_vs_applied_comparison(row.pairs)
+        )
         summary.update(
             {
                 "fleet_wide_bounded_live_experiment_ids": [group.source_experiment_id],
@@ -759,6 +777,11 @@ def summarize_allocation(group: ExperimentGroup) -> dict[str, Any]:
                 ),
                 "fleet_wide_bounded_live_result_counts": counter_dict(result_counts),
                 "fleet_wide_bounded_live_reason_counts": counter_dict(reason_counts),
+                "fleet_wide_bounded_live_cap_skip_records": len(cap_skip_rows),
+                "fleet_wide_bounded_live_cap_skip_with_blocked_applied_comparison": cap_skip_with_comparison,
+                "fleet_wide_bounded_live_cap_skip_missing_blocked_applied_comparison": (
+                    len(cap_skip_rows) - cap_skip_with_comparison
+                ),
                 "fleet_wide_bounded_live_selection_relation_counts": counter_dict(
                     Counter(
                         row.pairs.get("launcherSelectionRelation", "unknown")
@@ -1034,8 +1057,15 @@ def bounded_live_tuning_readiness(
             value for reason, value in bounded_reasons.items()
             if isinstance(value, int) and "CapBlocked" in str(reason)
         )
-        if cap_skip_count:
-            hard_blockers["cap blocked-vs-applied comparison required for cap skips"] += cap_skip_count
+        missing_cap_comparison = allocation_summary.get(
+            "fleet_wide_bounded_live_cap_skip_missing_blocked_applied_comparison"
+        )
+        if not isinstance(missing_cap_comparison, int):
+            missing_cap_comparison = cap_skip_count
+        if missing_cap_comparison:
+            hard_blockers[
+                "cap blocked-vs-applied comparison required for cap skips"
+            ] += missing_cap_comparison
 
     return {
         "counters": counter_dict(counters),
