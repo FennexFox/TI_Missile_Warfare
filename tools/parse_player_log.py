@@ -202,6 +202,12 @@ class AllocationBattleSummary:
     fleet_wide_bounded_live_reason_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_selection_relation_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_correlation_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_target_alternative_denominator_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_target_alternative_evidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_target_alternative_truncated_records: int = 0
+    fleet_wide_bounded_live_applied_with_target_alternative_denominator: int = 0
+    fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one: int = 0
+    fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator: int = 0
     fleet_wide_bounded_live_applied_commands: int = 0
     fleet_wide_bounded_live_failed_commands: int = 0
     controlled_live_apply_attempts: int = 0
@@ -807,6 +813,12 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_bounded_live_reason_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_selection_relation_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_correlation_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_target_alternative_denominator_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_target_alternative_evidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_target_alternative_truncated_records = 0
+    fleet_wide_bounded_live_applied_with_target_alternative_denominator = 0
+    fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one = 0
+    fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator = 0
     controlled_dry_run_scope_violations = 0
     controlled_live_apply_attempts = 0
     controlled_live_apply_applied = 0
@@ -1274,6 +1286,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     correlation = pairs.get("controlledCommandCorrelation")
                     if correlation:
                         fleet_wide_bounded_live_correlation_counts[correlation] += 1
+                    denominator_text = pairs.get("targetAlternativeDenominator")
+                    if denominator_text:
+                        fleet_wide_bounded_live_target_alternative_denominator_counts[
+                            denominator_text
+                        ] += 1
+                    evidence = pairs.get("targetAlternativeEvidence")
+                    if evidence:
+                        fleet_wide_bounded_live_target_alternative_evidence_counts[evidence] += 1
+                    if (try_parse_int(pairs.get("targetAlternativeCountTruncated")) or 0) > 0:
+                        fleet_wide_bounded_live_target_alternative_truncated_records += 1
                     fleet_wide_bounded_live_applied_commands += (
                         try_parse_int(pairs.get("appliedCommands")) or 0
                     )
@@ -1284,6 +1306,14 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 if record_type == "fleetWideBoundedLiveResult":
                     fleet_wide_bounded_live_result_counts[pairs.get("result", "unknown")] += 1
                     fleet_wide_bounded_live_reason_counts[pairs.get("reason", "unknown")] += 1
+                    if pairs.get("result") == "applied":
+                        denominator = try_parse_int(pairs.get("targetAlternativeDenominator"))
+                        if denominator is None:
+                            fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator += 1
+                        else:
+                            fleet_wide_bounded_live_applied_with_target_alternative_denominator += 1
+                            if denominator > 1:
+                                fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one += 1
 
                 if record_type in (
                     APPLIED_ALLOCATION_RECORD_TYPES | SKIPPED_ALLOCATION_RECORD_TYPES | FAILED_ALLOCATION_RECORD_TYPES
@@ -1855,6 +1885,24 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.fleet_wide_bounded_live_correlation_counts = dict(
         sorted(fleet_wide_bounded_live_correlation_counts.items())
     )
+    allocation_summary.fleet_wide_bounded_live_target_alternative_denominator_counts = dict(
+        sorted(fleet_wide_bounded_live_target_alternative_denominator_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_target_alternative_evidence_counts = dict(
+        sorted(fleet_wide_bounded_live_target_alternative_evidence_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_target_alternative_truncated_records = (
+        fleet_wide_bounded_live_target_alternative_truncated_records
+    )
+    allocation_summary.fleet_wide_bounded_live_applied_with_target_alternative_denominator = (
+        fleet_wide_bounded_live_applied_with_target_alternative_denominator
+    )
+    allocation_summary.fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one = (
+        fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one
+    )
+    allocation_summary.fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator = (
+        fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator
+    )
     allocation_summary.fleet_wide_bounded_live_applied_commands = (
         fleet_wide_bounded_live_applied_commands
     )
@@ -2298,10 +2346,31 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 "- bounded fleet-wide live correlations: "
                 + format_count_dict(summary.fleet_wide_bounded_live_correlation_counts)
             )
+        if summary.fleet_wide_bounded_live_target_alternative_denominator_counts:
+            print(
+                "- bounded fleet-wide live target alternative denominators: "
+                + format_count_dict(summary.fleet_wide_bounded_live_target_alternative_denominator_counts)
+            )
+        if summary.fleet_wide_bounded_live_target_alternative_evidence_counts:
+            print(
+                "- bounded fleet-wide live target alternative evidence: "
+                + format_count_dict(summary.fleet_wide_bounded_live_target_alternative_evidence_counts)
+            )
+        if summary.fleet_wide_bounded_live_target_alternative_truncated_records:
+            print(
+                "- bounded fleet-wide live truncated target alternative records: "
+                f"{summary.fleet_wide_bounded_live_target_alternative_truncated_records}"
+            )
         print(
             "- bounded fleet-wide live applied/failed commands: "
             f"{summary.fleet_wide_bounded_live_applied_commands}/"
             f"{summary.fleet_wide_bounded_live_failed_commands}"
+        )
+        print(
+            "- bounded fleet-wide live applied denominator coverage: "
+            f"{summary.fleet_wide_bounded_live_applied_with_target_alternative_denominator} known, "
+            f"{summary.fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one} >1, "
+            f"{summary.fleet_wide_bounded_live_applied_with_unknown_target_alternative_denominator} unknown"
         )
     if summary.controlled_live_apply_attempts:
         print(f"- controlled live apply attempts: {summary.controlled_live_apply_attempts}")

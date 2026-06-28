@@ -690,9 +690,33 @@ visibleTargetSourceCount="..."
 visibleHostileTargets="..."
 targetAlternativeDenominator="..."
 targetAlternativeEvidence="visibleHostileTargetsFromActiveShips"
+targetAlternativeIds="..."
+targetAlternativeNames="..."
+targetAlternativeTeams="..."
+targetAlternativeCountTruncated="0"
 ```
 
 These fields should be treated as the denominator for later target-over-concentration review. Do not use the older cycle-level `targetCount` field as that denominator; it only records whether the current snapshot has a target object.
+The target alternative identity lists are compact, bounded lists of visible
+hostile targets from the same scope snapshot. If
+`targetAlternativeCountTruncated` is nonzero, target identity comparison is
+evidence-limited even when the denominator count is present.
+
+Bounded-live candidate/result rows also preserve allocator decision and
+measurement-readiness fields when they are available:
+
+```text
+targetValue="..." pdScore="..." saturationSize="..." killSize="..." launchWindowScore="..." scorePerShot="..."
+selectedTargetScore="unknown" selectedTargetRank="unknown"
+selectedTargetPriorControlledShots="..." selectedTargetCumulativeAssignedShots="..."
+selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
+targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
+```
+
+`selectedTargetScore` and `selectedTargetRank` are emitted as `unknown` until
+the allocator exposes those concepts directly. Outcome fields are explicit
+blockers for later #47/#48 work and should not be read as hit, damage, kill, or
+vanilla-salvo suppression evidence.
 
 A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
 

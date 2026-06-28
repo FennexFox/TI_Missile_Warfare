@@ -52,6 +52,8 @@ COUNT_FIELDS = (
     "target_mismatch_counts",
     "regression_counts",
     "vanilla_spillover_counts",
+    "bounded_live_tuning_readiness_counts",
+    "bounded_live_tuning_readiness_blocker_counts",
 )
 
 
@@ -171,12 +173,12 @@ def validate_entry(
     return warnings
 
 
-def add_counts(counter: Counter[str], values: Any) -> None:
+def add_counts(counter: Counter[str], values: Any, *, include_zero: bool = False) -> None:
     """Add a mapping of count-like values to a counter."""
     if not isinstance(values, dict):
         return
     for key, value in values.items():
-        if isinstance(value, int) and value > 0:
+        if isinstance(value, int) and (value > 0 or include_zero):
             counter[str(key)] += value
 
 
@@ -320,6 +322,17 @@ def summarize_parsed_artifact(parsed: dict[str, Any]) -> dict[str, dict[str, int
             counts["vanilla_spillover_counts"]["applied-launcher post-budget spillover"] += len(
                 post_budget_rows
             )
+        readiness = log.get("bounded_live_tuning_readiness")
+        if isinstance(readiness, dict):
+            add_counts(
+                counts["bounded_live_tuning_readiness_counts"],
+                readiness.get("counters"),
+                include_zero=True,
+            )
+            add_counts(
+                counts["bounded_live_tuning_readiness_blocker_counts"],
+                readiness.get("blockers"),
+            )
 
     return {key: dict(sorted(counter.items())) for key, counter in counts.items()}
 
@@ -405,7 +418,11 @@ def build_summary(
         for tag in row.get("scenarioTags", []):
             tag_counts[str(tag)] += 1
         for field_name, values in row["evidenceCounts"].items():
-            add_counts(counts_by_mode[run_mode][field_name], values)
+            add_counts(
+                counts_by_mode[run_mode][field_name],
+                values,
+                include_zero=field_name == "bounded_live_tuning_readiness_counts",
+            )
 
     return {
         "schemaVersion": 1,

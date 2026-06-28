@@ -60,6 +60,72 @@ CONTROLLED_LIVE_RESULT_RECORDS = {
     "skippedDecision",
     "failedDecision",
 }
+BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
+    "experimentId",
+    "battleSegmentId",
+    "cycleId",
+    "commandResultId",
+    "candidateId",
+    "launcherId",
+    "launcher",
+    "launcherTeam",
+    "allocatorLauncherId",
+    "allocatorLauncher",
+    "allocatorLauncherTeam",
+    "targetId",
+    "target",
+    "targetTeam",
+    "assignedShots",
+    "ammoGateBudgetShots",
+    "targetValue",
+    "pdScore",
+    "saturationSize",
+    "killSize",
+    "launchWindowScore",
+    "selectedTargetScore",
+    "selectedTargetRank",
+    "candidateSource",
+    "allocatorEvidence",
+    "visibleTargetSource",
+    "visibleTargetConfidence",
+    "visibleTargetSourceCount",
+    "visibleHostileTargets",
+    "targetAlternativeDenominator",
+    "targetAlternativeEvidence",
+    "targetAlternativeIds",
+    "targetAlternativeNames",
+    "targetAlternativeTeams",
+    "targetAlternativeCountTruncated",
+    "selectedTargetPriorControlledShots",
+    "selectedTargetPriorAllocatorShots",
+    "selectedTargetPriorVanillaShotsKnown",
+    "selectedTargetPriorMissileInFlightEstimate",
+    "selectedTargetNewAssignedShots",
+    "selectedTargetCumulativeAssignedShots",
+    "selectedTargetSaturationSize",
+    "selectedTargetKillSize",
+    "selectedTargetOverSaturationRatio",
+    "selectedTargetKillOvercommitRatio",
+    "targetSurvivedAfterControlledWindow",
+    "targetDestroyedAfterControlledWindow",
+    "timeToImpactWindowKnown",
+    "targetOutcomeAttribution",
+    "attributionConfidence",
+)
+BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
+    "boundedLiveAppliedResults",
+    "boundedLiveAppliedWithTargetAlternativeDenominator",
+    "boundedLiveAppliedWithTargetAlternativeDenominatorGtOne",
+    "boundedLiveAppliedWithUnknownTargetAlternativeDenominator",
+    "sameTargetPackagesWithDenominatorOne",
+    "sameTargetPackagesWithDenominatorGtOne",
+    "sameTargetPackagesWithUnknownDenominator",
+    "potentialOverConcentrationCandidates",
+    "potentialUnderSaturationCandidates",
+    "potentialCapMisallocationCandidates",
+    "targetValueMismatchCandidates",
+    "evidenceLimitedResults",
+)
 
 
 @dataclass
@@ -477,6 +543,31 @@ def int_value(value: Any, default: int = 0) -> int:
         return default
 
 
+def optional_int(value: Any) -> int | None:
+    """Parse an integer diagnostics value, preserving unknown as None."""
+    try:
+        if value in (None, "", "none", "unknown"):
+            return None
+        return int(str(value))
+    except ValueError:
+        return None
+
+
+def optional_float(value: Any) -> float | None:
+    """Parse a float diagnostics value, preserving unknown as None."""
+    try:
+        if value in (None, "", "none", "unknown"):
+            return None
+        return float(str(value))
+    except ValueError:
+        return None
+
+
+def has_concrete_value(value: Any) -> bool:
+    """Return whether a diagnostics value is present and not an explicit unknown."""
+    return value not in (None, "", "none", "unknown")
+
+
 def first_non_empty(values: list[str | None], default: str = "unknown") -> str:
     """Return the first concrete diagnostics value."""
     for value in values:
@@ -719,19 +810,144 @@ def applied_commands(group: ExperimentGroup, direct_by_command: Counter[str]) ->
         if row.pairs.get("result") != "applied":
             continue
         command_result_id = row.pairs.get("commandResultId", "none")
-        commands.append(
-            {
-                "cycleId": int_value(row.pairs.get("cycleId"), default=-1),
-                "launcher": row.pairs.get("launcher", "unknown"),
-                "launcherId": row.pairs.get("launcherId", "unknown"),
-                "target": row.pairs.get("target", "unknown"),
-                "targetId": row.pairs.get("targetId", "unknown"),
-                "assignedShots": int_value(row.pairs.get("assignedShots")),
-                "commandResultId": command_result_id,
-                "directRuntimeContextRows": direct_by_command.get(command_result_id, 0),
-            }
-        )
+        command = {
+            "cycleId": int_value(row.pairs.get("cycleId"), default=-1),
+            "battleSegmentId": row.battle_segment_id or "unknown",
+            "launcher": row.pairs.get("launcher", "unknown"),
+            "launcherId": row.pairs.get("launcherId", "unknown"),
+            "target": row.pairs.get("target", "unknown"),
+            "targetId": row.pairs.get("targetId", "unknown"),
+            "assignedShots": int_value(row.pairs.get("assignedShots")),
+            "commandResultId": command_result_id,
+            "directRuntimeContextRows": direct_by_command.get(command_result_id, 0),
+        }
+        if record_type == "fleetWideBoundedLiveResult":
+            for key in BOUNDED_LIVE_APPLIED_FIELD_KEYS:
+                if key == "battleSegmentId":
+                    command[key] = row.battle_segment_id or "unknown"
+                elif key == "cycleId":
+                    command[key] = int_value(row.pairs.get(key), default=-1)
+                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "selectedTargetPriorControlledShots", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize"}:
+                    value = optional_int(row.pairs.get(key))
+                    command[key] = value if value is not None else "unknown"
+                else:
+                    command[key] = row.pairs.get(key, "unknown")
+        commands.append(command)
     return commands
+
+
+def denominator_bucket(command: dict[str, Any]) -> str:
+    """Return denominator quality bucket for a bounded-live applied command."""
+    value = command.get("targetAlternativeDenominator")
+    denominator = value if isinstance(value, int) else optional_int(value)
+    if denominator is None:
+        return "unknown"
+    if denominator > 1:
+        return "gtOne"
+    return "one"
+
+
+def bounded_live_tuning_readiness(commands: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return conservative #43.4 readiness counters from applied bounded-live commands."""
+    bounded = [
+        command for command in commands
+        if str(command.get("commandResultId", "")).startswith("fleetwide-bounded-live-")
+    ]
+    counters: Counter[str] = Counter()
+    for key in BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS:
+        counters[key] = 0
+    blockers: Counter[str] = Counter()
+    evidence_limited_commands = 0
+    target_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    counters["boundedLiveAppliedResults"] = len(bounded)
+    for command in bounded:
+        command_blocked = False
+        target_groups[str(command.get("targetId", "unknown"))].append(command)
+        denominator = optional_int(command.get("targetAlternativeDenominator"))
+        if denominator is None:
+            counters["boundedLiveAppliedWithUnknownTargetAlternativeDenominator"] += 1
+            blockers["missing targetAlternativeDenominator"] += 1
+            command_blocked = True
+        else:
+            counters["boundedLiveAppliedWithTargetAlternativeDenominator"] += 1
+            if denominator > 1:
+                counters["boundedLiveAppliedWithTargetAlternativeDenominatorGtOne"] += 1
+
+        for required in (
+            "experimentId",
+            "battleSegmentId",
+            "cycleId",
+            "commandResultId",
+            "launcherId",
+            "targetId",
+            "assignedShots",
+            "directRuntimeContextRows",
+        ):
+            if not has_concrete_value(command.get(required)):
+                blockers[f"missing {required}"] += 1
+                command_blocked = True
+
+        if not has_concrete_value(command.get("visibleHostileTargets")):
+            blockers["missing visibleHostileTargets"] += 1
+            command_blocked = True
+        if not has_concrete_value(command.get("targetValue")):
+            blockers["missing targetValue"] += 1
+            command_blocked = True
+        if not has_concrete_value(command.get("pdScore")):
+            blockers["missing pdScore"] += 1
+            command_blocked = True
+        if not has_concrete_value(command.get("selectedTargetScore")) and not has_concrete_value(command.get("selectedTargetRank")):
+            blockers["selected target score/rank unknown"] += 1
+            command_blocked = True
+        if not has_concrete_value(command.get("saturationSize")) and not has_concrete_value(command.get("killSize")):
+            blockers["saturation/kill-size evidence unknown"] += 1
+            command_blocked = True
+        if command.get("targetAlternativeCountTruncated") == "unknown":
+            blockers["target identity comparison evidence-limited"] += 1
+            command_blocked = True
+        if optional_int(command.get("targetAlternativeCountTruncated")) not in (None, 0):
+            blockers["target alternative identity list truncated"] += 1
+            command_blocked = True
+        if command.get("targetOutcomeAttribution") in {None, "", "unknown", "evidenceLimited"}:
+            blockers["outcome attribution evidence-limited (#47/#48 pending)"] += 1
+            command_blocked = True
+        if command_blocked:
+            evidence_limited_commands += 1
+
+    for target_commands in target_groups.values():
+        if len(target_commands) < 2:
+            continue
+        buckets = {denominator_bucket(command) for command in target_commands}
+        if "gtOne" in buckets:
+            counters["sameTargetPackagesWithDenominatorGtOne"] += 1
+        elif "unknown" in buckets:
+            counters["sameTargetPackagesWithUnknownDenominator"] += 1
+        else:
+            counters["sameTargetPackagesWithDenominatorOne"] += 1
+
+        if "gtOne" in buckets:
+            over_ratio = max(
+                (optional_float(command.get("selectedTargetOverSaturationRatio")) or 0.0)
+                for command in target_commands
+            )
+            kill_ratio = max(
+                (optional_float(command.get("selectedTargetKillOvercommitRatio")) or 0.0)
+                for command in target_commands
+            )
+            if over_ratio > 1.0 or kill_ratio > 1.0:
+                counters["potentialOverConcentrationCandidates"] += 1
+
+    counters["potentialUnderSaturationCandidates"] = 0
+    counters["potentialCapMisallocationCandidates"] = 0
+    counters["targetValueMismatchCandidates"] = 0
+    counters["evidenceLimitedResults"] = evidence_limited_commands
+
+    return {
+        "counters": counter_dict(counters),
+        "blockers": counter_dict(blockers),
+        "interpretation": "measurement-only; no allocator tuning recommendation",
+    }
 
 
 def cycle_context_to_json(row: LogRow) -> dict[str, Any]:
@@ -861,6 +1077,8 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
     """Build parsed summary artifact for one experiment group."""
     allocation_summary = summarize_allocation(group)
     launch_summary, direct_by_command, none_or_missing_by_target = summarize_launches(group)
+    command_summary = applied_commands(group, direct_by_command)
+    readiness_summary = bounded_live_tuning_readiness(command_summary)
     direct_launches = launch_summary.get("directRuntimeContext", 0)
     limitation_counts: dict[str, int] = {}
     if not include_source:
@@ -881,7 +1099,8 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
         "nearby_context": nearby_context_for_group(group),
         "parser_summary": {"allocation_summary": allocation_summary},
         "controlled_launch_correlation_summary": launch_summary,
-        "applied_commands": applied_commands(group, direct_by_command),
+        "applied_commands": command_summary,
+        "bounded_live_tuning_readiness": readiness_summary,
     }
     if none_or_missing_by_target:
         row_summary["none_or_missing_correlated_launches_by_target"] = counter_dict(
@@ -951,7 +1170,6 @@ def build_metadata(
     """Build scenario metadata artifact."""
     all_rows = group.rows
     allocation_rows = group.allocation_rows
-    launch_rows = group.launch_rows
     selected_mode = infer_selected_mode(group, run_mode)
     selected_count = max((int_value(row.pairs.get("selectedShipCount")) for row in allocation_rows), default=0)
     launcher_ids = unique_values(all_rows, "launcherId", "allocatorLauncherId")
