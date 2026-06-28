@@ -1,6 +1,6 @@
 # Issue #56 implementation summary
 
-Updated: 2026-06-28
+Updated: 2026-06-29
 
 ## Scope completed
 
@@ -84,8 +84,39 @@ python tools\import_player_log_experiments.py --log tools\fixtures\fleet_wide_bo
 python tools\import_player_log_experiments.py --log tools\fixtures\fleet_wide_bounded_live_pressure_lower_bound.txt --output artifacts\experiments\issue_56_lower_bound_fixture --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 --run-mode fleet-wide-controlled --scenario-tag issue-56 --verdict evidence-limited --mod-commit fixture --fixture --force
 python tools\summarize_experiment_corpus.py --registry artifacts\experiments\issue_56_retarget_fixture\registry.jsonl --output artifacts\fitting\issue_56_retarget_fixture_summary
 python tools\summarize_experiment_corpus.py --registry artifacts\experiments\issue_56_lower_bound_fixture\registry.jsonl --output artifacts\fitting\issue_56_lower_bound_fixture_summary
+python tools\parse_player_log.py <private Terra Invicta Player.log>
+python tools\import_player_log_experiments.py --log <private Terra Invicta Player.log> --output artifacts\experiments\issue_56_runtime_playerlog_20260628 --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 --run-mode fleet-wide-controlled --scenario-tag issue-56 --scenario-tag bounded-live --scenario-tag real-runtime-validation --verdict good --mod-commit e2524fdd91fdc673a73968b704f2146479e69249 --force
+python tools\summarize_experiment_corpus.py --registry artifacts\experiments\issue_56_runtime_playerlog_20260628\registry.jsonl --output artifacts\fitting\issue_56_runtime_playerlog_20260628_summary
 ```
 
-Runtime validation with a fresh real `Player.log` remains required before
-closing the remote issue acceptance item that asks for fresh bounded-live logs
-without MissileWarfare warnings/errors.
+Fresh runtime validation passed on a real `Player.log` captured from
+`fleetwide-bounded-live-20260628T113733931Z-1`. The raw log remains private and
+uncommitted; the importer omitted `sourceLogPath` from the local registry.
+
+Generated local artifacts:
+
+- `artifacts\experiments\issue_56_runtime_playerlog_20260628\registry.jsonl`
+- `artifacts\fitting\issue_56_runtime_playerlog_20260628_summary\corpus-summary.json`
+- `artifacts\fitting\issue_56_runtime_playerlog_20260628_summary\scenario-breakdown.md`
+
+Real-log corpus result:
+
+- `boundedLiveAppliedResults`: 3
+- `boundedLiveRetargetedDecisionsAboveThreshold`: 2
+- `boundedLiveRetainedSelectedTargetDecisionsAboveThreshold`: 0
+- `boundedLiveLowerBoundPressureDiagnosticOnlyRows`: 1
+- `boundedLivePressureDecisionExactInFlightRows`: 2
+- `boundedLivePressureDecisionLowerBoundInFlightRows`: 1
+- `boundedLivePressureDecisionUnknownInFlightRows`: 0
+- `boundedLiveAppliedWithTargetAlternativeDenominatorGtOne`: 3
+- `failed_command_counts`: none
+- parser verdict: `OK`
+
+The two retargeted applied rows used exact recovered in-flight target pressure
+and moved above-threshold selected-target pressure from `Dragon` to `Seraph`
+and then to `Corona`. The retained lower-bound row stayed below the pressure
+threshold and remained diagnostic-only, as intended for v1.
+
+A filtered scan of non-structured MissileWarfare/MFC log lines found no
+warnings, errors, or exceptions. The remaining outcome-evaluation limitation is
+still exact hit/damage/kill attribution, which is handed off to #47.
