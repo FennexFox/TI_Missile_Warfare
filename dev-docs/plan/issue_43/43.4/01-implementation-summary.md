@@ -99,4 +99,14 @@ pressure is now classified as fully known only when target attribution is
 complete or no live missiles are observed; observed live missiles with unknown
 targets are lower-bound evidence and remain a #43.4 target-attribution blocker.
 
+Final measurement-boundary follow-up selected Path A for the source-level
+question. Decompiled runtime inspection shows `SpaceCombatManager.liveMissiles`
+is count-only, but active missile controllers are reachable from
+`SpaceCombatManager._projectiles` / `_reverseProjectiles` and expose
+`MissileController.target`. The diagnostic extractor now probes those
+controller sources first and falls back to `liveMissiles` count-only pressure
+when controller targets are not available. This remains diagnostic-only and
+does not alter allocator scoring, shot allocation, command caps, vanilla salvo
+behavior, projectile behavior, or outcome hooks.
+
 Generated artifacts remain under ignored `artifacts/` paths.

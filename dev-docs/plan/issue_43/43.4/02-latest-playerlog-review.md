@@ -189,3 +189,13 @@ in-flight pressure estimate can still be target-attribution-limited when observe
 ```
 
 The remaining implementation work, if any, should stay small and diagnostic-only: improve live missile target ownership/source recovery when observed missiles cannot be attributed to targets, or document why that evidence must remain a later blocker. Do not tune allocator behavior as part of that follow-up.
+
+Final measurement-boundary follow-up:
+
+```text
+Path A selected.
+`GameControl.spaceCombat.liveMissiles` is count-only and cannot attribute target ids.
+Active missile controllers are recoverable through `GameControl.spaceCombat._projectiles` / `_reverseProjectiles`; `MissileController.target` is the target-level source.
+Diagnostics now prefer controller target recovery and fall back to count-only lower-bound pressure when controller objects are unavailable.
+If runtime validation still reports count-only lower-bound pressure, the safe next tuning scope remains controlled-shot-only overcommit mitigation until a runtime controller-target sample confirms full pressure recovery.
+```

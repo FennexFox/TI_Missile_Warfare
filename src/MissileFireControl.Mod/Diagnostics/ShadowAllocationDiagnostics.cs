@@ -83,14 +83,20 @@ namespace MissileFireControl.Mod.Diagnostics
 
         private static readonly string[] LiveMissileMemberNames =
         {
-            "liveMissiles",
-            "LiveMissiles",
             "activeMissiles",
             "ActiveMissiles",
+            "_projectiles",
+            "_reverseProjectiles",
             "projectiles",
             "Projectiles",
             "activeProjectiles",
             "ActiveProjectiles"
+        };
+
+        private static readonly string[] LiveMissileCountMemberNames =
+        {
+            "liveMissiles",
+            "LiveMissiles"
         };
 
         private static readonly string[] TargetObjectMemberNames =
@@ -1865,11 +1871,21 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             string source;
-            List<object> liveMissiles = FirstNonEmptyObjects(LiveMissileCandidates(spaceCombat), out source);
+            List<object> liveMissiles = FirstLiveMissileObjects(spaceCombat, out source);
             pressure.Source = source == "none" ? "GameControl.spaceCombat.liveMissilesUnavailable" : source;
             if (liveMissiles.Count == 0)
             {
-                pressure.Confidence = source == "none" ? "targetOwnershipSourceUnavailable" : "noLiveMissilesObserved";
+                int countOnlyObserved = CountOnlyLiveMissiles(spaceCombat, out string countOnlySource);
+                if (countOnlyObserved > 0)
+                {
+                    pressure.Source = countOnlySource;
+                    pressure.TotalObserved = countOnlyObserved;
+                    pressure.UnknownTargetCount = countOnlyObserved;
+                    pressure.Confidence = "targetOwnershipSourceUnavailable";
+                    return pressure;
+                }
+
+                pressure.Confidence = source == "none" && countOnlySource == "none" ? "targetOwnershipSourceUnavailable" : "noLiveMissilesObserved";
                 return pressure;
             }
 
@@ -1917,6 +1933,192 @@ namespace MissileFireControl.Mod.Diagnostics
             foreach (string memberName in LiveMissileMemberNames)
             {
                 yield return new SelectedScopeCandidate("GameControl.spaceCombat." + memberName, ReadMember(spaceCombat, memberName));
+            }
+        }
+
+        private static List<object> FirstLiveMissileObjects(object spaceCombat, out string source)
+        {
+            source = "none";
+            foreach (SelectedScopeCandidate candidate in LiveMissileCandidates(spaceCombat))
+            {
+                List<object> missiles = EnumerateLiveMissileObjects(candidate.Value).ToList();
+                if (missiles.Count == 0)
+                {
+                    continue;
+                }
+
+                source = candidate.Source;
+                return missiles;
+            }
+
+            return new List<object>();
+        }
+
+        private static IEnumerable<object> EnumerateLiveMissileObjects(object value)
+        {
+            if (value == null || value is string)
+            {
+                yield break;
+            }
+
+            if (value is IDictionary dictionary)
+            {
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    foreach (object missile in LiveMissileObjectsFromDictionaryEntry(entry))
+                    {
+                        yield return missile;
+                    }
+                }
+
+                yield break;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable == null)
+            {
+                if (LooksLikeActiveMissileController(value))
+                {
+                    yield return value;
+                }
+
+                yield break;
+            }
+
+            foreach (object item in enumerable)
+            {
+                if (item is DictionaryEntry entry)
+                {
+                    foreach (object missile in LiveMissileObjectsFromDictionaryEntry(entry))
+                    {
+                        yield return missile;
+                    }
+                }
+                else if (LooksLikeActiveMissileController(item))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        private static IEnumerable<object> LiveMissileObjectsFromDictionaryEntry(DictionaryEntry entry)
+        {
+            if (LooksLikeActiveMissileController(entry.Value))
+            {
+                yield return entry.Value;
+            }
+
+            if (LooksLikeActiveMissileController(entry.Key))
+            {
+                yield return entry.Key;
+            }
+        }
+
+        private static bool LooksLikeActiveMissileController(object value)
+        {
+            if (value == null || value is string)
+            {
+                return false;
+            }
+
+            bool? isMissile = TryReadBool(value, "isMissile", "IsMissile");
+            if (isMissile.HasValue && !isMissile.Value)
+            {
+                return false;
+            }
+
+            string typeName = value.GetType().Name;
+            if (!isMissile.GetValueOrDefault(false) && typeName.IndexOf("MissileController", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            bool? activeSelf = TryReadBool(ReadMember(value, "gameObject"), "activeSelf", "activeInHierarchy");
+            if (activeSelf.HasValue && !activeSelf.Value)
+            {
+                return false;
+            }
+
+            if (TryReadBool(value, "hasHit", "HasHit").GetValueOrDefault(false))
+            {
+                return false;
+            }
+
+            if (TryReadBool(value, "beenDestroyed", "BeenDestroyed", "isDestroyed", "IsDestroyed").GetValueOrDefault(false))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static int CountOnlyLiveMissiles(object spaceCombat, out string source)
+        {
+            source = "none";
+            if (spaceCombat == null)
+            {
+                return 0;
+            }
+
+            foreach (string memberName in LiveMissileCountMemberNames)
+            {
+                object value = ReadMember(spaceCombat, memberName);
+                int count = SumCountValues(value);
+                if (count > 0)
+                {
+                    source = "GameControl.spaceCombat." + memberName + "CountOnly";
+                    return count;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int SumCountValues(object value)
+        {
+            if (value == null || value is string)
+            {
+                return 0;
+            }
+
+            if (TryConvertInt(value, out int direct))
+            {
+                return Math.Max(0, direct);
+            }
+
+            int total = 0;
+            if (value is IDictionary dictionary)
+            {
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    if (TryConvertInt(entry.Value, out int count))
+                    {
+                        total += Math.Max(0, count);
+                    }
+                }
+
+                return total;
+            }
+
+            return 0;
+        }
+
+        private static bool TryConvertInt(object value, out int result)
+        {
+            result = 0;
+            if (!(value is IConvertible))
+            {
+                return false;
+            }
+
+            try
+            {
+                result = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

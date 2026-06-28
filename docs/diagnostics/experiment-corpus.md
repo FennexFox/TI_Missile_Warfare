@@ -99,7 +99,9 @@ lower-bound evidence. `selectedTargetPriorMissileInFlightEstimate=0` is fully
 known only when no live missiles were observed or all observed missile target ids
 were recovered. If observed live missiles have unknown targets, the estimate is
 a lower-bound target-attribution-limited value and remains a #43.4 measurement
-blocker.
+blocker. For #43.4+, active missile controller sources
+(`GameControl.spaceCombat._projectiles` / `_reverseProjectiles`) are the
+target-attribution source; `liveMissiles` is count-only fallback evidence.
 
 ## Scenario metadata
 

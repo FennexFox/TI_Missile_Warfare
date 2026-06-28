@@ -746,14 +746,17 @@ target-alternative scores recomputed in `targetAlternativeScoreSpace`.
 represented by `selectedTargetRankConfidence`.
 
 `selectedTargetPriorMissileInFlightEstimate` is a best-effort pre-command
-target-level live missile count from `GameControl.spaceCombat.liveMissiles`.
-The estimate is not hit/damage/kill attribution. Its confidence and unknown
-target count fields define whether target ownership was recovered, partially
-recovered, unavailable, or no live missiles were observed. If live missiles are
-observed but one or more target ids cannot be recovered, the estimate is a
-lower-bound target count, even when the selected-target estimate value is `0`.
-Those rows remain target-attribution-limited until the live missile target
-ownership/source can be recovered.
+target-level live missile count. The preferred source is active missile
+controllers reachable from `GameControl.spaceCombat._projectiles` or
+`GameControl.spaceCombat._reverseProjectiles`, because `MissileController`
+exposes the current guidance `target`. `GameControl.spaceCombat.liveMissiles`
+is only a faction-count fallback and cannot by itself attribute missiles to
+target ids. The estimate is not hit/damage/kill attribution. Its confidence and
+unknown target count fields define whether target ownership was recovered,
+partially recovered, unavailable, or no live missiles were observed. If live
+missiles are observed but one or more target ids cannot be recovered, the
+estimate is a lower-bound target count, even when the selected-target estimate
+value is `0`.
 
 The corpus importer separates hard #43.4 measurement blockers from external
 handoff blockers. Hard blockers include missing selected/alternative comparable

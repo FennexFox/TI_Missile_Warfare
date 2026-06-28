@@ -1109,6 +1109,13 @@ pressure is fully known only for no-live-missile or fully attributed live-missil
 evidence; observed live missiles with unknown target ids are lower-bound
 target-attribution-limited evidence.
 
+The final #43.4 measurement-boundary inspection selected Path A for target
+attribution. `SpaceCombatManager.liveMissiles` is count-only, but active
+`MissileController` objects are reachable from `_projectiles` /
+`_reverseProjectiles` and expose the current guidance `target`. Diagnostics now
+prefer those controller sources and use `liveMissiles` only as count-only
+lower-bound fallback when controller targets are unavailable.
+
 Exact outcome attribution remains an external #47 handoff. These diagnostics do
 not change allocator scoring, command caps, vanilla salvo behavior, or outcome
 hooks.
