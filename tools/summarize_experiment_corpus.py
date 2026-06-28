@@ -43,6 +43,7 @@ REQUIRED_FIELDS = (
     "scenarioTags",
 )
 COUNT_FIELDS = (
+    "direct_command_spend_counts",
     "missing_evidence_counts",
     "skipped_command_counts",
     "failed_command_counts",
@@ -51,6 +52,10 @@ COUNT_FIELDS = (
     "target_mismatch_counts",
     "regression_counts",
     "vanilla_spillover_counts",
+    "bounded_live_tuning_readiness_counts",
+    "bounded_live_tuning_readiness_blocker_counts",
+    "bounded_live_hard_measurement_blocker_counts",
+    "bounded_live_external_outcome_blocker_counts",
 )
 
 
@@ -170,12 +175,12 @@ def validate_entry(
     return warnings
 
 
-def add_counts(counter: Counter[str], values: Any) -> None:
+def add_counts(counter: Counter[str], values: Any, *, include_zero: bool = False) -> None:
     """Add a mapping of count-like values to a counter."""
     if not isinstance(values, dict):
         return
     for key, value in values.items():
-        if isinstance(value, int) and value > 0:
+        if isinstance(value, int) and (value > 0 or include_zero):
             counter[str(key)] += value
 
 
@@ -279,6 +284,25 @@ def summarize_parsed_artifact(parsed: dict[str, Any]) -> dict[str, dict[str, int
             failed = allocation_summary.get("controlled_live_apply_failed")
             if isinstance(failed, int) and failed:
                 counts["failed_command_counts"]["controlled live failed"] += failed
+            applied = allocation_summary.get("controlled_live_apply_applied")
+            if isinstance(applied, int) and applied:
+                counts["direct_command_spend_counts"]["controlled live applied command results"] += applied
+            bounded_applied = allocation_summary.get("fleet_wide_bounded_live_applied_commands")
+            if isinstance(bounded_applied, int) and bounded_applied:
+                counts["direct_command_spend_counts"]["fleet-wide bounded live applied command results"] += bounded_applied
+            bounded_failed = allocation_summary.get("fleet_wide_bounded_live_failed_commands")
+            if isinstance(bounded_failed, int) and bounded_failed:
+                counts["failed_command_counts"]["fleet-wide bounded live failed"] += bounded_failed
+            bounded_reasons = allocation_summary.get("fleet_wide_bounded_live_reason_counts")
+            if isinstance(bounded_reasons, dict):
+                add_counts(
+                    counts["skipped_command_counts"],
+                    {
+                        key: value
+                        for key, value in bounded_reasons.items()
+                        if key != "none"
+                    },
+                )
             add_counts(
                 counts["target_mismatch_counts"],
                 allocation_summary.get("controlled_live_apply_mismatch_counts"),
@@ -299,6 +323,25 @@ def summarize_parsed_artifact(parsed: dict[str, Any]) -> dict[str, dict[str, int
         if isinstance(post_budget_rows, list) and post_budget_rows:
             counts["vanilla_spillover_counts"]["applied-launcher post-budget spillover"] += len(
                 post_budget_rows
+            )
+        readiness = log.get("bounded_live_tuning_readiness")
+        if isinstance(readiness, dict):
+            add_counts(
+                counts["bounded_live_tuning_readiness_counts"],
+                readiness.get("counters"),
+                include_zero=True,
+            )
+            add_counts(
+                counts["bounded_live_tuning_readiness_blocker_counts"],
+                readiness.get("blockers"),
+            )
+            add_counts(
+                counts["bounded_live_hard_measurement_blocker_counts"],
+                readiness.get("hardMeasurementBlockers"),
+            )
+            add_counts(
+                counts["bounded_live_external_outcome_blocker_counts"],
+                readiness.get("externalOutcomeBlockers"),
             )
 
     return {key: dict(sorted(counter.items())) for key, counter in counts.items()}
@@ -385,7 +428,11 @@ def build_summary(
         for tag in row.get("scenarioTags", []):
             tag_counts[str(tag)] += 1
         for field_name, values in row["evidenceCounts"].items():
-            add_counts(counts_by_mode[run_mode][field_name], values)
+            add_counts(
+                counts_by_mode[run_mode][field_name],
+                values,
+                include_zero=field_name == "bounded_live_tuning_readiness_counts",
+            )
 
     return {
         "schemaVersion": 1,
@@ -484,7 +531,7 @@ def format_markdown_summary(summary: dict[str, Any]) -> str:
         "",
         f"- registry: `{summary['registryPath']}`",
         f"- experiments: {summary['experimentCount']}",
-        "- evidence interpretation: shadow replay is a candidate filter/regression check; controlled live is causal command-behavior evidence.",
+        "- evidence interpretation: shadow replay is a candidate filter/regression check; controlled live and fleet-wide-controlled are causal command-behavior evidence for their respective scopes.",
         "",
         "## Run modes",
         "",

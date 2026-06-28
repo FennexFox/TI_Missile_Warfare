@@ -1,6 +1,6 @@
 # Issue #44 context — Experiment corpus and parameter ledger
 
-Updated: 2026-06-23
+Updated: 2026-06-24
 Repo: `FennexFox/TI_Missile_Warfare`
 Local path: `dev-docs/plan/issue_44/00-context.md`
 
@@ -106,7 +106,7 @@ Suggested `runMode` values:
 ```text
 shadow-replay
 controlled-live
-fleet-wide-controlled   # future, #43+
+fleet-wide-controlled   # real bounded fleet-wide live evidence from #43.2+
 fixture                  # synthetic tooling validation only, if needed
 ```
 
@@ -116,7 +116,7 @@ Evidence interpretation:
 fixture = schema/tooling proof only
 shadow-replay = regression check and candidate filter
 controlled-live = causal command-behavior evidence
-fleet-wide-controlled = future expanded live evidence class
+fleet-wide-controlled = expanded bounded fleet-wide live evidence class
 ```
 
 Reports must not aggregate these as equivalent proof. Corpus summaries may show them side by side, but they should retain separate counts and verdicts.

@@ -211,6 +211,82 @@ gate. The rows do not call
 `SetWeaponModeAction`, or equivalent live command APIs. `dryRunResult` rows must
 report `appliedCommands="0"` for Issues #34 through #36.
 
+Issue #43.1 adds a separate fleet-wide dry-run report trigger. It is not the
+controlled dry-run trigger, does not broaden selected command scope, and does
+not emit `appliedDecision`, `skippedDecision`, or `failedCommand` rows. Every
+fleet-wide row carries `scopeMode="fleetWideReportOnly"` and
+`appliedCommands="0"`.
+
+Fleet-wide report rows use active player-side combatants only as an eligibility
+source and visible hostile combat ships only as a target universe. They report
+source, confidence, missing-reason, launcher exclusion, visible-target, command
+candidate, diagnostic cap would-block, and missing allocator-evidence fields:
+
+```text
+[AllocationLog] recordType="fleetWideDryRunExperiment" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" fleetEligibilitySource="GameControl.spaceCombat.leftHandCombatants" fleetEligibilityConfidence="activePlayerSideCombatants" fleetEligibilityMissingReason="none" visibleTargetSource="GameControl.spaceCombat.activeShips" visibleTargetConfidence="visibleCombatants" visibleTargetMissingReason="none" eligibleLaunchers="2" excludedLaunchers="1" visibleHostileTargets="2" candidateRows="4" emittedCandidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" missingAllocatorEvidenceCandidates="2" appliedCommands="0"
+[AllocationLog] recordType="fleetWideLauncher" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="eligible" reason="none" fleetEligibilitySource="..." fleetEligibilityConfidence="..." launcherId="..." launcher="..." launcherTeam="..." playerControlEvidence="True" commandAuthorityKnown="True" canPerformCommands="True" missileReadinessKnown="True" canFireMissiles="True" appliedCommands="0"
+[AllocationLog] recordType="fleetWideTarget" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="visibleHostile" reason="none" targetId="..." target="..." targetTeam="..." visibleTargetSource="..." visibleTargetConfidence="..." appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandCandidate" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" classification="wouldSkip" reason="missingAllocatorSnapshotEvidence" candidateSource="visibleTargetOnlyMissingAllocatorEvidence" commandIntent="fleetWideSalvoTargetReportOnly" launcherId="..." targetId="..." allocatorEvidence="missingAllocatorSnapshotEvidence" fleetReportOnlyPerTargetCapWouldBlock="False" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCapState" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" candidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" fleetReportOnlyGlobalCommandCap="12" fleetReportOnlyPerShipCommandCap="3" fleetReportOnlyPerTargetCommandCap="3" fleetReportOnlyPerTriggerCommandCap="12" appliedCommands="0"
+[AllocationLog] recordType="fleetWideResult" scopeMode="fleetWideReportOnly" experimentId="fleetwide-dryrun-..." cycleId="1" candidateRows="4" eligibleCandidateRows="1" capWouldBlockCandidates="1" missingEvidenceCandidates="2" result="reportOnly" resultReason="fleetWideReportOnly" appliedCommands="0"
+```
+
+Visible hostile targets that are not backed by the current allocator/snapshot
+cycle are reported as candidates with missing allocator evidence, not as
+allocator-approved recommendations. The fleet report-only caps are diagnostics
+for would-block state only and do not affect the existing selected-group live
+caps.
+
+Issue #43.2 adds a separate fleet-wide live-apply probe trigger, but the current
+implementation intentionally keeps the RE gate blocked. Decompiled-source review
+shows the vanilla salvo command path accepts explicit launcher and target runtime
+objects through `SelectSalvoTargetCommand.OnCommandExecute`, but the command also
+mutates combat primary target, salvo fire mode, and UI global targeting state.
+Until a real runtime smoke proves non-selected fleet-wide invocation is safe and
+correlatable, the #43.2 path emits blocker diagnostics only and must not call the
+command API.
+
+The #43.2 blocked rows use `scopeMode="fleetWideLiveReBlocked"` and always keep
+`appliedCommands="0"`. They are distinct from #43.1 `fleetWideReportOnly` rows
+and from selected-scope `controlled-live` rows:
+
+```text
+[AllocationLog] recordType="fleetWideLiveCommandPathStatus" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" fleetWideLiveCommandPathStatus="blocked" reGateStatus="blocked" blockReason="nonSelectedFleetWideRuntimeSmokeMissing" commandPath="SelectSalvoTargetCommand.OnCommandExecute" underlyingCommandApi="explicitLauncherAndTargetObjects" uiSelectionRequiredForExecute="False" nonSelectedCommandPathProven="False" knownStateMutations="combatPrimaryTarget,salvoFireMode,uiGlobalTargetingModeShutdown" runMode="blocked" appliedCommands="0"
+[AllocationLog] recordType="fleetWideLiveApplyDecision" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" candidateId="cycle-1-fleetwide-live-1" commandResultId="none" decision="blocked" result="blocked" reason="reGateBlockedUnprovenNonSelectedCommandPath" candidateSource="currentAllocatorSnapshot" commandIntent="fleetWideSalvoTargetLiveApply" launcherId="..." targetId="..." allocatorEvidence="currentAllocatorSnapshot" controlledCommandCorrelation="none" appliedCommands="0" failedCommands="0"
+[AllocationLog] recordType="fleetWideLiveResult" scopeMode="fleetWideLiveReBlocked" experimentId="fleetwide-live-..." cycleId="1" candidateRows="4" emittedDecisionRows="4" allocatorEvidenceCandidates="1" capBlockedCandidates="1" missingEvidenceCandidates="3" reBlockedCandidates="1" result="blocked" resultReason="reGateBlockedUnprovenNonSelectedCommandPath" runMode="blocked" appliedCommands="0" failedCommands="0"
+```
+
+These rows are useful #43.2 evidence because they make the failed live attempt
+explicit and parser-visible. They are not `fleet-wide-controlled` evidence and
+must not be used as direct controlled command spend. A later command-authority or
+runtime-smoke issue must prove non-selected command invocation safety before this
+probe can become bounded live apply.
+
+The first #43.2b behavior-changing rung is the fleet-wide command-authority
+probe. It is still default-off and explicitly triggered, but unlike the
+RE-blocked probe it may call the vanilla command path exactly once when all
+safety gates pass. It requires `AllowCommandApply=True`,
+`EnableRecommendationOnlyMode=False`, a distinct command-authority setting, and a
+visible non-selected allocator-evidence-backed launcher-target candidate. It is
+capped at one command per trigger, one command per ship, and one command per
+target.
+
+Command-authority rows use `scopeMode="fleetWideCommandAuthorityProbe"` and
+`runMode="fleet-wide-command-authority-probe"`:
+
+```text
+[AllocationLog] recordType="fleetWideCommandAuthorityCandidate" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="fleetwide-authority-...:cycle-1-fleetwide-authority-1" classification="eligible" candidateSource="currentAllocatorSnapshot" launcherSelectionRelation="nonSelected" commandIntent="fleetWideCommandAuthorityProbe" commandPath="SelectSalvoTargetCommand.OnCommandExecute" launcherId="..." allocatorLauncherId="..." targetId="..." assignedShots="4" globalCap="1" perTriggerCap="1" perShipCap="1" perTargetCap="1" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandAuthorityPreState" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." launcherSelectionRelation="nonSelected" launcherPrimaryTargetId="..." launcherWeaponModeSummary="..." uiGlobalTargetingMode="..." canPerformCommands="True" canFireMissiles="True" appliedCommands="0"
+[AllocationLog] recordType="fleetWideCommandAuthorityResult" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." result="applied" reason="none" exceptionType="none" launcherSelectionRelation="nonSelected" preStateVisible="runtimeObjects" postState="commandInvoked" appliedCommands="1" failedCommands="0" controlledCommandCorrelation="pendingRuntimeContext"
+[AllocationLog] recordType="fleetWideCommandAuthorityPostState" scopeMode="fleetWideCommandAuthorityProbe" runMode="fleet-wide-command-authority-probe" experimentId="fleetwide-authority-..." cycleId="1" candidateId="cycle-1-fleetwide-authority-1" commandResultId="..." launcherPrimaryTargetId="..." launcherWeaponModeSummary="..." uiGlobalTargetingMode="..." canPerformCommands="True" canFireMissiles="True" appliedCommands="0"
+```
+
+The probe fails closed when selected scope is unavailable, when the allocator
+candidate is selected rather than non-selected, or when allocator/hostile-target
+evidence is missing. A clean runtime smoke for this rung proves command
+authority only for the single non-selected command; it is not yet broad bounded
+fleet-wide live apply.
+
 Issue #36 routes only `eligible` candidates to a named
 `controlledCommandApplyGate` boundary. With the default `AllowCommandApply=False`
 setting, the gate emits `recordType="dryRunApplyGate"` with
@@ -579,3 +655,154 @@ Expected runtime result:
 - LaunchLog entries remain present and contiguous;
 - SnapshotLog entries are present;
 - MissileWarfare issues remain empty.
+
+## Bounded fleet-wide live apply rows
+
+After the #43.2b command-authority smoke, bounded fleet-wide live apply expands the same command path to a small multi-cycle batch. It remains default-off, explicitly triggered, and gated by `AllowCommandApply=True` plus recommendation-only mode disabled.
+
+The bounded trigger preserves current allocator evidence by attempting at most one allocator-evidence-backed command per allocation cycle, then re-arming until its global cap is reached. Initial caps are conservative:
+
+```text
+globalCap="3"
+perShipCap="1"
+perTargetCap="3"
+```
+
+Bounded rows use:
+
+```text
+scopeMode="fleetWideBoundedLiveApply"
+runMode="fleet-wide-controlled"
+recordType="fleetWideBoundedLiveCandidate"
+recordType="fleetWideBoundedLivePreState"
+recordType="fleetWideBoundedLiveResult"
+recordType="fleetWideBoundedLivePostState"
+```
+
+A row may use `launcherSelectionRelation="selectionUnknownFleetEligible"` when command-panel selected scope is unavailable but the launcher is fleet-eligible, player-side, commandable, missile-ready, and allocator-evidence-backed. This is evidence-limited command authority, not selected-scope proof.
+
+For target-over-concentration tuning review, bounded-live candidate/result rows should preserve real fleet-wide target alternative denominators from `FleetWideScopeEvidence`, such as:
+
+```text
+visibleTargetSource="GameControl.spaceCombat.activeShips"
+visibleTargetConfidence="visibleCombatants"
+visibleTargetSourceCount="..."
+visibleHostileTargets="..."
+targetAlternativeDenominator="..."
+targetAlternativeEvidence="visibleHostileTargetsFromActiveShips"
+targetAlternativeIds="..."
+targetAlternativeNames="..."
+targetAlternativeTeams="..."
+targetAlternativeCountTruncated="0"
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeValues="..."
+targetAlternativePdScores="..."
+targetAlternativeSaturationSizes="..."
+targetAlternativeKillSizes="..."
+targetAlternativeLaunchWindowScores="..."
+targetAlternativeScores="..."
+targetAlternativeScoreBasis="scorePerShot"
+targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"
+```
+
+These fields should be treated as the denominator for later target-over-concentration review. Do not use the older cycle-level `targetCount` field as that denominator; it only records whether the current snapshot has a target object.
+The target alternative identity lists are compact, bounded lists of visible
+hostile targets from the same scope snapshot. If
+`targetAlternativeCountTruncated` is nonzero, target identity comparison is
+evidence-limited even when the denominator count is present.
+When diagnostic-only allocator feature extraction succeeds for all emitted
+visible-hostile alternatives, `targetAlternativeFeatureEvidence` is
+`allocatorComparableFeatures` and the parallel compact feature lists use the
+same ordering as `targetAlternativeIds`. Partial or missing feature extraction
+is reported explicitly and remains a hard #43.4 measurement blocker.
+
+Bounded-live candidate/result rows also preserve allocator decision and
+measurement-readiness fields when they are available:
+
+```text
+targetValue="..." pdScore="..." saturationSize="..." killSize="..." launchWindowScore="..." scorePerShot="..."
+selectedTargetScore="..." selectedTargetRank="..."
+selectedTargetScoreSpace="launcherCandidateAllocation"
+selectedTargetRankBasis="scorePerShot" selectedTargetRankComparisonSpace="targetAlternativeScores"
+selectedTargetRankLevel="target-level" selectedTargetRankConfidence="exact"
+selectedTargetPriorControlledShots="..." selectedTargetCumulativeAssignedShots="..."
+selectedTargetPriorMissileInFlightEstimate="..."
+selectedTargetPriorMissileInFlightEstimateConfidence="..."
+selectedTargetPriorMissileInFlightEstimateBound="exact|lowerBound|unknown"
+selectedTargetPriorMissileInFlightTargetAttribution="..."
+selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
+targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
+```
+
+#56 bounded-live saturation-aware target distribution adds v1 pressure-decision
+fields to the same candidate/result rows:
+
+```text
+boundedLivePressureDecision="retained|retargeted|notEvaluated"
+boundedLivePressureDecisionReason="..."
+boundedLivePressureReference="maxKillSaturation"
+boundedLivePressureThreshold="..."
+boundedLiveDecisionPressure="..."
+boundedLiveDecisionPressureAtOrAboveThreshold="True|False"
+boundedLiveDecisionPriorControlledShots="..."
+boundedLiveDecisionExactInFlightShots="..."
+boundedLiveDecisionLowerBoundInFlightShots="..."
+boundedLiveDecisionInFlightEvidenceQuality="exact|lowerBound|unknown"
+boundedLiveOriginalTargetId="..."
+boundedLiveRetargetedToTargetId="..."
+boundedLiveSelectedTargetScore="..."
+boundedLiveRetargetedTargetScore="..."
+boundedLiveDecisionTargetAlternativeDenominator="..."
+```
+
+The v1 behavior reference is `max(killSize, saturationSize)`. Decision pressure
+is prior controlled assigned shots plus exact recovered in-flight pressure for
+the selected target. Lower-bound in-flight pressure remains diagnostic-only for
+v1: it is logged and summarized, but it does not contribute to
+`boundedLiveDecisionPressure` and cannot trigger retargeting by itself. When a
+target is already at or above the pressure reference and comparable same-cycle
+alternatives exist, the bounded-live path may retarget the one-shot controlled
+command to the best under-threshold visible hostile alternative with runtime
+target evidence.
+
+`selectedTargetScore` uses the allocator's current `scorePerShot` value with
+`selectedTargetScoreBasis="scorePerShot"` when that allocation evidence is
+available, but it is explicitly a launcher/candidate allocation score
+(`selectedTargetScoreSpace="launcherCandidateAllocation"`). It must not be
+directly compared to `targetAlternativeScores`, which are diagnostic
+target-alternative scores recomputed in `targetAlternativeScoreSpace`.
+`selectedTargetRank` is target-level: it ranks the selected target within
+`targetAlternativeScores` and reports that comparison space in
+`selectedTargetRankComparisonSpace`. Ties and partial feature coverage are
+represented by `selectedTargetRankConfidence`.
+
+`selectedTargetPriorMissileInFlightEstimate` is a best-effort pre-command
+target-level live missile count. The preferred source is active missile
+controllers reachable from `GameControl.spaceCombat._projectiles` or
+`GameControl.spaceCombat._reverseProjectiles`, because `MissileController`
+exposes the current guidance `target`. `GameControl.spaceCombat.liveMissiles`
+is only a faction-count fallback and cannot by itself attribute missiles to
+target ids. The estimate is not hit/damage/kill attribution. Its confidence and
+unknown target count fields define whether target ownership was recovered,
+partially recovered, unavailable, or no live missiles were observed. If live
+missiles are observed but one or more target ids cannot be recovered, the
+estimate is a lower-bound target count, even when the selected-target estimate
+value is `0`.
+
+The corpus importer separates hard #43.4 measurement blockers from external
+handoff blockers. Hard blockers include missing selected/alternative comparable
+score features, ambiguous selected-target rank, prior target pressure, and cap
+blocked-vs-applied comparison when comparison evidence is absent.
+External blockers include exact hit/damage/kill attribution pending #47 and
+vanilla salvo suppression / selected-ship distribution pending #48. Outcome
+fields should not be read as hit, damage, kill, or vanilla-salvo suppression
+evidence.
+
+A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
+
+```text
+controlledCommandCorrelation="directRuntimeContext"
+commandResultId="fleetwide-bounded-live-...:cycle-..."
+```
+
+Rows with `controlledCommandCorrelation="none"` or `commandResultId="none"` remain vanilla or uncorrelated spillover.

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "heuristicCandidateId": "baseline-fleet-wide-report-v1",
+  "issue": "#43.1",
+  "mode": "report-only",
+  "liveBehavior": "unchanged",
+  "scopeMode": "fleetWideReportOnly",
+  "fleetEligibilitySource": "active-player-side combatants",
+  "visibleTargetSource": "visible hostile combat ships",
+  "diagnosticCaps": {
+    "fleetReportOnlyGlobalCommandCap": 12,
+    "fleetReportOnlyPerShipCommandCap": 3,
+    "fleetReportOnlyPerTargetCommandCap": 3,
+    "fleetReportOnlyPerTriggerCommandCap": 12
+  },
+  "liveCaps": {
+    "selectedGroupCapsPreserved": true
+  },
+  "safetyAssertions": {
+    "appliedCommands": 0,
+    "emitAppliedDecisionRows": false,
+    "liveApplyAllowed": false
+  }
+}

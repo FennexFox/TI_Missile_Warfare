@@ -8,13 +8,14 @@ a reviewer judged the result.
 The evidence rule is strict:
 
 - `shadow-replay` is a candidate filter and regression check.
-- `controlled-live` is the causal evidence source for controlled command
-  behavior.
-- `fleet-wide-controlled` is reserved for later #43+ work.
+- `controlled-live` is the causal evidence source for selected-scope controlled command behavior.
+- `fleet-wide-controlled` is the causal evidence source for bounded fleet-wide controlled command behavior; use it only for real live runs with bounded fleet-wide command application, not report-only rows.
 - `fixture` proves schema and tooling behavior only.
 
 Summaries may show these modes side by side, but they must not collapse them
 into one proof score.
+
+As of #43.2, `fleet-wide-controlled` is no longer only a future placeholder. A valid entry should still separate direct controlled command spend from vanilla / none-correlated spillover and should state whether command-result correlation such as `controlledCommandCorrelation="directRuntimeContext"` was observed.
 
 ## Local layout
 
@@ -83,6 +84,36 @@ cover categories that can affect allocation interpretation:
 When defaults change, create a new snapshot and candidate id instead of
 retroactively changing old experiment meaning.
 
+Direct command-spend summaries should use `direct_command_spend_counts` in parsed or metadata evidence summaries. For #43.2+ `fleet-wide-controlled` runs, include applied command-result counts and direct runtime launch correlation counts when available.
+
+For #43.4 bounded-live measurement summaries, preserve score/rank comparison
+space instead of collapsing the fields into one score. `selectedTargetScore` is
+the launcher/candidate allocation score; `targetAlternativeScores` are
+diagnostic target-level comparable scores; `selectedTargetRank` is target-level
+and ranks the selected target inside `targetAlternativeScores`. Corpus
+readiness counters should separate fully comparable score/rank evidence from
+partial or ambiguous score-space evidence.
+
+Prior in-flight missile pressure must also distinguish exact target counts from
+lower-bound evidence. `selectedTargetPriorMissileInFlightEstimate=0` is fully
+known only when no live missiles were observed or all observed missile target ids
+were recovered. If observed live missiles have unknown targets, the estimate is
+a lower-bound target-attribution-limited value and remains a #43.4 measurement
+blocker. For #43.4+, active missile controller sources
+(`GameControl.spaceCombat._projectiles` / `_reverseProjectiles`) are the
+target-attribution source; `liveMissiles` is count-only fallback evidence.
+
+For #56 bounded-live pressure-aware tuning, corpus summaries also preserve
+pressure-decision counters. `boundedLiveRetargetedDecisionsAboveThreshold`
+counts applied commands where prior controlled pressure plus exact recovered
+in-flight pressure reached `max(killSize, saturationSize)` and the command was
+retargeted to a same-cycle alternative.
+`boundedLiveRetainedSelectedTargetDecisionsAboveThreshold` counts rows that
+stayed on an above-threshold selected target. Lower-bound pressure is counted
+separately by `boundedLivePressureDecisionLowerBoundInFlightRows` and
+`boundedLiveLowerBoundPressureDiagnosticOnlyRows`; those rows should not be
+treated as pressure-triggered retargets in v1.
+
 ## Scenario metadata
 
 Scenario metadata is intentionally coarse. Use fields that are visible and
@@ -134,6 +165,44 @@ Example:
   "nextAction": "Add to corpus; do not tune from this run alone."
 }
 ```
+
+## Player.log import workflow
+
+Use `tools/import_player_log_experiments.py` to turn one `Player.log` into one or more local corpus artifact drafts grouped by diagnostics `experimentId`. This is an experiment-level importer, not a full battle-boundary splitter.
+
+Example for a bounded fleet-wide live run:
+
+```powershell
+python tools\import_player_log_experiments.py `
+  --log Player.log `
+  --output artifacts\experiments\fleet-wide-import `
+  --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json `
+  --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 `
+  --scenario-tag issue-43.3 `
+  --scenario-tag bounded-live `
+  --mod-commit <commit-sha>
+```
+
+The importer writes, per source `experimentId`:
+
+- `summary.json`
+- `metadata.json`
+- `verdict.json`
+
+and writes a registry at `<output>/registry.jsonl` unless `--registry` is supplied. By default it omits `sourceLogPath` so private raw `Player.log` files are not recorded in committed corpus entries. Use `--include-source-log-path` only for private/local registries where that path is safe.
+
+Useful validation flow:
+
+```powershell
+python tools\import_player_log_experiments.py --log Player.log --output artifacts\experiments\fleet-wide-import --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 --scenario-tag issue-43.3
+python tools\summarize_experiment_corpus.py --registry artifacts\experiments\fleet-wide-import\registry.jsonl --output artifacts\fitting\fleet-wide-import-summary
+```
+
+If a `Player.log` contains several experiments, the importer emits one artifact directory per `experimentId`. Full battle-level splitting is still future work.
+
+Because the importer groups primary evidence rows by `experimentId`, raw `SnapshotLog` context is not attached yet. However, after battle segmentation it can attach nearby `AllocationLog recordType="cycle"` rows when they share the same detected battle segment and `cycleId` within `--context-line-window` lines. Generated metadata records attached rows under `nearbyContext`, sets `pdEvidenceCategorySource` to `same-battle-same-cycle-context` when PD evidence is recovered that way, and keeps `pd evidence context not attached by experimentId importer` as missing evidence only when no direct or attached PD context is available.
+
+The importer is battle-aware before it performs any same-cycle context attachment. It first tries to detect battle segments from vanilla combat lifecycle markers such as `Init Canvas SpaceCombatCanvas`, `Adding ship to CombatManager as ActiveShip(CreateShip)`, `MaxShipsInCombat`, `FLTS: Combat End Triggered`, and `Combat Will End`. If those markers are absent, it falls back to `AllocationLog recordType="cycle" battle="..."` markers when present. Generated artifacts record `sourceBattleId`, boundary line numbers, boundary source, battle segment confidence, and a `battleSegmentBreakdown` that separates allocation rows from launch/runtime rows by detected battle segment. Context attachment is row-local: each allocation row can attach only `AllocationLog recordType="cycle"` context with the same detected battle segment and `cycleId`. If allocation rows span multiple detected segments, that is recorded separately from launch/runtime context spanning multiple segments.
 
 ## Summary workflow
 

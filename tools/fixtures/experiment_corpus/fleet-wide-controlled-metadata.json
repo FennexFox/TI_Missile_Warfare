@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "experimentId": "EXP-FLEET-WIDE-CONTROLLED-0001",
+  "runMode": "fleet-wide-controlled",
+  "selectedMode": "fleet-wide",
+  "selectedShipCount": 0,
+  "friendlyMissileShipCount": 3,
+  "enemyShipCount": 1,
+  "launcherWeaponCount": 3,
+  "missileFamily": "redacted-runtime-smoke",
+  "targetIds": ["284"],
+  "pdEvidenceCategory": "allocator-backed-runtime-smoke",
+  "rangeBand": "redacted",
+  "closingSpeedBand": "redacted",
+  "knownMissingEvidence": [
+    "private raw Player.log omitted from committed corpus fixture",
+    "single bounded-live run is command-authority evidence, not allocator tuning evidence",
+    "vanilla / none-correlated spillover not interpreted as controlled command spend"
+  ],
+  "commandGateSummary": {
+    "explicitTrigger": true,
+    "allowCommandApply": true,
+    "recommendationOnlyMode": false,
+    "boundedLiveDiagnosticsEnabled": true,
+    "globalCap": 3,
+    "perShipCap": 1,
+    "perTargetCap": 3
+  },
+  "directCommandSpendSummary": {
+    "appliedCommands": 3,
+    "failedCommands": 0,
+    "directRuntimeContextRows": 21,
+    "sameTeamMarkers": 0,
+    "scopeViolationMarkers": 0
+  },
+  "evidenceSummary": {
+    "direct_command_spend_counts": {
+      "directRuntimeContext launch rows": 21
+    },
+    "missing_evidence_counts": {},
+    "skipped_command_counts": {},
+    "failed_command_counts": {},
+    "overkill_counts": {},
+    "under_saturation_counts": {},
+    "target_mismatch_counts": {},
+    "regression_counts": {},
+    "vanilla_spillover_counts": {}
+  },
+  "reviewerNotes": "Redacted corpus fixture derived from the real #43.2 bounded-live runtime smoke. It records command authority and direct launch/spend correlation without committing the private raw Player.log. Do not tune allocator parameters from this single run alone."
+}

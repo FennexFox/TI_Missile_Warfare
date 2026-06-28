@@ -840,3 +840,290 @@ selected-ship budget distribution remain unresolved and are out of scope for
 report is in `artifacts\shadow-fitting\issue_39_20260623_1104_local`.
 
 A subsequent rename smoke log also showed the applied-launcher post-budget spillover pattern: after the applied launcher consumed its direct controlled assigned-shot budget, later same-launcher/same-target `TryFire` rows could still appear with `controlledCommandCorrelation="none"`. The fitting report now separates this as `Applied launcher post-budget spillover diagnostics`, distinct from skipped-launcher controlled cap spillover.
+
+## Issue #43.2 fleet-wide live apply RE-blocked handoff
+
+Issue #43.2 reviewed the fleet-wide expansion path after #43.1 made active
+player-side fleet eligibility, visible hostile targets, candidate rows, missing
+allocator evidence, and report-only caps visible. Static RE confirmed that the
+vanilla salvo command path ultimately accepts explicit launcher and target
+runtime objects through `SelectSalvoTargetCommand.OnCommandExecute`, and selected
+single/group controlled live apply already uses that reviewed command path.
+
+The same review did not prove the safety of invoking that command for
+non-selected fleet-wide launchers from the mod path. The command can mutate
+combat primary target, salvo fire mode, and UI global targeting state, and no
+runtime smoke in this slice proves that a non-selected fleet-wide call preserves
+manual state, avoids no-op/failure surprises, and produces direct command-result
+correlation.
+
+The implementation therefore leaves #43.2 live behavior RE-blocked. It adds a
+separate default-off fleet-wide live apply diagnostics setting and explicit
+one-shot trigger, but the trigger emits only:
+
+- `fleetWideLiveCommandPathStatus`
+- `fleetWideLiveApplyDecision`
+- `fleetWideLiveResult`
+
+All #43.2 blocked rows use `scopeMode="fleetWideLiveReBlocked"`,
+`runMode="blocked"`, and `appliedCommands="0"`. No `fleet-wide-controlled`
+evidence is produced by this path. The synthetic parser fixture is
+`tools/fixtures/fleet_wide_live_re_blocked.txt`; it covers the blocked RE gate,
+allocator-evidence-backed candidate blocking, missing allocator evidence skips,
+cap-blocked vocabulary, and zero applied/failed commands.
+
+Handoff: #43.3 should receive this as an explicit RE blocker, not as tuning
+input. A later focused command-authority/runtime-smoke issue must prove safe
+non-selected launcher invocation before bounded fleet-wide live apply can be
+unblocked.
+
+## Issue #43.2b command-authority probe implementation note
+
+After the #43.2 RE-blocked runtime smoke, the next implementation rung adds a
+separate default-off fleet-wide command-authority probe. This probe is intended
+for one real non-selected command only. It requires explicit diagnostics,
+`AllowCommandApply=True`, recommendation-only mode disabled, a distinct
+command-authority setting, and an explicit one-shot trigger.
+
+The new synthetic parser fixture is:
+
+```text
+tools/fixtures/fleet_wide_command_authority_probe.txt
+```
+
+Runtime validation remains pending until a real battle log is collected. The
+expected first smoke should show one command-authority experiment id, at most one
+applied command, zero scope violations, zero same-team missile target snapshots,
+and either direct command-result launch/spend correlation or an explicit
+evidence-limited result.
+
+## Issue #43.2b command-authority runtime smoke: evidence-limited success
+
+A real combat `Player.log` from 2026-06-24 recorded two command-authority probe
+runs after allowing `selectionUnknownFleetEligible` candidates. Both runs used a
+fleet-eligible player launcher with `candidateSource="currentAllocatorSnapshot"`,
+`targetTeam="50"`, cap=1 command application, and selected command-panel scope
+unavailable through `groupSelectedFriendlyShips`.
+
+Observed command-authority rows:
+
+```text
+fleetWideCommandAuthorityCandidate: 2
+fleetWideCommandAuthorityPreState: 2
+fleetWideCommandAuthorityResult: 2
+fleetWideCommandAuthorityPostState: 2
+```
+
+Run 1:
+
+```text
+experimentId="fleetwide-authority-20260624T115715853Z-1"
+launcher="Dogger Bank" launcherId="276" launcherTeam="47"
+target="Equinox" targetId="283" targetTeam="50"
+launcherSelectionRelation="selectionUnknownFleetEligible"
+selectedShipCount="0"
+result="applied"
+appliedCommands="1"
+failedCommands="0"
+preLauncherPrimaryTargetId="none"
+postLauncherPrimaryTargetId="283"
+```
+
+The resulting `LaunchLog` rows included 7 direct runtime-context correlations for
+that command result, matching `assignedShots="7"`.
+
+Run 2:
+
+```text
+experimentId="fleetwide-authority-20260624T115723690Z-2"
+launcher="Marengo" launcherId="278" launcherTeam="47"
+target="Equinox" targetId="283" targetTeam="50"
+launcherSelectionRelation="selectionUnknownFleetEligible"
+selectedShipCount="0"
+result="applied"
+appliedCommands="1"
+failedCommands="0"
+preLauncherPrimaryTargetId="none"
+postLauncherPrimaryTargetId="283"
+```
+
+The resulting `LaunchLog` rows included 7 direct runtime-context correlations for
+that command result, matching `assignedShots="7"`.
+
+No same-team target snapshot or scope-violation marker was observed in this log.
+This is a successful command-authority smoke for a cap=1 vanilla command in an
+evidence-limited selected-scope-unavailable state. It proves that the mod can
+invoke a fleet-eligible player launcher command and correlate resulting launches
+through `directRuntimeContext`. It does not yet prove broad bounded fleet-wide
+apply safety.
+
+## Issue #43.2b bounded fleet-wide live apply implementation note
+
+Following the command-authority smoke success, bounded fleet-wide live apply adds a separate default-off trigger intended to apply a small batch of real fleet commands while preserving current allocator evidence.
+
+The first implementation is multi-cycle rather than all-at-once:
+
+```text
+experiment id prefix: fleetwide-bounded-live-
+global cap: 3
+per-ship cap: 1
+per-target cap: 3
+one allocator-evidence-backed command attempt per allocation cycle
+```
+
+The new synthetic parser fixture is:
+
+```text
+tools/fixtures/fleet_wide_bounded_live_apply.txt
+```
+
+Runtime validation is pending. A clean smoke should show at most three `fleetWideBoundedLiveResult` rows with `result="applied"`, `failedCommands="0"`, no same-team target snapshots, no scope violations, and matching `directRuntimeContext` `LaunchLog` rows for each applied command result.
+
+## Issue #43.2b bounded fleet-wide live apply runtime smoke: clean cap=3 success
+
+A real combat `Player.log` from 2026-06-24 recorded a bounded fleet-wide live apply run after the command-authority proof and bounded-live trigger were enabled.
+
+Observed experiment:
+
+```text
+experimentId="fleetwide-bounded-live-20260624T125727207Z-1"
+fleetWideBoundedLiveCandidate: 3
+fleetWideBoundedLivePreState: 3
+fleetWideBoundedLiveResult: 5
+fleetWideBoundedLivePostState: 3
+result="applied": 3
+result="skipped": 2
+failedCommands="0"
+directRuntimeContext LaunchLog rows: 21
+scopeViolation markers: 0
+same-team markers: 0
+```
+
+Applied commands:
+
+```text
+cycleId="1" launcher="Thapsus" launcherId="276" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="1"
+cycleId="3" launcher="Salamis" launcherId="277" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="2"
+cycleId="5" launcher="Cannae" launcherId="278" target="Volcano" targetId="284" assignedShots="7" totalAppliedCommands="3"
+```
+
+Each applied command produced seven `directRuntimeContext` `LaunchLog` rows for its `commandResultId`, matching `assignedShots="7"`. The two skipped rows used:
+
+```text
+reason="fleetWideBoundedLivePerShipCapBlocked"
+```
+
+Those skips are expected: the same already-commanded launcher appeared in later allocator snapshots and was blocked by `perShipCap="1"`. The run therefore validates the bounded-live slice at cap=3 with allocator evidence preserved across cycles, direct launch/spend correlation present, and no observed same-team or scope-violation marker.
+
+This is sufficient to close the #43.2 command-authority / bounded-live proof slice and hand off to #43.3 for allocator quality, corpus, spillover, and tuning work.
+
+## Issue #43.3 expanded bounded fleet-wide corpus import: 8 real runs
+
+A private `Player.log` from 2026-06-25/2026-06-26 was imported with `tools/import_player_log_experiments.py` into ignored local artifacts:
+
+```text
+artifacts/experiments/bounded-live-playerlog-20260626/
+artifacts/fitting/bounded-live-playerlog-20260626-summary/
+```
+
+The raw `Player.log` is not committed. The generated local corpus summary recorded:
+
+```text
+experimentCount: 8
+runModeCounts.fleet-wide-controlled: 8
+warnings: []
+directRuntimeContext launch rows: 167
+fleet-wide bounded live applied command results: 24
+failed command results: 0
+pdEvidenceCategory: observedTemplateCapability for all 8 imported experiments
+```
+
+The import also validated the battle-aware importer behavior added for #43.3:
+
+```text
+EXP-IMPORTED-NONE: not generated after placeholder experimentId filtering
+battleSegmentBreakdown: present in per-experiment summary/metadata
+same-battle same-cycle PD context: recovered row-locally for all 8 experiments
+```
+
+Battle/window provenance notes:
+
+```text
+Z-5: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-6: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-7: BATTLE-0001 contains one skipped/noAllocatorAllocation row; the applied commands and launch runtime rows are in BATTLE-0002.
+```
+
+The final aggregate missing-evidence counters after deduplication are provenance limitations, not command failures:
+
+```text
+source Player.log path omitted from registry: 8
+launch runtime context spans multiple detected battle segments: 2
+allocation rows span multiple detected battle segments: 1
+```
+
+This expanded corpus is sufficient to say that the additional bounded-live evidence collection prerequisite for #43.3 has been met locally. It still does not justify broad allocator tuning without a repeated allocator-quality failure pattern or better outcome/spillover measurement.
+
+## Issue #43.4 bounded-live tuning-readiness measurement
+
+Runtime validation on 2026-06-28 showed a bounded-live run with a real
+same-cycle target alternative denominator:
+
+```text
+experimentId="fleetwide-bounded-live-20260628T023454808Z-1"
+targetAlternativeDenominator="5"
+targetAlternativeNames="Volcano|Kiyoshimo|Hellhound|Gorgon|Chimera"
+selectedTargetScore="3.677"
+selectedTargetScoreBasis="scorePerShot"
+selectedTargetPriorKnownShotPressure: 0 -> 6 -> 12
+```
+
+That run established that same-target concentration can be observed while
+multiple visible hostile target alternatives exist. It still left two hard
+measurement blockers: allocator-comparable alternative target features and
+target-level prior in-flight missile pressure.
+
+The follow-up #43.4 diagnostics add compact parallel alternative feature lists,
+selected-target rank evidence, and a best-effort pre-command in-flight missile
+pressure estimate with explicit confidence/source fields. Synthetic fixture
+coverage now demonstrates the intended fitting surface:
+
+```text
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeScores="3.42|2.1"
+targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"
+selectedTargetScoreSpace="launcherCandidateAllocation"
+selectedTargetRank="1"
+selectedTargetRankComparisonSpace="targetAlternativeScores"
+selectedTargetRankLevel="target-level"
+selectedTargetRankConfidence="exact"
+selectedTargetPriorMissileInFlightEstimate="0"
+selectedTargetPriorMissileInFlightEstimateConfidence="noLiveMissilesObserved"
+selectedTargetPriorMissileInFlightEstimateBound="exact"
+```
+
+The score spaces are intentionally different: `selectedTargetScore` is the
+launcher/candidate allocation score, while `targetAlternativeScores` are the
+target-level diagnostic comparison list used by `selectedTargetRank`. In-flight
+pressure is fully known only for no-live-missile or fully attributed live-missile
+evidence; observed live missiles with unknown target ids are lower-bound
+target-attribution-limited evidence.
+
+The final #43.4 measurement-boundary inspection selected Path A for target
+attribution. `SpaceCombatManager.liveMissiles` is count-only, but active
+`MissileController` objects are reachable from `_projectiles` /
+`_reverseProjectiles` and expose the current guidance `target`. Diagnostics now
+prefer those controller sources and use `liveMissiles` only as count-only
+lower-bound fallback when controller targets are unavailable.
+
+Exact outcome attribution remains an external #47 handoff. These diagnostics do
+not change allocator scoring, command caps, vanilla salvo behavior, or outcome
+hooks.
+
+### Issue #43.4 hook-timing boundary for first-row lower-bound pressure
+
+A later `fleetwide-bounded-live-20260628T102413012Z-1` validation confirmed Path A at runtime: active missile controllers from `GameControl.spaceCombat._projectiles` can expose `MissileController.target` and produce exact target-level in-flight pressure for later bounded-live applied rows. In that run, two applied rows recovered target ids through `_projectiles`, while one earlier row fell back to `liveMissiles` count-only evidence and remained lower-bound.
+
+The lower-bound first row is a diagnostic sampling boundary, not evidence that the first missile was outside controlled command influence. It means the sample observed live missile count before controller-target attribution was recoverable at that hook point. The current hook should not be moved merely to erase that case, because moving it later would risk contaminating pre-command pressure with missiles launched by the current command, and moving it earlier may reduce controller availability.
+
+If more precision is ever required, add a separate post-command or next-frame reconciliation field instead of changing the meaning of `selectedTargetPriorMissileInFlightEstimate`. For the next tuning slice, preserve row-level evidence quality and limit scope to controlled-shot / recovered-in-flight-pressure-aware overcommit retargeting. Exact hit/damage/kill attribution remains a #47 external handoff.
