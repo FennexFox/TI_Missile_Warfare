@@ -15,10 +15,11 @@ Runtime bounded-live candidate/result rows now preserve:
   `FleetWideScopeEvidence`;
 - compact bounded target alternative identity lists with explicit truncation;
 - allocator decision fields available from `TargetAllocation`;
-- explicit `unknown` selected-target score/rank blockers;
+- selected target `scorePerShot` as `selectedTargetScore` with
+  `selectedTargetScoreBasis="scorePerShot"`;
 - conservative saturation/kill overcommit ratios based on controlled assigned
   shots already applied in the bounded-live experiment;
-- explicit outcome blockers pending later #47/#48 work.
+- explicit hard measurement blockers separated from external #47/#48 blockers.
 
 Parser/importer/corpus tooling now preserves these fields into per-experiment
 `summary.json` artifacts and aggregates #43.4 readiness counters into
@@ -26,13 +27,19 @@ Parser/importer/corpus tooling now preserves these fields into per-experiment
 
 ## Evidence limits preserved
 
-The implementation intentionally emits blockers instead of inventing missing
-evidence for:
+The implementation intentionally separates blockers:
 
-- selected target score/rank;
-- prior allocator, vanilla, or in-flight missile shot state;
-- exact target survival/destruction attribution;
+Hard #43.4 measurement blockers that should not be treated as terminal closure
+state:
+
+- alternative target comparable score/features;
+- prior allocator and in-flight missile shot pressure when unavailable;
 - cap blocked-vs-applied score comparison.
+
+External blockers that may remain explicit handoffs:
+
+- exact target survival/destruction attribution pending #47;
+- vanilla salvo suppression / selected-ship distribution pending #48.
 
 ## Validation
 

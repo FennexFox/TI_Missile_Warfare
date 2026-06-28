@@ -83,6 +83,7 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "killSize",
     "launchWindowScore",
     "selectedTargetScore",
+    "selectedTargetScoreBasis",
     "selectedTargetRank",
     "candidateSource",
     "allocatorEvidence",
@@ -96,10 +97,13 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "targetAlternativeNames",
     "targetAlternativeTeams",
     "targetAlternativeCountTruncated",
+    "targetAlternativeFeatureEvidence",
     "selectedTargetPriorControlledShots",
     "selectedTargetPriorAllocatorShots",
     "selectedTargetPriorVanillaShotsKnown",
+    "selectedTargetPriorVanillaShotsNearWindow",
     "selectedTargetPriorMissileInFlightEstimate",
+    "selectedTargetPriorKnownShotPressure",
     "selectedTargetNewAssignedShots",
     "selectedTargetCumulativeAssignedShots",
     "selectedTargetSaturationSize",
@@ -111,6 +115,15 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "timeToImpactWindowKnown",
     "targetOutcomeAttribution",
     "attributionConfidence",
+    "globalCapRemaining",
+    "perShipCapRemaining",
+    "perTargetCapRemaining",
+    "blockedCandidateLauncherId",
+    "blockedCandidateTargetId",
+    "blockedCandidateScore",
+    "appliedCandidateScore",
+    "wouldHaveAppliedRankWithoutCap",
+    "blockedCandidateWasBetterThanApplied",
 )
 BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "boundedLiveAppliedResults",
@@ -125,6 +138,8 @@ BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "potentialCapMisallocationCandidates",
     "targetValueMismatchCandidates",
     "evidenceLimitedResults",
+    "hardMeasurementBlockedResults",
+    "externalOutcomeBlockedResults",
 )
 
 
@@ -827,13 +842,55 @@ def applied_commands(group: ExperimentGroup, direct_by_command: Counter[str]) ->
                     command[key] = row.battle_segment_id or "unknown"
                 elif key == "cycleId":
                     command[key] = int_value(row.pairs.get(key), default=-1)
-                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "selectedTargetPriorControlledShots", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize"}:
+                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "selectedTargetPriorControlledShots", "selectedTargetPriorVanillaShotsNearWindow", "selectedTargetPriorKnownShotPressure", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize", "globalCapRemaining", "perShipCapRemaining", "perTargetCapRemaining"}:
                     value = optional_int(row.pairs.get(key))
                     command[key] = value if value is not None else "unknown"
                 else:
                     command[key] = row.pairs.get(key, "unknown")
+            add_bounded_live_launch_pressure(command, row, group.launch_rows)
         commands.append(command)
     return commands
+
+
+def launch_target_matches(row: LogRow, target_id: Any) -> bool:
+    """Return whether a launch row references a target id/state id."""
+    if not has_concrete_value(target_id):
+        return False
+    target_text = str(target_id)
+    return target_text in {
+        row.pairs.get("targetId"),
+        row.pairs.get("targetStateId"),
+    }
+
+
+def add_bounded_live_launch_pressure(
+    command: dict[str, Any],
+    result_row: LogRow,
+    launch_rows: list[LogRow],
+) -> None:
+    """Add best-effort launch pressure fields from imported launch rows."""
+    target_id = command.get("targetId")
+    non_correlated_same_target = [
+        row for row in launch_rows
+        if row.pairs.get("controlledCommandCorrelation", "missing") in {"none", "missing"}
+        and launch_target_matches(row, target_id)
+    ]
+    prior_non_correlated = [
+        row for row in non_correlated_same_target
+        if row.line_number < result_row.line_number
+    ]
+    direct_rows = int_value(command.get("directRuntimeContextRows"))
+    assigned = int_value(command.get("assignedShots"))
+    prior_controlled = int_value(command.get("selectedTargetPriorControlledShots"))
+    command["actualLaunchRows"] = direct_rows
+    command["missileSpendConfirmed"] = "True" if assigned > 0 and direct_rows == assigned else "False"
+    command["nonCorrelatedLaunchRowsNearWindow"] = len(non_correlated_same_target)
+    command["vanillaSpilloverRowsNearTarget"] = len(non_correlated_same_target)
+    command["selectedTargetPriorVanillaShotsKnown"] = "True"
+    command["selectedTargetPriorVanillaShotsNearWindow"] = len(prior_non_correlated)
+    if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
+        command["selectedTargetPriorMissileInFlightEstimate"] = "unknown"
+    command["selectedTargetPriorKnownShotPressure"] = prior_controlled + len(prior_non_correlated)
 
 
 def denominator_bucket(command: dict[str, Any]) -> str:
@@ -847,7 +904,10 @@ def denominator_bucket(command: dict[str, Any]) -> str:
     return "one"
 
 
-def bounded_live_tuning_readiness(commands: list[dict[str, Any]]) -> dict[str, Any]:
+def bounded_live_tuning_readiness(
+    commands: list[dict[str, Any]],
+    allocation_summary: dict[str, Any],
+) -> dict[str, Any]:
     """Return conservative #43.4 readiness counters from applied bounded-live commands."""
     bounded = [
         command for command in commands
@@ -856,19 +916,23 @@ def bounded_live_tuning_readiness(commands: list[dict[str, Any]]) -> dict[str, A
     counters: Counter[str] = Counter()
     for key in BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS:
         counters[key] = 0
-    blockers: Counter[str] = Counter()
+    hard_blockers: Counter[str] = Counter()
+    external_blockers: Counter[str] = Counter()
     evidence_limited_commands = 0
+    hard_blocked_commands = 0
+    external_blocked_commands = 0
     target_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     counters["boundedLiveAppliedResults"] = len(bounded)
     for command in bounded:
-        command_blocked = False
+        command_hard_blocked = False
+        command_external_blocked = False
         target_groups[str(command.get("targetId", "unknown"))].append(command)
         denominator = optional_int(command.get("targetAlternativeDenominator"))
         if denominator is None:
             counters["boundedLiveAppliedWithUnknownTargetAlternativeDenominator"] += 1
-            blockers["missing targetAlternativeDenominator"] += 1
-            command_blocked = True
+            hard_blockers["missing targetAlternativeDenominator"] += 1
+            command_hard_blocked = True
         else:
             counters["boundedLiveAppliedWithTargetAlternativeDenominator"] += 1
             if denominator > 1:
@@ -885,35 +949,54 @@ def bounded_live_tuning_readiness(commands: list[dict[str, Any]]) -> dict[str, A
             "directRuntimeContextRows",
         ):
             if not has_concrete_value(command.get(required)):
-                blockers[f"missing {required}"] += 1
-                command_blocked = True
+                hard_blockers[f"missing {required}"] += 1
+                command_hard_blocked = True
 
         if not has_concrete_value(command.get("visibleHostileTargets")):
-            blockers["missing visibleHostileTargets"] += 1
-            command_blocked = True
+            hard_blockers["missing visibleHostileTargets"] += 1
+            command_hard_blocked = True
         if not has_concrete_value(command.get("targetValue")):
-            blockers["missing targetValue"] += 1
-            command_blocked = True
+            hard_blockers["missing targetValue"] += 1
+            command_hard_blocked = True
         if not has_concrete_value(command.get("pdScore")):
-            blockers["missing pdScore"] += 1
-            command_blocked = True
+            hard_blockers["missing pdScore"] += 1
+            command_hard_blocked = True
         if not has_concrete_value(command.get("selectedTargetScore")) and not has_concrete_value(command.get("selectedTargetRank")):
-            blockers["selected target score/rank unknown"] += 1
-            command_blocked = True
+            hard_blockers["selected target score/rank unknown"] += 1
+            command_hard_blocked = True
         if not has_concrete_value(command.get("saturationSize")) and not has_concrete_value(command.get("killSize")):
-            blockers["saturation/kill-size evidence unknown"] += 1
-            command_blocked = True
+            hard_blockers["saturation/kill-size evidence unknown"] += 1
+            command_hard_blocked = True
         if command.get("targetAlternativeCountTruncated") == "unknown":
-            blockers["target identity comparison evidence-limited"] += 1
-            command_blocked = True
+            hard_blockers["target identity comparison evidence-limited"] += 1
+            command_hard_blocked = True
         if optional_int(command.get("targetAlternativeCountTruncated")) not in (None, 0):
-            blockers["target alternative identity list truncated"] += 1
-            command_blocked = True
+            hard_blockers["target alternative identity list truncated"] += 1
+            command_hard_blocked = True
+        if command.get("targetAlternativeFeatureEvidence") != "allocatorComparableFeatures":
+            hard_blockers["alternative target comparable score/features unavailable"] += 1
+            command_hard_blocked = True
+        if command.get("selectedTargetPriorVanillaShotsKnown") != "True":
+            hard_blockers["prior vanilla/none-correlated shot pressure unknown"] += 1
+            command_hard_blocked = True
+        if not has_concrete_value(command.get("selectedTargetPriorKnownShotPressure")):
+            hard_blockers["prior known target shot pressure unavailable"] += 1
+            command_hard_blocked = True
+        if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
+            hard_blockers["prior in-flight missile pressure estimate unavailable"] += 1
+            command_hard_blocked = True
         if command.get("targetOutcomeAttribution") in {None, "", "unknown", "evidenceLimited"}:
-            blockers["outcome attribution evidence-limited (#47/#48 pending)"] += 1
-            command_blocked = True
-        if command_blocked:
+            external_blockers["exact outcome attribution pending #47"] += 1
+            command_external_blocked = True
+        if optional_int(command.get("vanillaSpilloverRowsNearTarget")) not in (None, 0):
+            external_blockers["vanilla spillover / selected-ship distribution pending #48"] += 1
+            command_external_blocked = True
+        if command_hard_blocked or command_external_blocked:
             evidence_limited_commands += 1
+        if command_hard_blocked:
+            hard_blocked_commands += 1
+        if command_external_blocked:
+            external_blocked_commands += 1
 
     for target_commands in target_groups.values():
         if len(target_commands) < 2:
@@ -942,11 +1025,24 @@ def bounded_live_tuning_readiness(commands: list[dict[str, Any]]) -> dict[str, A
     counters["potentialCapMisallocationCandidates"] = 0
     counters["targetValueMismatchCandidates"] = 0
     counters["evidenceLimitedResults"] = evidence_limited_commands
+    counters["hardMeasurementBlockedResults"] = hard_blocked_commands
+    counters["externalOutcomeBlockedResults"] = external_blocked_commands
+
+    bounded_reasons = allocation_summary.get("fleet_wide_bounded_live_reason_counts")
+    if isinstance(bounded_reasons, dict):
+        cap_skip_count = sum(
+            value for reason, value in bounded_reasons.items()
+            if isinstance(value, int) and "CapBlocked" in str(reason)
+        )
+        if cap_skip_count:
+            hard_blockers["cap blocked-vs-applied comparison required for cap skips"] += cap_skip_count
 
     return {
         "counters": counter_dict(counters),
-        "blockers": counter_dict(blockers),
-        "interpretation": "measurement-only; no allocator tuning recommendation",
+        "hardMeasurementBlockers": counter_dict(hard_blockers),
+        "externalOutcomeBlockers": counter_dict(external_blockers),
+        "blockers": counter_dict(hard_blockers + external_blockers),
+        "interpretation": "measurement-only; hard blockers must be resolved inside #43.4 before closing, while external blockers may hand off to #47/#48",
     }
 
 
@@ -1078,7 +1174,7 @@ def build_summary(group: ExperimentGroup, log_path: Path, *, fixture: bool, incl
     allocation_summary = summarize_allocation(group)
     launch_summary, direct_by_command, none_or_missing_by_target = summarize_launches(group)
     command_summary = applied_commands(group, direct_by_command)
-    readiness_summary = bounded_live_tuning_readiness(command_summary)
+    readiness_summary = bounded_live_tuning_readiness(command_summary, allocation_summary)
     direct_launches = launch_summary.get("directRuntimeContext", 0)
     limitation_counts: dict[str, int] = {}
     if not include_source:

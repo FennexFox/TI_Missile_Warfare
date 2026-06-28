@@ -54,6 +54,8 @@ COUNT_FIELDS = (
     "vanilla_spillover_counts",
     "bounded_live_tuning_readiness_counts",
     "bounded_live_tuning_readiness_blocker_counts",
+    "bounded_live_hard_measurement_blocker_counts",
+    "bounded_live_external_outcome_blocker_counts",
 )
 
 
@@ -332,6 +334,14 @@ def summarize_parsed_artifact(parsed: dict[str, Any]) -> dict[str, dict[str, int
             add_counts(
                 counts["bounded_live_tuning_readiness_blocker_counts"],
                 readiness.get("blockers"),
+            )
+            add_counts(
+                counts["bounded_live_hard_measurement_blocker_counts"],
+                readiness.get("hardMeasurementBlockers"),
+            )
+            add_counts(
+                counts["bounded_live_external_outcome_blocker_counts"],
+                readiness.get("externalOutcomeBlockers"),
             )
 
     return {key: dict(sorted(counter.items())) for key, counter in counts.items()}

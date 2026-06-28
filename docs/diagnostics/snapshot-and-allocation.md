@@ -713,10 +713,18 @@ selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
 targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
 ```
 
-`selectedTargetScore` and `selectedTargetRank` are emitted as `unknown` until
-the allocator exposes those concepts directly. Outcome fields are explicit
-blockers for later #47/#48 work and should not be read as hit, damage, kill, or
-vanilla-salvo suppression evidence.
+`selectedTargetScore` uses the allocator's current `scorePerShot` value with
+`selectedTargetScoreBasis="scorePerShot"` when that allocation evidence is
+available. `selectedTargetRank` remains `unknown` until a comparable
+multi-target allocator rank is emitted.
+
+The corpus importer separates hard #43.4 measurement blockers from external
+handoff blockers. Hard blockers include missing selected/alternative comparable
+score features, prior target pressure, and cap blocked-vs-applied comparison.
+External blockers include exact hit/damage/kill attribution pending #47 and
+vanilla salvo suppression / selected-ship distribution pending #48. Outcome
+fields should not be read as hit, damage, kill, or vanilla-salvo suppression
+evidence.
 
 A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
 
