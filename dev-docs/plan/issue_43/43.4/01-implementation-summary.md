@@ -18,12 +18,16 @@ Runtime bounded-live candidate/result rows now preserve:
   allocator scoring can be reconstructed for visible hostile alternatives;
 - allocator decision fields available from `TargetAllocation`;
 - selected target `scorePerShot` as `selectedTargetScore` with
-  `selectedTargetScoreBasis="scorePerShot"`;
-- selected target rank, rank basis, rank confidence, and tie count when
-  comparable alternative scores are available;
+  `selectedTargetScoreBasis="scorePerShot"` and
+  `selectedTargetScoreSpace="launcherCandidateAllocation"`;
+- target alternative scores with
+  `targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"`;
+- selected target rank, rank basis, rank comparison space, target-level rank
+  scope, rank confidence, and tie count when comparable alternative scores are
+  available;
 - best-effort pre-command target-level in-flight missile pressure estimates
   with source, confidence, observed live missile count, and unknown-target
-  count;
+  count, plus exact/lower-bound estimate classification;
 - conservative saturation/kill overcommit ratios based on controlled assigned
   shots already applied in the bounded-live experiment;
 - explicit hard measurement blockers separated from external #47/#48 blockers.
@@ -40,9 +44,11 @@ Hard #43.4 measurement blockers that should not be treated as terminal closure
 state:
 
 - alternative target comparable score/features when unavailable or partial;
-- selected target rank when scores are unavailable, partial, or tied;
+- selected target rank when scores are unavailable, partial, tied, or missing
+  explicit comparison-space metadata;
 - prior allocator and in-flight missile shot pressure when unavailable or
-  target ownership is only partially recovered;
+  live missile target ownership/source is unavailable or only partially
+  recovered;
 - cap blocked-vs-applied score comparison when comparison evidence is absent.
 
 External blockers that may remain explicit handoffs:
@@ -86,7 +92,11 @@ selectedTargetPriorMissileInFlightEstimateConfidence: targetOwnershipSourceUnava
 
 This supersedes the earlier implementation-note caveat that the current `Player.log`
 predated the new runtime fields. The latest runtime log now validates field
-emission, but it also leaves interpretation risks documented in
-`02-latest-playerlog-review.md`.
+emission. Follow-up cleanup clarified that `selectedTargetScore` is a
+launcher/candidate allocation score, while `targetAlternativeScores` and
+`selectedTargetRank` are target-level diagnostic comparison evidence. In-flight
+pressure is now classified as fully known only when target attribution is
+complete or no live missiles are observed; observed live missiles with unknown
+targets are lower-bound evidence and remain a #43.4 target-attribution blocker.
 
 Generated artifacts remain under ignored `artifacts/` paths.

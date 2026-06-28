@@ -205,8 +205,14 @@ class AllocationBattleSummary:
     fleet_wide_bounded_live_target_alternative_denominator_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_evidence_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_feature_evidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_selected_target_score_space_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_target_alternative_score_space_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_selected_target_rank_comparison_space_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_selected_target_rank_level_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_selected_target_rank_confidence_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_prior_in_flight_confidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_prior_in_flight_bound_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_prior_in_flight_target_attribution_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_truncated_records: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one: int = 0
@@ -819,8 +825,14 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_bounded_live_target_alternative_denominator_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_evidence_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_feature_evidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_selected_target_score_space_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_target_alternative_score_space_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_selected_target_rank_comparison_space_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_selected_target_rank_level_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_selected_target_rank_confidence_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_prior_in_flight_confidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_prior_in_flight_bound_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_prior_in_flight_target_attribution_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_truncated_records = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one = 0
@@ -1305,6 +1317,26 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         fleet_wide_bounded_live_target_alternative_feature_evidence_counts[
                             feature_evidence
                         ] += 1
+                    selected_score_space = pairs.get("selectedTargetScoreSpace")
+                    if selected_score_space:
+                        fleet_wide_bounded_live_selected_target_score_space_counts[
+                            selected_score_space
+                        ] += 1
+                    alternative_score_space = pairs.get("targetAlternativeScoreSpace")
+                    if alternative_score_space:
+                        fleet_wide_bounded_live_target_alternative_score_space_counts[
+                            alternative_score_space
+                        ] += 1
+                    rank_space = pairs.get("selectedTargetRankComparisonSpace")
+                    if rank_space:
+                        fleet_wide_bounded_live_selected_target_rank_comparison_space_counts[
+                            rank_space
+                        ] += 1
+                    rank_level = pairs.get("selectedTargetRankLevel")
+                    if rank_level:
+                        fleet_wide_bounded_live_selected_target_rank_level_counts[
+                            rank_level
+                        ] += 1
                     rank_confidence = pairs.get("selectedTargetRankConfidence")
                     if rank_confidence:
                         fleet_wide_bounded_live_selected_target_rank_confidence_counts[
@@ -1316,6 +1348,18 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     if in_flight_confidence:
                         fleet_wide_bounded_live_prior_in_flight_confidence_counts[
                             in_flight_confidence
+                        ] += 1
+                    in_flight_bound = pairs.get("selectedTargetPriorMissileInFlightEstimateBound")
+                    if in_flight_bound:
+                        fleet_wide_bounded_live_prior_in_flight_bound_counts[
+                            in_flight_bound
+                        ] += 1
+                    in_flight_attribution = pairs.get(
+                        "selectedTargetPriorMissileInFlightTargetAttribution"
+                    )
+                    if in_flight_attribution:
+                        fleet_wide_bounded_live_prior_in_flight_target_attribution_counts[
+                            in_flight_attribution
                         ] += 1
                     if (try_parse_int(pairs.get("targetAlternativeCountTruncated")) or 0) > 0:
                         fleet_wide_bounded_live_target_alternative_truncated_records += 1
@@ -1917,11 +1961,29 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.fleet_wide_bounded_live_target_alternative_feature_evidence_counts = dict(
         sorted(fleet_wide_bounded_live_target_alternative_feature_evidence_counts.items())
     )
+    allocation_summary.fleet_wide_bounded_live_selected_target_score_space_counts = dict(
+        sorted(fleet_wide_bounded_live_selected_target_score_space_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_target_alternative_score_space_counts = dict(
+        sorted(fleet_wide_bounded_live_target_alternative_score_space_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_selected_target_rank_comparison_space_counts = dict(
+        sorted(fleet_wide_bounded_live_selected_target_rank_comparison_space_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_selected_target_rank_level_counts = dict(
+        sorted(fleet_wide_bounded_live_selected_target_rank_level_counts.items())
+    )
     allocation_summary.fleet_wide_bounded_live_selected_target_rank_confidence_counts = dict(
         sorted(fleet_wide_bounded_live_selected_target_rank_confidence_counts.items())
     )
     allocation_summary.fleet_wide_bounded_live_prior_in_flight_confidence_counts = dict(
         sorted(fleet_wide_bounded_live_prior_in_flight_confidence_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_prior_in_flight_bound_counts = dict(
+        sorted(fleet_wide_bounded_live_prior_in_flight_bound_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_prior_in_flight_target_attribution_counts = dict(
+        sorted(fleet_wide_bounded_live_prior_in_flight_target_attribution_counts.items())
     )
     allocation_summary.fleet_wide_bounded_live_target_alternative_truncated_records = (
         fleet_wide_bounded_live_target_alternative_truncated_records
@@ -2395,6 +2457,34 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                     summary.fleet_wide_bounded_live_target_alternative_feature_evidence_counts
                 )
             )
+        if summary.fleet_wide_bounded_live_selected_target_score_space_counts:
+            print(
+                "- bounded fleet-wide live selected score space: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_selected_target_score_space_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_target_alternative_score_space_counts:
+            print(
+                "- bounded fleet-wide live alternative score space: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_target_alternative_score_space_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_selected_target_rank_comparison_space_counts:
+            print(
+                "- bounded fleet-wide live rank comparison space: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_selected_target_rank_comparison_space_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_selected_target_rank_level_counts:
+            print(
+                "- bounded fleet-wide live rank level: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_selected_target_rank_level_counts
+                )
+            )
         if summary.fleet_wide_bounded_live_selected_target_rank_confidence_counts:
             print(
                 "- bounded fleet-wide live selected target rank confidence: "
@@ -2407,6 +2497,20 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 "- bounded fleet-wide live prior in-flight confidence: "
                 + format_count_dict(
                     summary.fleet_wide_bounded_live_prior_in_flight_confidence_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_prior_in_flight_bound_counts:
+            print(
+                "- bounded fleet-wide live prior in-flight estimate bound: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_prior_in_flight_bound_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_prior_in_flight_target_attribution_counts:
+            print(
+                "- bounded fleet-wide live prior in-flight target attribution: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_prior_in_flight_target_attribution_counts
                 )
             )
         if summary.fleet_wide_bounded_live_target_alternative_truncated_records:

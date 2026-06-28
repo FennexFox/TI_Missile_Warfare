@@ -86,6 +86,21 @@ retroactively changing old experiment meaning.
 
 Direct command-spend summaries should use `direct_command_spend_counts` in parsed or metadata evidence summaries. For #43.2+ `fleet-wide-controlled` runs, include applied command-result counts and direct runtime launch correlation counts when available.
 
+For #43.4 bounded-live measurement summaries, preserve score/rank comparison
+space instead of collapsing the fields into one score. `selectedTargetScore` is
+the launcher/candidate allocation score; `targetAlternativeScores` are
+diagnostic target-level comparable scores; `selectedTargetRank` is target-level
+and ranks the selected target inside `targetAlternativeScores`. Corpus
+readiness counters should separate fully comparable score/rank evidence from
+partial or ambiguous score-space evidence.
+
+Prior in-flight missile pressure must also distinguish exact target counts from
+lower-bound evidence. `selectedTargetPriorMissileInFlightEstimate=0` is fully
+known only when no live missiles were observed or all observed missile target ids
+were recovered. If observed live missiles have unknown targets, the estimate is
+a lower-bound target-attribution-limited value and remains a #43.4 measurement
+blocker.
+
 ## Scenario metadata
 
 Scenario metadata is intentionally coarse. Use fields that are visible and

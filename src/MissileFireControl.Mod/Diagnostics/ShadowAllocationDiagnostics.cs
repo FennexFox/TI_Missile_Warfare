@@ -1469,6 +1469,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "scorePerShot", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
             AppendPair(builder, "selectedTargetScore", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
             AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
+            AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
             AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
             AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
             AppendFleetWideTargetAlternativeEvidence(builder, scope, alternativeFeatures);
@@ -1712,6 +1713,8 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 AppendPair(builder, "selectedTargetRank", "unknown");
                 AppendPair(builder, "selectedTargetRankBasis", "unknown");
+                AppendPair(builder, "selectedTargetRankComparisonSpace", "unknown");
+                AppendPair(builder, "selectedTargetRankLevel", "unknown");
                 AppendPair(builder, "selectedTargetRankConfidence", "alternativeFeaturesUnavailable");
                 AppendPair(builder, "selectedTargetRankTieCount", "unknown");
                 return;
@@ -1719,6 +1722,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
             AppendPair(builder, "selectedTargetRank", alternativeFeatures.SelectedTargetRank);
             AppendPair(builder, "selectedTargetRankBasis", alternativeFeatures.SelectedTargetRankBasis);
+            AppendPair(builder, "selectedTargetRankComparisonSpace", alternativeFeatures.SelectedTargetRankComparisonSpace);
+            AppendPair(builder, "selectedTargetRankLevel", alternativeFeatures.SelectedTargetRankLevel);
             AppendPair(builder, "selectedTargetRankConfidence", alternativeFeatures.SelectedTargetRankConfidence);
             AppendPair(builder, "selectedTargetRankTieCount", alternativeFeatures.SelectedTargetRankTieCount);
         }
@@ -1750,6 +1755,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "targetAlternativeLaunchWindowScores", "unknown");
                 AppendPair(builder, "targetAlternativeScores", "unknown");
                 AppendPair(builder, "targetAlternativeScoreBasis", "unknown");
+                AppendPair(builder, "targetAlternativeScoreSpace", "unknown");
                 return;
             }
 
@@ -1781,6 +1787,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "targetAlternativeLaunchWindowScores", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.LaunchWindowScore)));
             AppendPair(builder, "targetAlternativeScores", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.ScorePerShot)));
             AppendPair(builder, "targetAlternativeScoreBasis", alternativeFeatures == null ? "unknown" : alternativeFeatures.ScoreBasis);
+            AppendPair(builder, "targetAlternativeScoreSpace", alternativeFeatures == null ? "unknown" : alternativeFeatures.ScoreSpace);
         }
 
         private static string CompactFleetWideTargetList(IEnumerable<FleetWideTargetEvidence> targets, Func<FleetWideTargetEvidence, string> selector)
@@ -1958,6 +1965,43 @@ namespace MissileFireControl.Mod.Diagnostics
                     || string.Equals(expectedTargetId, observedTargetName, StringComparison.Ordinal));
         }
 
+        private static string InFlightEstimateBound(LiveMissilePressureEstimate pressure)
+        {
+            if (pressure == null)
+            {
+                return "unknown";
+            }
+
+            if (pressure.TotalObserved == 0)
+            {
+                return pressure.Confidence == "noLiveMissilesObserved" ? "exact" : "unknown";
+            }
+
+            return pressure.UnknownTargetCount == 0 ? "exact" : "lowerBound";
+        }
+
+        private static string InFlightTargetAttribution(LiveMissilePressureEstimate pressure)
+        {
+            if (pressure == null)
+            {
+                return "unknown";
+            }
+
+            if (pressure.TotalObserved == 0)
+            {
+                return pressure.Confidence == "noLiveMissilesObserved" ? "noneObserved" : "unavailable";
+            }
+
+            if (pressure.UnknownTargetCount == 0)
+            {
+                return "fullyRecovered";
+            }
+
+            return pressure.UnknownTargetCount < pressure.TotalObserved
+                ? "partiallyRecovered"
+                : "unavailableForObservedLiveMissiles";
+        }
+
         private static void AppendFleetWideBoundedLiveMeasurementEvidence(
             StringBuilder builder,
             FleetWideBoundedLiveApplyRequest request,
@@ -1985,6 +2029,8 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "selectedTargetPriorMissileInFlightEstimate", pressure == null ? "unknown" : pressure.MatchingTargetCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateSource", pressure == null ? "unknown" : pressure.Source);
             AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateConfidence", pressure == null ? "targetOwnershipSourceUnavailable" : pressure.Confidence);
+            AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateBound", InFlightEstimateBound(pressure));
+            AppendPair(builder, "selectedTargetPriorMissileInFlightTargetAttribution", InFlightTargetAttribution(pressure));
             AppendPair(builder, "selectedTargetPriorMissileInFlightObserved", pressure == null ? "unknown" : pressure.TotalObserved.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "selectedTargetPriorMissileInFlightUnknownTargetCount", pressure == null ? "unknown" : pressure.UnknownTargetCount.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "selectedTargetNewAssignedShots", newAssignedShots.ToString(CultureInfo.InvariantCulture));
@@ -2108,6 +2154,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "scorePerShot", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
                 AppendPair(builder, "selectedTargetScore", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
                 AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
+                AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
                 AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
                 AppendPair(builder, "candidateSource", candidate.CandidateSource);
                 AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
@@ -4929,9 +4976,15 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public string ScoreBasis { get; set; } = "scorePerShot";
 
+            public string ScoreSpace { get; set; } = "diagnosticTargetAlternativeRecomputed";
+
             public string SelectedTargetRank { get; set; } = "unknown";
 
             public string SelectedTargetRankBasis { get; set; } = "unknown";
+
+            public string SelectedTargetRankComparisonSpace { get; set; } = "targetAlternativeScores";
+
+            public string SelectedTargetRankLevel { get; set; } = "target-level";
 
             public string SelectedTargetRankConfidence { get; set; } = "alternativeFeaturesUnavailable";
 

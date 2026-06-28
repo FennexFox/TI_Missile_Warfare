@@ -123,6 +123,15 @@ If they are different spaces, rename, document, or summarize them so rank and sc
 State which score basis selectedTargetRank uses and whether that rank is target-level, launcher-target-level, or candidate-level.
 ```
 
+Follow-up implemented:
+
+```text
+selectedTargetScore is intentionally in launcher/candidate allocation space.
+targetAlternativeScores are diagnostic target-level comparable scores recomputed for the visible-hostile target alternative list.
+selectedTargetRank is target-level and ranks the selected target inside targetAlternativeScores.
+The emitted diagnostics now add selectedTargetScoreSpace, targetAlternativeScoreSpace, selectedTargetRankComparisonSpace, and selectedTargetRankLevel so reviewers cannot compare the candidate score directly to the target alternative score list.
+```
+
 ## Interpretation risk: in-flight missile pressure confidence
 
 The latest log also validates that in-flight pressure fields are emitted, but the confidence remains limited:
@@ -149,6 +158,14 @@ Represent this case as partial/lower-bound evidence rather than a complete estim
 Keep a precise residual blocker for target ownership/source recovery if the estimate cannot attribute live missiles to target ids.
 ```
 
+Follow-up implemented:
+
+```text
+Importer readiness now treats observed live missiles with UnknownTargetCount > 0 as lower-bound target-attribution-limited pressure evidence, even when selectedTargetPriorMissileInFlightEstimate = 0.
+Fully known pressure is counted only when no live missiles are observed or all observed live missile target ids are recovered.
+Rows where all observed live missiles have unknown targets retain the hard blocker: prior in-flight target attribution unavailable for observed live missiles.
+```
+
 ## Current #43.4 judgment after this log
 
 The latest runtime validation proves that #43.4 field emission works in a real Player.log after `a5b9169`.
@@ -167,8 +184,8 @@ exact outcome attribution: still external #47 blocker
 However, #43.4 should not be closed as fully tuning-ready until the remaining interpretation issues are addressed or explicitly narrowed:
 
 ```text
-score/rank comparison-space semantics are ambiguous;
-in-flight pressure estimate is present but target-attribution confidence is low.
+score/rank comparison-space semantics are now explicit for new diagnostics;
+in-flight pressure estimate can still be target-attribution-limited when observed live missile targets are unknown.
 ```
 
-The next implementation work should be small and diagnostic-only: clarify score semantics and adjust readiness/blocker classification for partial in-flight pressure estimates. Do not tune allocator behavior as part of that follow-up.
+The remaining implementation work, if any, should stay small and diagnostic-only: improve live missile target ownership/source recovery when observed missiles cannot be attributed to targets, or document why that evidence must remain a later blocker. Do not tune allocator behavior as part of that follow-up.

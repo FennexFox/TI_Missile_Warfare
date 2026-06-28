@@ -84,8 +84,11 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "launchWindowScore",
     "selectedTargetScore",
     "selectedTargetScoreBasis",
+    "selectedTargetScoreSpace",
     "selectedTargetRank",
     "selectedTargetRankBasis",
+    "selectedTargetRankComparisonSpace",
+    "selectedTargetRankLevel",
     "selectedTargetRankConfidence",
     "selectedTargetRankTieCount",
     "candidateSource",
@@ -110,6 +113,7 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "targetAlternativeLaunchWindowScores",
     "targetAlternativeScores",
     "targetAlternativeScoreBasis",
+    "targetAlternativeScoreSpace",
     "selectedTargetPriorControlledShots",
     "selectedTargetPriorAllocatorShots",
     "selectedTargetPriorVanillaShotsKnown",
@@ -117,6 +121,8 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "selectedTargetPriorMissileInFlightEstimate",
     "selectedTargetPriorMissileInFlightEstimateSource",
     "selectedTargetPriorMissileInFlightEstimateConfidence",
+    "selectedTargetPriorMissileInFlightEstimateBound",
+    "selectedTargetPriorMissileInFlightTargetAttribution",
     "selectedTargetPriorMissileInFlightObserved",
     "selectedTargetPriorMissileInFlightUnknownTargetCount",
     "selectedTargetPriorKnownShotPressure",
@@ -150,6 +156,10 @@ BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "boundedLiveAppliedWithPartialAlternativeFeatures",
     "boundedLiveAppliedWithSelectedTargetRank",
     "boundedLiveAppliedWithPriorInFlightEstimate",
+    "boundedLiveAppliedWithFullyComparableScoreRankEvidence",
+    "boundedLiveAppliedWithPartialOrAmbiguousScoreSpaceEvidence",
+    "boundedLiveAppliedWithKnownPriorInFlightPressure",
+    "boundedLiveAppliedWithLowerBoundPriorInFlightPressure",
     "sameTargetPackagesWithDenominatorOne",
     "sameTargetPackagesWithDenominatorGtOne",
     "sameTargetPackagesWithUnknownDenominator",
@@ -947,6 +957,62 @@ def denominator_bucket(command: dict[str, Any]) -> str:
     return "one"
 
 
+def score_rank_evidence_bucket(command: dict[str, Any]) -> str:
+    """Classify whether score/rank evidence has an unambiguous comparison space."""
+    feature_evidence = str(command.get("targetAlternativeFeatureEvidence", "unknown"))
+    rank_confidence = str(command.get("selectedTargetRankConfidence", "unknown"))
+    selected_space = str(command.get("selectedTargetScoreSpace", "unknown"))
+    alternative_space = str(command.get("targetAlternativeScoreSpace", "unknown"))
+    rank_space = str(command.get("selectedTargetRankComparisonSpace", "unknown"))
+    rank_level = str(command.get("selectedTargetRankLevel", "unknown"))
+
+    if not has_concrete_value(command.get("selectedTargetScore")):
+        return "unavailable"
+    if not has_concrete_value(command.get("targetAlternativeScores")):
+        return "unavailable"
+    if not has_concrete_value(command.get("selectedTargetRank")):
+        return "unavailable"
+    if "unknown" in {selected_space, alternative_space, rank_space, rank_level}:
+        return "ambiguousScoreSpace"
+    if feature_evidence != "allocatorComparableFeatures":
+        return "partialAlternativeFeatures"
+    if rank_confidence != "exact":
+        return "ambiguousRank"
+    if rank_space != "targetAlternativeScores" or rank_level != "target-level":
+        return "ambiguousScoreSpace"
+    return "fullyComparable"
+
+
+def in_flight_pressure_bucket(command: dict[str, Any]) -> str:
+    """Classify pre-command in-flight pressure as exact, lower-bound, or unavailable."""
+    if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
+        return "unavailable"
+
+    bound = str(command.get("selectedTargetPriorMissileInFlightEstimateBound", "unknown"))
+    if bound == "exact":
+        return "fullyKnown"
+    if bound == "lowerBound":
+        return "lowerBound"
+
+    confidence = str(
+        command.get("selectedTargetPriorMissileInFlightEstimateConfidence", "unknown")
+    )
+    observed = optional_int(command.get("selectedTargetPriorMissileInFlightObserved")) or 0
+    unknown_targets = optional_int(
+        command.get("selectedTargetPriorMissileInFlightUnknownTargetCount")
+    ) or 0
+    if observed > 0 and unknown_targets > 0:
+        return "lowerBound"
+    if unknown_targets == 0 and confidence in {
+        "noLiveMissilesObserved",
+        "targetIdsRecoveredFromLiveMissiles",
+    }:
+        return "fullyKnown"
+    if confidence == "partialTargetIdsRecoveredFromLiveMissiles":
+        return "lowerBound"
+    return "unavailable"
+
+
 def bounded_live_tuning_readiness(
     commands: list[dict[str, Any]],
     allocation_summary: dict[str, Any],
@@ -990,14 +1056,19 @@ def bounded_live_tuning_readiness(
         if has_concrete_value(command.get("selectedTargetRank")):
             counters["boundedLiveAppliedWithSelectedTargetRank"] += 1
 
-        in_flight_confidence = str(
-            command.get("selectedTargetPriorMissileInFlightEstimateConfidence", "unknown")
-        )
-        if has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")) and in_flight_confidence not in {
-            "targetOwnershipSourceUnavailable",
-            "unknown",
-        }:
+        score_rank_bucket = score_rank_evidence_bucket(command)
+        if score_rank_bucket == "fullyComparable":
+            counters["boundedLiveAppliedWithFullyComparableScoreRankEvidence"] += 1
+        elif score_rank_bucket != "unavailable":
+            counters["boundedLiveAppliedWithPartialOrAmbiguousScoreSpaceEvidence"] += 1
+
+        in_flight_bucket = in_flight_pressure_bucket(command)
+        if in_flight_bucket in {"fullyKnown", "lowerBound"}:
             counters["boundedLiveAppliedWithPriorInFlightEstimate"] += 1
+        if in_flight_bucket == "fullyKnown":
+            counters["boundedLiveAppliedWithKnownPriorInFlightPressure"] += 1
+        elif in_flight_bucket == "lowerBound":
+            counters["boundedLiveAppliedWithLowerBoundPriorInFlightPressure"] += 1
 
         for required in (
             "experimentId",
@@ -1024,6 +1095,9 @@ def bounded_live_tuning_readiness(
             command_hard_blocked = True
         if not has_concrete_value(command.get("selectedTargetScore")):
             hard_blockers["selected target score unavailable"] += 1
+            command_hard_blocked = True
+        elif score_rank_bucket == "ambiguousScoreSpace":
+            hard_blockers["score/rank comparison-space semantics ambiguous"] += 1
             command_hard_blocked = True
         if not has_concrete_value(command.get("selectedTargetRank")):
             hard_blockers["selected target rank unavailable because scores are unavailable"] += 1
@@ -1055,18 +1129,24 @@ def bounded_live_tuning_readiness(
         if not has_concrete_value(command.get("selectedTargetPriorKnownShotPressure")):
             hard_blockers["prior known target shot pressure unavailable"] += 1
             command_hard_blocked = True
-        if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
+        if in_flight_bucket == "unavailable":
             hard_blockers[
                 "prior in-flight estimate unavailable because target ownership/source cannot be recovered"
             ] += 1
             command_hard_blocked = True
-        elif in_flight_confidence in {"targetOwnershipSourceUnavailable", "unknown"}:
-            hard_blockers[
-                "prior in-flight estimate unavailable because target ownership/source cannot be recovered"
-            ] += 1
-            command_hard_blocked = True
-        elif in_flight_confidence == "partialTargetIdsRecoveredFromLiveMissiles":
-            hard_blockers["prior in-flight estimate partial because some live missile targets are unknown"] += 1
+        elif in_flight_bucket == "lowerBound":
+            observed = optional_int(command.get("selectedTargetPriorMissileInFlightObserved")) or 0
+            unknown_targets = optional_int(
+                command.get("selectedTargetPriorMissileInFlightUnknownTargetCount")
+            ) or 0
+            if observed > 0 and unknown_targets >= observed:
+                hard_blockers[
+                    "prior in-flight target attribution unavailable for observed live missiles"
+                ] += 1
+            else:
+                hard_blockers[
+                    "prior in-flight estimate lower-bound because some live missile targets are unknown"
+                ] += 1
             command_hard_blocked = True
         if command.get("targetOutcomeAttribution") in {None, "", "unknown", "evidenceLimited"}:
             external_blockers["exact outcome attribution pending #47"] += 1

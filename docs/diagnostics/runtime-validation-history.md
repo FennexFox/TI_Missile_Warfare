@@ -1091,11 +1091,23 @@ coverage now demonstrates the intended fitting surface:
 ```text
 targetAlternativeFeatureEvidence="allocatorComparableFeatures"
 targetAlternativeScores="3.42|2.1"
+targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"
+selectedTargetScoreSpace="launcherCandidateAllocation"
 selectedTargetRank="1"
+selectedTargetRankComparisonSpace="targetAlternativeScores"
+selectedTargetRankLevel="target-level"
 selectedTargetRankConfidence="exact"
 selectedTargetPriorMissileInFlightEstimate="0"
 selectedTargetPriorMissileInFlightEstimateConfidence="noLiveMissilesObserved"
+selectedTargetPriorMissileInFlightEstimateBound="exact"
 ```
+
+The score spaces are intentionally different: `selectedTargetScore` is the
+launcher/candidate allocation score, while `targetAlternativeScores` are the
+target-level diagnostic comparison list used by `selectedTargetRank`. In-flight
+pressure is fully known only for no-live-missile or fully attributed live-missile
+evidence; observed live missiles with unknown target ids are lower-bound
+target-attribution-limited evidence.
 
 Exact outcome attribution remains an external #47 handoff. These diagnostics do
 not change allocator scoring, command caps, vanilla salvo behavior, or outcome
