@@ -14,9 +14,16 @@ Runtime bounded-live candidate/result rows now preserve:
 - real same-cycle visible-hostile target denominator fields from
   `FleetWideScopeEvidence`;
 - compact bounded target alternative identity lists with explicit truncation;
+- compact parallel target alternative feature lists when diagnostic-only
+  allocator scoring can be reconstructed for visible hostile alternatives;
 - allocator decision fields available from `TargetAllocation`;
 - selected target `scorePerShot` as `selectedTargetScore` with
   `selectedTargetScoreBasis="scorePerShot"`;
+- selected target rank, rank basis, rank confidence, and tie count when
+  comparable alternative scores are available;
+- best-effort pre-command target-level in-flight missile pressure estimates
+  with source, confidence, observed live missile count, and unknown-target
+  count;
 - conservative saturation/kill overcommit ratios based on controlled assigned
   shots already applied in the bounded-live experiment;
 - explicit hard measurement blockers separated from external #47/#48 blockers.
@@ -32,9 +39,11 @@ The implementation intentionally separates blockers:
 Hard #43.4 measurement blockers that should not be treated as terminal closure
 state:
 
-- alternative target comparable score/features;
-- prior allocator and in-flight missile shot pressure when unavailable;
-- cap blocked-vs-applied score comparison.
+- alternative target comparable score/features when unavailable or partial;
+- selected target rank when scores are unavailable, partial, or tied;
+- prior allocator and in-flight missile shot pressure when unavailable or
+  target ownership is only partially recovered;
+- cap blocked-vs-applied score comparison when comparison evidence is absent.
 
 External blockers that may remain explicit handoffs:
 
@@ -57,5 +66,27 @@ python tools\summarize_experiment_corpus.py --registry artifacts\experiments\iss
 python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment_corpus\registry.jsonl --output artifacts\fitting\corpus-summary-fixture
 git diff --check
 ```
+
+Latest uploaded `Player.log` runtime review also confirmed that the new #43.4 diagnostic fields are present in a real bounded-live run after commit `a5b9169`:
+
+```text
+experimentId: fleetwide-bounded-live-20260628T030126702Z-1
+applied bounded-live commands: 3
+directRuntimeContext launch rows: 18
+per-ship cap skips: 2
+targetAlternativeDenominator: 5
+targetAlternativeFeatureEvidence: allocatorComparableFeatures
+selectedTargetRank: 5
+selectedTargetRankBasis: scorePerShot
+selectedTargetRankConfidence: exact
+selectedTargetRankTieCount: 1
+selectedTargetPriorMissileInFlightEstimateSource: GameControl.spaceCombat.liveMissiles
+selectedTargetPriorMissileInFlightEstimateConfidence: targetOwnershipSourceUnavailable
+```
+
+This supersedes the earlier implementation-note caveat that the current `Player.log`
+predated the new runtime fields. The latest runtime log now validates field
+emission, but it also leaves interpretation risks documented in
+`02-latest-playerlog-review.md`.
 
 Generated artifacts remain under ignored `artifacts/` paths.

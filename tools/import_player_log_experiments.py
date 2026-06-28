@@ -85,6 +85,9 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "selectedTargetScore",
     "selectedTargetScoreBasis",
     "selectedTargetRank",
+    "selectedTargetRankBasis",
+    "selectedTargetRankConfidence",
+    "selectedTargetRankTieCount",
     "candidateSource",
     "allocatorEvidence",
     "visibleTargetSource",
@@ -98,11 +101,24 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "targetAlternativeTeams",
     "targetAlternativeCountTruncated",
     "targetAlternativeFeatureEvidence",
+    "targetAlternativeFeatureCount",
+    "targetAlternativeFeatureMissingCount",
+    "targetAlternativeValues",
+    "targetAlternativePdScores",
+    "targetAlternativeSaturationSizes",
+    "targetAlternativeKillSizes",
+    "targetAlternativeLaunchWindowScores",
+    "targetAlternativeScores",
+    "targetAlternativeScoreBasis",
     "selectedTargetPriorControlledShots",
     "selectedTargetPriorAllocatorShots",
     "selectedTargetPriorVanillaShotsKnown",
     "selectedTargetPriorVanillaShotsNearWindow",
     "selectedTargetPriorMissileInFlightEstimate",
+    "selectedTargetPriorMissileInFlightEstimateSource",
+    "selectedTargetPriorMissileInFlightEstimateConfidence",
+    "selectedTargetPriorMissileInFlightObserved",
+    "selectedTargetPriorMissileInFlightUnknownTargetCount",
     "selectedTargetPriorKnownShotPressure",
     "selectedTargetNewAssignedShots",
     "selectedTargetCumulativeAssignedShots",
@@ -130,6 +146,10 @@ BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "boundedLiveAppliedWithTargetAlternativeDenominator",
     "boundedLiveAppliedWithTargetAlternativeDenominatorGtOne",
     "boundedLiveAppliedWithUnknownTargetAlternativeDenominator",
+    "boundedLiveAppliedWithComparableAlternativeFeatures",
+    "boundedLiveAppliedWithPartialAlternativeFeatures",
+    "boundedLiveAppliedWithSelectedTargetRank",
+    "boundedLiveAppliedWithPriorInFlightEstimate",
     "sameTargetPackagesWithDenominatorOne",
     "sameTargetPackagesWithDenominatorGtOne",
     "sameTargetPackagesWithUnknownDenominator",
@@ -865,7 +885,7 @@ def applied_commands(group: ExperimentGroup, direct_by_command: Counter[str]) ->
                     command[key] = row.battle_segment_id or "unknown"
                 elif key == "cycleId":
                     command[key] = int_value(row.pairs.get(key), default=-1)
-                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "selectedTargetPriorControlledShots", "selectedTargetPriorVanillaShotsNearWindow", "selectedTargetPriorKnownShotPressure", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize", "globalCapRemaining", "perShipCapRemaining", "perTargetCapRemaining"}:
+                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "targetAlternativeFeatureCount", "targetAlternativeFeatureMissingCount", "selectedTargetRank", "selectedTargetRankTieCount", "selectedTargetPriorControlledShots", "selectedTargetPriorVanillaShotsNearWindow", "selectedTargetPriorMissileInFlightEstimate", "selectedTargetPriorMissileInFlightObserved", "selectedTargetPriorMissileInFlightUnknownTargetCount", "selectedTargetPriorKnownShotPressure", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize", "globalCapRemaining", "perShipCapRemaining", "perTargetCapRemaining"}:
                     value = optional_int(row.pairs.get(key))
                     command[key] = value if value is not None else "unknown"
                 else:
@@ -961,6 +981,24 @@ def bounded_live_tuning_readiness(
             if denominator > 1:
                 counters["boundedLiveAppliedWithTargetAlternativeDenominatorGtOne"] += 1
 
+        feature_evidence = str(command.get("targetAlternativeFeatureEvidence", "unknown"))
+        if feature_evidence == "allocatorComparableFeatures":
+            counters["boundedLiveAppliedWithComparableAlternativeFeatures"] += 1
+        elif feature_evidence == "partialAllocatorComparableFeatures":
+            counters["boundedLiveAppliedWithPartialAlternativeFeatures"] += 1
+
+        if has_concrete_value(command.get("selectedTargetRank")):
+            counters["boundedLiveAppliedWithSelectedTargetRank"] += 1
+
+        in_flight_confidence = str(
+            command.get("selectedTargetPriorMissileInFlightEstimateConfidence", "unknown")
+        )
+        if has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")) and in_flight_confidence not in {
+            "targetOwnershipSourceUnavailable",
+            "unknown",
+        }:
+            counters["boundedLiveAppliedWithPriorInFlightEstimate"] += 1
+
         for required in (
             "experimentId",
             "battleSegmentId",
@@ -984,8 +1022,17 @@ def bounded_live_tuning_readiness(
         if not has_concrete_value(command.get("pdScore")):
             hard_blockers["missing pdScore"] += 1
             command_hard_blocked = True
-        if not has_concrete_value(command.get("selectedTargetScore")) and not has_concrete_value(command.get("selectedTargetRank")):
-            hard_blockers["selected target score/rank unknown"] += 1
+        if not has_concrete_value(command.get("selectedTargetScore")):
+            hard_blockers["selected target score unavailable"] += 1
+            command_hard_blocked = True
+        if not has_concrete_value(command.get("selectedTargetRank")):
+            hard_blockers["selected target rank unavailable because scores are unavailable"] += 1
+            command_hard_blocked = True
+        elif command.get("selectedTargetRankConfidence") == "tied":
+            hard_blockers["selected target rank unavailable because of ties"] += 1
+            command_hard_blocked = True
+        elif command.get("selectedTargetRankConfidence") == "partialAlternativeFeatures":
+            hard_blockers["selected target rank based on partial alternative features"] += 1
             command_hard_blocked = True
         if not has_concrete_value(command.get("saturationSize")) and not has_concrete_value(command.get("killSize")):
             hard_blockers["saturation/kill-size evidence unknown"] += 1
@@ -996,7 +1043,10 @@ def bounded_live_tuning_readiness(
         if optional_int(command.get("targetAlternativeCountTruncated")) not in (None, 0):
             hard_blockers["target alternative identity list truncated"] += 1
             command_hard_blocked = True
-        if command.get("targetAlternativeFeatureEvidence") != "allocatorComparableFeatures":
+        if feature_evidence == "partialAllocatorComparableFeatures":
+            hard_blockers["alternative target comparable features partially available"] += 1
+            command_hard_blocked = True
+        elif feature_evidence != "allocatorComparableFeatures":
             hard_blockers["alternative target comparable score/features unavailable"] += 1
             command_hard_blocked = True
         if command.get("selectedTargetPriorVanillaShotsKnown") != "True":
@@ -1006,7 +1056,17 @@ def bounded_live_tuning_readiness(
             hard_blockers["prior known target shot pressure unavailable"] += 1
             command_hard_blocked = True
         if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
-            hard_blockers["prior in-flight missile pressure estimate unavailable"] += 1
+            hard_blockers[
+                "prior in-flight estimate unavailable because target ownership/source cannot be recovered"
+            ] += 1
+            command_hard_blocked = True
+        elif in_flight_confidence in {"targetOwnershipSourceUnavailable", "unknown"}:
+            hard_blockers[
+                "prior in-flight estimate unavailable because target ownership/source cannot be recovered"
+            ] += 1
+            command_hard_blocked = True
+        elif in_flight_confidence == "partialTargetIdsRecoveredFromLiveMissiles":
+            hard_blockers["prior in-flight estimate partial because some live missile targets are unknown"] += 1
             command_hard_blocked = True
         if command.get("targetOutcomeAttribution") in {None, "", "unknown", "evidenceLimited"}:
             external_blockers["exact outcome attribution pending #47"] += 1

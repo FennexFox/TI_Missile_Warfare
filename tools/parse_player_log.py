@@ -204,6 +204,9 @@ class AllocationBattleSummary:
     fleet_wide_bounded_live_correlation_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_denominator_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_evidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_target_alternative_feature_evidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_selected_target_rank_confidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_prior_in_flight_confidence_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_target_alternative_truncated_records: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one: int = 0
@@ -815,6 +818,9 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_bounded_live_correlation_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_denominator_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_evidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_target_alternative_feature_evidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_selected_target_rank_confidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_prior_in_flight_confidence_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_target_alternative_truncated_records = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one = 0
@@ -1294,6 +1300,23 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     evidence = pairs.get("targetAlternativeEvidence")
                     if evidence:
                         fleet_wide_bounded_live_target_alternative_evidence_counts[evidence] += 1
+                    feature_evidence = pairs.get("targetAlternativeFeatureEvidence")
+                    if feature_evidence:
+                        fleet_wide_bounded_live_target_alternative_feature_evidence_counts[
+                            feature_evidence
+                        ] += 1
+                    rank_confidence = pairs.get("selectedTargetRankConfidence")
+                    if rank_confidence:
+                        fleet_wide_bounded_live_selected_target_rank_confidence_counts[
+                            rank_confidence
+                        ] += 1
+                    in_flight_confidence = pairs.get(
+                        "selectedTargetPriorMissileInFlightEstimateConfidence"
+                    )
+                    if in_flight_confidence:
+                        fleet_wide_bounded_live_prior_in_flight_confidence_counts[
+                            in_flight_confidence
+                        ] += 1
                     if (try_parse_int(pairs.get("targetAlternativeCountTruncated")) or 0) > 0:
                         fleet_wide_bounded_live_target_alternative_truncated_records += 1
                     fleet_wide_bounded_live_applied_commands += (
@@ -1891,6 +1914,15 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.fleet_wide_bounded_live_target_alternative_evidence_counts = dict(
         sorted(fleet_wide_bounded_live_target_alternative_evidence_counts.items())
     )
+    allocation_summary.fleet_wide_bounded_live_target_alternative_feature_evidence_counts = dict(
+        sorted(fleet_wide_bounded_live_target_alternative_feature_evidence_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_selected_target_rank_confidence_counts = dict(
+        sorted(fleet_wide_bounded_live_selected_target_rank_confidence_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_prior_in_flight_confidence_counts = dict(
+        sorted(fleet_wide_bounded_live_prior_in_flight_confidence_counts.items())
+    )
     allocation_summary.fleet_wide_bounded_live_target_alternative_truncated_records = (
         fleet_wide_bounded_live_target_alternative_truncated_records
     )
@@ -2355,6 +2387,27 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
             print(
                 "- bounded fleet-wide live target alternative evidence: "
                 + format_count_dict(summary.fleet_wide_bounded_live_target_alternative_evidence_counts)
+            )
+        if summary.fleet_wide_bounded_live_target_alternative_feature_evidence_counts:
+            print(
+                "- bounded fleet-wide live target alternative feature evidence: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_target_alternative_feature_evidence_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_selected_target_rank_confidence_counts:
+            print(
+                "- bounded fleet-wide live selected target rank confidence: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_selected_target_rank_confidence_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_prior_in_flight_confidence_counts:
+            print(
+                "- bounded fleet-wide live prior in-flight confidence: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_prior_in_flight_confidence_counts
+                )
             )
         if summary.fleet_wide_bounded_live_target_alternative_truncated_records:
             print(

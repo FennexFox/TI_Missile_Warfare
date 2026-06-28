@@ -1063,3 +1063,40 @@ allocation rows span multiple detected battle segments: 1
 ```
 
 This expanded corpus is sufficient to say that the additional bounded-live evidence collection prerequisite for #43.3 has been met locally. It still does not justify broad allocator tuning without a repeated allocator-quality failure pattern or better outcome/spillover measurement.
+
+## Issue #43.4 bounded-live tuning-readiness measurement
+
+Runtime validation on 2026-06-28 showed a bounded-live run with a real
+same-cycle target alternative denominator:
+
+```text
+experimentId="fleetwide-bounded-live-20260628T023454808Z-1"
+targetAlternativeDenominator="5"
+targetAlternativeNames="Volcano|Kiyoshimo|Hellhound|Gorgon|Chimera"
+selectedTargetScore="3.677"
+selectedTargetScoreBasis="scorePerShot"
+selectedTargetPriorKnownShotPressure: 0 -> 6 -> 12
+```
+
+That run established that same-target concentration can be observed while
+multiple visible hostile target alternatives exist. It still left two hard
+measurement blockers: allocator-comparable alternative target features and
+target-level prior in-flight missile pressure.
+
+The follow-up #43.4 diagnostics add compact parallel alternative feature lists,
+selected-target rank evidence, and a best-effort pre-command in-flight missile
+pressure estimate with explicit confidence/source fields. Synthetic fixture
+coverage now demonstrates the intended fitting surface:
+
+```text
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeScores="3.42|2.1"
+selectedTargetRank="1"
+selectedTargetRankConfidence="exact"
+selectedTargetPriorMissileInFlightEstimate="0"
+selectedTargetPriorMissileInFlightEstimateConfidence="noLiveMissilesObserved"
+```
+
+Exact outcome attribution remains an external #47 handoff. These diagnostics do
+not change allocator scoring, command caps, vanilla salvo behavior, or outcome
+hooks.

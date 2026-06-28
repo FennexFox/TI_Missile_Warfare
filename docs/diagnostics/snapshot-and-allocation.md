@@ -694,6 +694,14 @@ targetAlternativeIds="..."
 targetAlternativeNames="..."
 targetAlternativeTeams="..."
 targetAlternativeCountTruncated="0"
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeValues="..."
+targetAlternativePdScores="..."
+targetAlternativeSaturationSizes="..."
+targetAlternativeKillSizes="..."
+targetAlternativeLaunchWindowScores="..."
+targetAlternativeScores="..."
+targetAlternativeScoreBasis="scorePerShot"
 ```
 
 These fields should be treated as the denominator for later target-over-concentration review. Do not use the older cycle-level `targetCount` field as that denominator; it only records whether the current snapshot has a target object.
@@ -701,26 +709,42 @@ The target alternative identity lists are compact, bounded lists of visible
 hostile targets from the same scope snapshot. If
 `targetAlternativeCountTruncated` is nonzero, target identity comparison is
 evidence-limited even when the denominator count is present.
+When diagnostic-only allocator feature extraction succeeds for all emitted
+visible-hostile alternatives, `targetAlternativeFeatureEvidence` is
+`allocatorComparableFeatures` and the parallel compact feature lists use the
+same ordering as `targetAlternativeIds`. Partial or missing feature extraction
+is reported explicitly and remains a hard #43.4 measurement blocker.
 
 Bounded-live candidate/result rows also preserve allocator decision and
 measurement-readiness fields when they are available:
 
 ```text
 targetValue="..." pdScore="..." saturationSize="..." killSize="..." launchWindowScore="..." scorePerShot="..."
-selectedTargetScore="unknown" selectedTargetRank="unknown"
+selectedTargetScore="..." selectedTargetRank="..."
+selectedTargetRankBasis="scorePerShot" selectedTargetRankConfidence="exact"
 selectedTargetPriorControlledShots="..." selectedTargetCumulativeAssignedShots="..."
+selectedTargetPriorMissileInFlightEstimate="..."
+selectedTargetPriorMissileInFlightEstimateConfidence="..."
 selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
 targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
 ```
 
 `selectedTargetScore` uses the allocator's current `scorePerShot` value with
 `selectedTargetScoreBasis="scorePerShot"` when that allocation evidence is
-available. `selectedTargetRank` remains `unknown` until a comparable
-multi-target allocator rank is emitted.
+available. `selectedTargetRank` is derived only when comparable alternative
+scores are available; ties and partial feature coverage are represented by
+`selectedTargetRankConfidence`.
+
+`selectedTargetPriorMissileInFlightEstimate` is a best-effort pre-command
+target-level live missile count from `GameControl.spaceCombat.liveMissiles`.
+The estimate is not hit/damage/kill attribution. Its confidence and unknown
+target count fields define whether target ownership was recovered, partially
+recovered, unavailable, or no live missiles were observed.
 
 The corpus importer separates hard #43.4 measurement blockers from external
 handoff blockers. Hard blockers include missing selected/alternative comparable
-score features, prior target pressure, and cap blocked-vs-applied comparison.
+score features, ambiguous selected-target rank, prior target pressure, and cap
+blocked-vs-applied comparison when comparison evidence is absent.
 External blockers include exact hit/damage/kill attribution pending #47 and
 vanilla salvo suppression / selected-ship distribution pending #48. Outcome
 fields should not be read as hit, damage, kill, or vanilla-salvo suppression
