@@ -146,6 +146,23 @@ BOUNDED_LIVE_APPLIED_FIELD_KEYS = (
     "appliedCandidateScore",
     "wouldHaveAppliedRankWithoutCap",
     "blockedCandidateWasBetterThanApplied",
+    "boundedLivePressureDecision",
+    "boundedLivePressureDecisionReason",
+    "boundedLivePressureReference",
+    "boundedLivePressureThreshold",
+    "boundedLiveDecisionPressure",
+    "boundedLiveDecisionPressureAtOrAboveThreshold",
+    "boundedLiveDecisionPriorControlledShots",
+    "boundedLiveDecisionExactInFlightShots",
+    "boundedLiveDecisionLowerBoundInFlightShots",
+    "boundedLiveDecisionInFlightEvidenceQuality",
+    "boundedLiveOriginalTargetId",
+    "boundedLiveOriginalTarget",
+    "boundedLiveRetargetedToTargetId",
+    "boundedLiveRetargetedToTarget",
+    "boundedLiveSelectedTargetScore",
+    "boundedLiveRetargetedTargetScore",
+    "boundedLiveDecisionTargetAlternativeDenominator",
 )
 BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "boundedLiveAppliedResults",
@@ -163,6 +180,12 @@ BOUNDED_LIVE_TUNING_READINESS_COUNTER_KEYS = (
     "sameTargetPackagesWithDenominatorOne",
     "sameTargetPackagesWithDenominatorGtOne",
     "sameTargetPackagesWithUnknownDenominator",
+    "boundedLiveRetainedSelectedTargetDecisionsAboveThreshold",
+    "boundedLiveRetargetedDecisionsAboveThreshold",
+    "boundedLivePressureDecisionExactInFlightRows",
+    "boundedLivePressureDecisionLowerBoundInFlightRows",
+    "boundedLivePressureDecisionUnknownInFlightRows",
+    "boundedLiveLowerBoundPressureDiagnosticOnlyRows",
     "potentialOverConcentrationCandidates",
     "potentialUnderSaturationCandidates",
     "potentialCapMisallocationCandidates",
@@ -812,6 +835,15 @@ def summarize_allocation(group: ExperimentGroup) -> dict[str, Any]:
                 "fleet_wide_bounded_live_cap_skip_missing_blocked_applied_comparison": (
                     len(cap_skip_rows) - cap_skip_with_comparison
                 ),
+                "fleet_wide_bounded_live_pressure_decision_counts": counter_dict(
+                    Counter(row.pairs.get("boundedLivePressureDecision", "unknown") for row in bounded_rows)
+                ),
+                "fleet_wide_bounded_live_pressure_decision_reason_counts": counter_dict(
+                    Counter(row.pairs.get("boundedLivePressureDecisionReason", "unknown") for row in bounded_rows)
+                ),
+                "fleet_wide_bounded_live_pressure_evidence_counts": counter_dict(
+                    Counter(row.pairs.get("boundedLiveDecisionInFlightEvidenceQuality", "unknown") for row in bounded_rows)
+                ),
                 "fleet_wide_bounded_live_selection_relation_counts": counter_dict(
                     Counter(
                         row.pairs.get("launcherSelectionRelation", "unknown")
@@ -895,7 +927,7 @@ def applied_commands(group: ExperimentGroup, direct_by_command: Counter[str]) ->
                     command[key] = row.battle_segment_id or "unknown"
                 elif key == "cycleId":
                     command[key] = int_value(row.pairs.get(key), default=-1)
-                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "targetAlternativeFeatureCount", "targetAlternativeFeatureMissingCount", "selectedTargetRank", "selectedTargetRankTieCount", "selectedTargetPriorControlledShots", "selectedTargetPriorVanillaShotsNearWindow", "selectedTargetPriorMissileInFlightEstimate", "selectedTargetPriorMissileInFlightObserved", "selectedTargetPriorMissileInFlightUnknownTargetCount", "selectedTargetPriorKnownShotPressure", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize", "globalCapRemaining", "perShipCapRemaining", "perTargetCapRemaining"}:
+                elif key in {"assignedShots", "ammoGateBudgetShots", "targetAlternativeDenominator", "visibleHostileTargets", "visibleTargetSourceCount", "targetAlternativeCountTruncated", "targetAlternativeFeatureCount", "targetAlternativeFeatureMissingCount", "selectedTargetRank", "selectedTargetRankTieCount", "selectedTargetPriorControlledShots", "selectedTargetPriorVanillaShotsNearWindow", "selectedTargetPriorMissileInFlightEstimate", "selectedTargetPriorMissileInFlightObserved", "selectedTargetPriorMissileInFlightUnknownTargetCount", "selectedTargetPriorKnownShotPressure", "selectedTargetNewAssignedShots", "selectedTargetCumulativeAssignedShots", "selectedTargetSaturationSize", "selectedTargetKillSize", "globalCapRemaining", "perShipCapRemaining", "perTargetCapRemaining", "boundedLivePressureThreshold", "boundedLiveDecisionPressure", "boundedLiveDecisionPriorControlledShots", "boundedLiveDecisionExactInFlightShots", "boundedLiveDecisionLowerBoundInFlightShots", "boundedLiveDecisionTargetAlternativeDenominator"}:
                     value = optional_int(row.pairs.get(key))
                     command[key] = value if value is not None else "unknown"
                 else:
@@ -1069,6 +1101,28 @@ def bounded_live_tuning_readiness(
             counters["boundedLiveAppliedWithKnownPriorInFlightPressure"] += 1
         elif in_flight_bucket == "lowerBound":
             counters["boundedLiveAppliedWithLowerBoundPriorInFlightPressure"] += 1
+
+        pressure_decision = str(command.get("boundedLivePressureDecision", "unknown"))
+        pressure_above_threshold = (
+            str(command.get("boundedLiveDecisionPressureAtOrAboveThreshold", "unknown")).lower()
+            == "true"
+        )
+        if pressure_above_threshold:
+            if pressure_decision == "retargeted":
+                counters["boundedLiveRetargetedDecisionsAboveThreshold"] += 1
+            elif pressure_decision == "retained":
+                counters["boundedLiveRetainedSelectedTargetDecisionsAboveThreshold"] += 1
+
+        decision_in_flight_quality = str(
+            command.get("boundedLiveDecisionInFlightEvidenceQuality", "unknown")
+        )
+        if decision_in_flight_quality == "exact":
+            counters["boundedLivePressureDecisionExactInFlightRows"] += 1
+        elif decision_in_flight_quality == "lowerBound":
+            counters["boundedLivePressureDecisionLowerBoundInFlightRows"] += 1
+            counters["boundedLiveLowerBoundPressureDiagnosticOnlyRows"] += 1
+        else:
+            counters["boundedLivePressureDecisionUnknownInFlightRows"] += 1
 
         for required in (
             "experimentId",

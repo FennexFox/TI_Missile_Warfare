@@ -213,6 +213,11 @@ class AllocationBattleSummary:
     fleet_wide_bounded_live_prior_in_flight_confidence_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_prior_in_flight_bound_counts: dict[str, int] = field(default_factory=dict)
     fleet_wide_bounded_live_prior_in_flight_target_attribution_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_pressure_decision_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_pressure_decision_reason_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_pressure_evidence_counts: dict[str, int] = field(default_factory=dict)
+    fleet_wide_bounded_live_retained_above_threshold: int = 0
+    fleet_wide_bounded_live_retargeted_above_threshold: int = 0
     fleet_wide_bounded_live_target_alternative_truncated_records: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator: int = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one: int = 0
@@ -833,6 +838,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     fleet_wide_bounded_live_prior_in_flight_confidence_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_prior_in_flight_bound_counts: Counter[str] = Counter()
     fleet_wide_bounded_live_prior_in_flight_target_attribution_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_pressure_decision_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_pressure_decision_reason_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_pressure_evidence_counts: Counter[str] = Counter()
+    fleet_wide_bounded_live_retained_above_threshold = 0
+    fleet_wide_bounded_live_retargeted_above_threshold = 0
     fleet_wide_bounded_live_target_alternative_truncated_records = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator = 0
     fleet_wide_bounded_live_applied_with_target_alternative_denominator_gt_one = 0
@@ -1361,6 +1371,31 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                         fleet_wide_bounded_live_prior_in_flight_target_attribution_counts[
                             in_flight_attribution
                         ] += 1
+                    pressure_decision = pairs.get("boundedLivePressureDecision")
+                    if pressure_decision:
+                        fleet_wide_bounded_live_pressure_decision_counts[
+                            pressure_decision
+                        ] += 1
+                    pressure_reason = pairs.get("boundedLivePressureDecisionReason")
+                    if pressure_reason:
+                        fleet_wide_bounded_live_pressure_decision_reason_counts[
+                            pressure_reason
+                        ] += 1
+                    pressure_evidence = pairs.get("boundedLiveDecisionInFlightEvidenceQuality")
+                    if pressure_evidence:
+                        fleet_wide_bounded_live_pressure_evidence_counts[
+                            pressure_evidence
+                        ] += 1
+                    pressure_above_threshold = (
+                        pairs.get("boundedLiveDecisionPressureAtOrAboveThreshold", "")
+                        .strip()
+                        .lower()
+                    )
+                    if pressure_above_threshold == "true":
+                        if pressure_decision == "retargeted":
+                            fleet_wide_bounded_live_retargeted_above_threshold += 1
+                        elif pressure_decision == "retained":
+                            fleet_wide_bounded_live_retained_above_threshold += 1
                     if (try_parse_int(pairs.get("targetAlternativeCountTruncated")) or 0) > 0:
                         fleet_wide_bounded_live_target_alternative_truncated_records += 1
                     fleet_wide_bounded_live_applied_commands += (
@@ -1985,6 +2020,21 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     allocation_summary.fleet_wide_bounded_live_prior_in_flight_target_attribution_counts = dict(
         sorted(fleet_wide_bounded_live_prior_in_flight_target_attribution_counts.items())
     )
+    allocation_summary.fleet_wide_bounded_live_pressure_decision_counts = dict(
+        sorted(fleet_wide_bounded_live_pressure_decision_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_pressure_decision_reason_counts = dict(
+        sorted(fleet_wide_bounded_live_pressure_decision_reason_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_pressure_evidence_counts = dict(
+        sorted(fleet_wide_bounded_live_pressure_evidence_counts.items())
+    )
+    allocation_summary.fleet_wide_bounded_live_retained_above_threshold = (
+        fleet_wide_bounded_live_retained_above_threshold
+    )
+    allocation_summary.fleet_wide_bounded_live_retargeted_above_threshold = (
+        fleet_wide_bounded_live_retargeted_above_threshold
+    )
     allocation_summary.fleet_wide_bounded_live_target_alternative_truncated_records = (
         fleet_wide_bounded_live_target_alternative_truncated_records
     )
@@ -2512,6 +2562,32 @@ def print_allocation_battle_summary(summary: AllocationBattleSummary) -> None:
                 + format_count_dict(
                     summary.fleet_wide_bounded_live_prior_in_flight_target_attribution_counts
                 )
+            )
+        if summary.fleet_wide_bounded_live_pressure_decision_counts:
+            print(
+                "- bounded fleet-wide live pressure decisions: "
+                + format_count_dict(summary.fleet_wide_bounded_live_pressure_decision_counts)
+            )
+        if summary.fleet_wide_bounded_live_pressure_decision_reason_counts:
+            print(
+                "- bounded fleet-wide live pressure decision reasons: "
+                + format_count_dict(
+                    summary.fleet_wide_bounded_live_pressure_decision_reason_counts
+                )
+            )
+        if summary.fleet_wide_bounded_live_pressure_evidence_counts:
+            print(
+                "- bounded fleet-wide live pressure evidence: "
+                + format_count_dict(summary.fleet_wide_bounded_live_pressure_evidence_counts)
+            )
+        if (
+            summary.fleet_wide_bounded_live_retained_above_threshold
+            or summary.fleet_wide_bounded_live_retargeted_above_threshold
+        ):
+            print(
+                "- bounded fleet-wide live pressure decisions above threshold: "
+                f"{summary.fleet_wide_bounded_live_retained_above_threshold} retained, "
+                f"{summary.fleet_wide_bounded_live_retargeted_above_threshold} retargeted"
             )
         if summary.fleet_wide_bounded_live_target_alternative_truncated_records:
             print(

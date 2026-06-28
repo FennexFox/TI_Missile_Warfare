@@ -804,6 +804,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AllocatorLauncherTeamId = launcher.TeamId,
                 TargetTeamId = target.TeamId,
                 CommandLauncherRuntimeObject = launcher.RuntimeShip,
+                CommandTargetRuntimeObject = target.RuntimeShip,
                 WeaponId = snapshot.Inventory == null ? "unknown" : snapshot.Inventory.WeaponId,
                 MissileProfileId = snapshot.Missile == null ? "unknown" : snapshot.Missile.Id,
                 TargetId = target.Id,
@@ -1253,9 +1254,10 @@ namespace MissileFireControl.Mod.Diagnostics
             }
             else
             {
-                object targetRuntime = snapshot != null && snapshot.Target != null && string.Equals(snapshot.Target.Id, candidate.TargetId, StringComparison.Ordinal)
-                    ? snapshot.TargetRuntimeObject
-                    : null;
+                object targetRuntime = candidate.CommandTargetRuntimeObject
+                    ?? (snapshot != null && snapshot.Target != null && string.Equals(snapshot.Target.Id, candidate.TargetId, StringComparison.Ordinal)
+                        ? snapshot.TargetRuntimeObject
+                        : null);
 
                 applyResult = TryApplyFleetWideLiveCommand(request.ExperimentId, candidate, targetRuntime, commandResultId);
             }
@@ -1329,6 +1331,8 @@ namespace MissileFireControl.Mod.Diagnostics
             candidate.CommandScopeSource = "fleetWideBoundedLiveApply";
             candidate.CommandScopeMissingReason = "none";
 
+            ApplyFleetWideBoundedLivePressureDecision(snapshot, result, scope, request, candidate, ref allocation);
+
             if (request.CommandedShipIds.Contains(candidate.LauncherId))
             {
                 skipReason = "fleetWideBoundedLivePerShipCapBlocked";
@@ -1341,6 +1345,200 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             return true;
+        }
+
+        private static void ApplyFleetWideBoundedLivePressureDecision(
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult result,
+            FleetWideScopeEvidence scope,
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate,
+            ref TargetAllocation allocation)
+        {
+            BoundedLivePressureDecision decision = BuildFleetWideBoundedLivePressureDecision(snapshot, result, scope, request, candidate, allocation);
+            candidate.PressureDecision = decision;
+            if (decision == null || decision.Decision != "retargeted" || !HasConcreteToken(decision.RetargetedToTargetId))
+            {
+                return;
+            }
+
+            FleetWideTargetEvidence retarget = FindFleetWideTargetById(scope, decision.RetargetedToTargetId);
+            if (retarget == null || retarget.RuntimeShip == null)
+            {
+                if (decision != null)
+                {
+                    decision.Decision = "retained";
+                    decision.Reason = "retargetTargetRuntimeUnavailable";
+                }
+
+                return;
+            }
+
+            TargetAllocation retargetAllocation = FindAllocationForTarget(result, retarget.Id);
+            if (retargetAllocation == null)
+            {
+                BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures = BuildBoundedLiveAlternativeFeatureSummary(snapshot, result, scope, candidate);
+                alternativeFeatures.AllocationsByTargetId.TryGetValue(retarget.Id, out retargetAllocation);
+            }
+
+            if (retargetAllocation == null || retargetAllocation.AssignedShots <= 0)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "retargetAllocatorEvidenceUnavailable";
+                return;
+            }
+
+            candidate.TargetId = retarget.Id;
+            candidate.TargetName = retarget.Name;
+            candidate.TargetTeamId = retarget.TeamId;
+            candidate.CommandTargetRuntimeObject = retarget.RuntimeShip;
+            candidate.AssignedShots = retargetAllocation.AssignedShots;
+            candidate.CandidateSource = "boundedLivePressureRetarget";
+            allocation = retargetAllocation;
+        }
+
+        private static BoundedLivePressureDecision BuildFleetWideBoundedLivePressureDecision(
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult result,
+            FleetWideScopeEvidence scope,
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate,
+            TargetAllocation allocation)
+        {
+            BoundedLivePressureDecision decision = new BoundedLivePressureDecision();
+            if (candidate == null)
+            {
+                decision.Decision = "notEvaluated";
+                decision.Reason = "missingCandidate";
+                return decision;
+            }
+
+            decision.OriginalTargetId = candidate.TargetId;
+            decision.OriginalTargetName = candidate.TargetName;
+            decision.RetargetedToTargetId = candidate.TargetId;
+            decision.RetargetedToTargetName = candidate.TargetName;
+            decision.SelectedTargetScore = allocation == null ? (double?)null : allocation.ScorePerShot;
+            decision.PriorControlledShots = PriorControlledTargetShots(request, candidate.TargetId);
+            decision.Reference = "maxKillSaturation";
+
+            if (allocation == null)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "missingAllocatorSnapshotEvidence";
+                return decision;
+            }
+
+            decision.Threshold = Math.Max(allocation.KillSize, allocation.SaturationSize);
+            if (decision.Threshold <= 0)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "invalidPressureReference";
+                return decision;
+            }
+
+            LiveMissilePressureEstimate pressure = EstimateLiveMissilePressure(candidate.TargetId);
+            decision.InFlightEvidenceQuality = InFlightEstimateBound(pressure);
+            if (decision.InFlightEvidenceQuality == "exact")
+            {
+                decision.ExactInFlightShots = pressure == null ? 0 : pressure.MatchingTargetCount;
+            }
+            else if (decision.InFlightEvidenceQuality == "lowerBound")
+            {
+                decision.LowerBoundInFlightShots = pressure == null ? 0 : pressure.MatchingTargetCount;
+            }
+
+            decision.DecisionPressure = decision.PriorControlledShots + decision.ExactInFlightShots;
+            decision.AtOrAboveThreshold = decision.DecisionPressure >= decision.Threshold;
+            if (!decision.AtOrAboveThreshold)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "selectedTargetBelowPressureThreshold";
+                return decision;
+            }
+
+            BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures = BuildBoundedLiveAlternativeFeatureSummary(snapshot, result, scope, candidate);
+            decision.TargetAlternativeDenominator = scope == null
+                ? -1
+                : scope.Targets.Count(target => target != null && target.Classification == "visibleHostile");
+            if (decision.TargetAlternativeDenominator <= 1)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "noViableSameCycleAlternative";
+                return decision;
+            }
+
+            if (alternativeFeatures.FeatureEvidence != "allocatorComparableFeatures")
+            {
+                decision.Decision = "retained";
+                decision.Reason = "alternativeComparableFeaturesUnavailable";
+                return decision;
+            }
+
+            TargetAllocation bestAllocation = null;
+            FleetWideTargetEvidence bestTarget = null;
+            double bestScore = double.MinValue;
+            foreach (KeyValuePair<string, TargetAllocation> item in alternativeFeatures.AllocationsByTargetId)
+            {
+                if (!HasConcreteToken(item.Key) || string.Equals(item.Key, candidate.TargetId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                TargetAllocation alternativeAllocation = item.Value;
+                FleetWideTargetEvidence alternativeTarget = FindFleetWideTargetById(scope, item.Key);
+                if (alternativeAllocation == null
+                    || alternativeAllocation.AssignedShots <= 0
+                    || alternativeTarget == null
+                    || alternativeTarget.RuntimeShip == null)
+                {
+                    continue;
+                }
+
+                int alternativeThreshold = Math.Max(alternativeAllocation.KillSize, alternativeAllocation.SaturationSize);
+                int alternativeControlledShots = PriorControlledTargetShots(request, alternativeTarget.Id);
+                LiveMissilePressureEstimate alternativePressure = EstimateLiveMissilePressure(alternativeTarget.Id);
+                int alternativeExactInFlight = InFlightEstimateBound(alternativePressure) == "exact"
+                    ? alternativePressure.MatchingTargetCount
+                    : 0;
+                if (alternativeThreshold > 0 && alternativeControlledShots + alternativeExactInFlight >= alternativeThreshold)
+                {
+                    continue;
+                }
+
+                if (alternativeAllocation.ScorePerShot > bestScore)
+                {
+                    bestScore = alternativeAllocation.ScorePerShot;
+                    bestAllocation = alternativeAllocation;
+                    bestTarget = alternativeTarget;
+                }
+            }
+
+            if (bestAllocation == null || bestTarget == null)
+            {
+                decision.Decision = "retained";
+                decision.Reason = "noUnderThresholdAlternative";
+                return decision;
+            }
+
+            decision.Decision = "retargeted";
+            decision.Reason = "selectedTargetPressureThresholdExceeded";
+            decision.RetargetedToTargetId = bestTarget.Id;
+            decision.RetargetedToTargetName = bestTarget.Name;
+            decision.RetargetedToTargetScore = bestAllocation.ScorePerShot;
+            return decision;
+        }
+
+        private static int PriorControlledTargetShots(FleetWideBoundedLiveApplyRequest request, string targetId)
+        {
+            if (request == null || !HasConcreteToken(targetId))
+            {
+                return 0;
+            }
+
+            int shots;
+            return request.CommandedTargetAssignedShots.TryGetValue(targetId, out shots)
+                ? shots
+                : 0;
         }
 
         private static FleetWideTargetEvidence FindFleetWideTargetById(FleetWideScopeEvidence scope, string targetId)
@@ -1477,6 +1675,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
             AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
             AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
+            AppendFleetWideBoundedLivePressureDecision(builder, candidate);
             AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
             AppendFleetWideTargetAlternativeEvidence(builder, scope, alternativeFeatures);
             AppendFleetWideBoundedLiveMeasurementEvidence(builder, request, candidate, allocation, false, pressure);
@@ -2248,6 +2447,30 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "attributionConfidence", "outcomeHooksPending");
         }
 
+        private static void AppendFleetWideBoundedLivePressureDecision(
+            StringBuilder builder,
+            CommandCandidateDecision candidate)
+        {
+            BoundedLivePressureDecision decision = candidate == null ? null : candidate.PressureDecision;
+            AppendPair(builder, "boundedLivePressureDecision", decision == null ? "notEvaluated" : decision.Decision);
+            AppendPair(builder, "boundedLivePressureDecisionReason", decision == null ? "missingDecision" : decision.Reason);
+            AppendPair(builder, "boundedLivePressureReference", decision == null ? "unknown" : decision.Reference);
+            AppendPair(builder, "boundedLivePressureThreshold", decision == null || !decision.Threshold.HasValue ? "unknown" : decision.Threshold.Value.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "boundedLiveDecisionPressure", decision == null ? "unknown" : decision.DecisionPressure.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "boundedLiveDecisionPressureAtOrAboveThreshold", decision == null ? "unknown" : decision.AtOrAboveThreshold.ToString());
+            AppendPair(builder, "boundedLiveDecisionPriorControlledShots", decision == null ? "unknown" : decision.PriorControlledShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "boundedLiveDecisionExactInFlightShots", decision == null ? "unknown" : decision.ExactInFlightShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "boundedLiveDecisionLowerBoundInFlightShots", decision == null ? "unknown" : decision.LowerBoundInFlightShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "boundedLiveDecisionInFlightEvidenceQuality", decision == null ? "unknown" : decision.InFlightEvidenceQuality);
+            AppendPair(builder, "boundedLiveOriginalTargetId", decision == null ? "unknown" : decision.OriginalTargetId);
+            AppendPair(builder, "boundedLiveOriginalTarget", decision == null ? "unknown" : decision.OriginalTargetName);
+            AppendPair(builder, "boundedLiveRetargetedToTargetId", decision == null ? "unknown" : decision.RetargetedToTargetId);
+            AppendPair(builder, "boundedLiveRetargetedToTarget", decision == null ? "unknown" : decision.RetargetedToTargetName);
+            AppendPair(builder, "boundedLiveSelectedTargetScore", decision == null || !decision.SelectedTargetScore.HasValue ? "unknown" : Format(decision.SelectedTargetScore.Value));
+            AppendPair(builder, "boundedLiveRetargetedTargetScore", decision == null || !decision.RetargetedToTargetScore.HasValue ? "unknown" : Format(decision.RetargetedToTargetScore.Value));
+            AppendPair(builder, "boundedLiveDecisionTargetAlternativeDenominator", decision == null || decision.TargetAlternativeDenominator < 0 ? "unknown" : decision.TargetAlternativeDenominator.ToString(CultureInfo.InvariantCulture));
+        }
+
         private static void AppendFleetWideBoundedLiveCapEvidence(
             StringBuilder builder,
             FleetWideBoundedLiveApplyRequest request,
@@ -2358,6 +2581,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
                 AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
                 AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
+                AppendFleetWideBoundedLivePressureDecision(builder, candidate);
                 AppendPair(builder, "candidateSource", candidate.CandidateSource);
                 AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
                 AppendFleetWideBoundedLiveMeasurementEvidence(builder, request, candidate, allocation, result.AppliedCommands > 0, pressure);
@@ -5544,6 +5768,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public object CommandLauncherRuntimeObject { get; set; }
 
+            public object CommandTargetRuntimeObject { get; set; }
+
             public string WeaponId { get; set; } = "unknown";
 
             public string MissileProfileId { get; set; } = "unknown";
@@ -5556,6 +5782,8 @@ namespace MissileFireControl.Mod.Diagnostics
 
             public int AmmoGateBudgetShots { get; set; } = -1;
 
+            public BoundedLivePressureDecision PressureDecision { get; set; }
+
             public CommandCandidateDecision Fail(string classification, string reason, bool scopeViolation = false)
             {
                 Classification = string.IsNullOrWhiteSpace(classification) ? "wouldFail" : classification;
@@ -5563,6 +5791,43 @@ namespace MissileFireControl.Mod.Diagnostics
                 ScopeViolation = scopeViolation;
                 return this;
             }
+        }
+
+        private sealed class BoundedLivePressureDecision
+        {
+            public string Decision { get; set; } = "retained";
+
+            public string Reason { get; set; } = "notEvaluated";
+
+            public string Reference { get; set; } = "maxKillSaturation";
+
+            public int? Threshold { get; set; }
+
+            public int DecisionPressure { get; set; }
+
+            public bool AtOrAboveThreshold { get; set; }
+
+            public int PriorControlledShots { get; set; }
+
+            public int ExactInFlightShots { get; set; }
+
+            public int LowerBoundInFlightShots { get; set; }
+
+            public string InFlightEvidenceQuality { get; set; } = "unknown";
+
+            public string OriginalTargetId { get; set; } = "unknown";
+
+            public string OriginalTargetName { get; set; } = "unknown";
+
+            public string RetargetedToTargetId { get; set; } = "unknown";
+
+            public string RetargetedToTargetName { get; set; } = "unknown";
+
+            public double? SelectedTargetScore { get; set; }
+
+            public double? RetargetedToTargetScore { get; set; }
+
+            public int TargetAlternativeDenominator { get; set; } = -1;
         }
 
         private sealed class CommandApplyGateDecision
