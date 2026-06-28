@@ -26,6 +26,7 @@ namespace MissileFireControl.Mod.Diagnostics
         private const int FleetWideBoundedLiveGlobalCommandCap = 3;
         private const int FleetWideBoundedLivePerShipCommandCap = 1;
         private const int FleetWideBoundedLivePerTargetCommandCap = 3;
+        private const int FleetWideBoundedLiveTargetAlternativeListLimit = 12;
 
         private static int _cycleSequence;
         private static int _experimentSequence;
@@ -78,6 +79,42 @@ namespace MissileFireControl.Mod.Diagnostics
             "Combatants",
             "allCombatants",
             "AllCombatants"
+        };
+
+        private static readonly string[] LiveMissileMemberNames =
+        {
+            "activeMissiles",
+            "ActiveMissiles",
+            "_projectiles",
+            "_reverseProjectiles",
+            "projectiles",
+            "Projectiles",
+            "activeProjectiles",
+            "ActiveProjectiles"
+        };
+
+        private static readonly string[] LiveMissileCountMemberNames =
+        {
+            "liveMissiles",
+            "LiveMissiles"
+        };
+
+        private static readonly string[] TargetObjectMemberNames =
+        {
+            "target",
+            "Target",
+            "targetState",
+            "TargetState",
+            "targetShip",
+            "TargetShip",
+            "targetCombatant",
+            "TargetCombatant",
+            "combatTargetableState",
+            "CombatTargetableState",
+            "primaryTarget",
+            "PrimaryTarget",
+            "combatPrimaryTarget",
+            "CombatPrimaryTarget"
         };
 
         public static void LogProjectileFireShadowAllocation(
@@ -1163,17 +1200,27 @@ namespace MissileFireControl.Mod.Diagnostics
 
             if (!found || candidate == null)
             {
+                string blockedSelectionRelation = candidate == null
+                    ? "none"
+                    : selectedScope == null || selectedScope.Count == 0
+                        ? "selectionUnknownFleetEligible"
+                        : selectedScope.ContainsShip(candidate.LauncherId) ? "selected" : "nonSelected";
+                string blockedCommandResultId = candidate == null ? "none" : request.ExperimentId + ":" + candidate.CandidateId;
                 WriteFleetWideBoundedLiveResult(
                     request,
                     cycleId,
-                    null,
-                    "none",
+                    snapshot,
+                    result,
+                    candidate,
+                    allocation,
+                    scope,
+                    blockedCommandResultId,
                     CommandApplyResult.Skipped(string.IsNullOrWhiteSpace(skipReason) ? "noAllocatorEvidenceCandidate" : skipReason),
                     null,
                     null,
                     selectedScope,
-                    "none",
-                    "none");
+                    blockedSelectionRelation,
+                    string.IsNullOrWhiteSpace(skipReason) ? "none" : skipReason);
                 ReArmFleetWideBoundedLiveApplyIfNeeded(request, skipReason);
                 return;
             }
@@ -1184,7 +1231,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 : selectedScope.ContainsShip(candidate.LauncherId) ? "selected" : "nonSelected";
             CommandAuthorityStateSnapshot preState = CaptureCommandAuthorityState(candidate.CommandLauncherRuntimeObject);
             string capReason = FleetWideBoundedLiveCapReason(request, candidate);
-            WriteFleetWideBoundedLiveCandidate(request, cycleId, candidate, allocation, selectedScope, selectionRelation, capReason);
+            WriteFleetWideBoundedLiveCandidate(request, cycleId, snapshot, result, candidate, allocation, scope, selectedScope, selectionRelation, capReason);
             WriteFleetWideBoundedLiveState("fleetWideBoundedLivePreState", request, cycleId, candidate, commandResultId, preState, selectionRelation);
 
             CommandApplyResult applyResult;
@@ -1218,6 +1265,18 @@ namespace MissileFireControl.Mod.Diagnostics
                 request.AppliedCommands += applyResult.AppliedCommands;
                 request.CommandedShipIds.Add(candidate.LauncherId);
                 request.CommandedTargetIds.Add(candidate.TargetId);
+                int assignedShots = request.CommandedTargetAssignedShots.ContainsKey(candidate.TargetId)
+                    ? request.CommandedTargetAssignedShots[candidate.TargetId]
+                    : 0;
+                request.CommandedTargetAssignedShots[candidate.TargetId] = assignedShots + candidate.AssignedShots;
+                if (allocation != null)
+                {
+                    if (!request.HasAppliedCandidateScore || allocation.ScorePerShot < request.LowestAppliedCandidateScore)
+                    {
+                        request.LowestAppliedCandidateScore = allocation.ScorePerShot;
+                        request.HasAppliedCandidateScore = true;
+                    }
+                }
             }
 
             if (applyResult.FailedCommands > 0)
@@ -1226,7 +1285,7 @@ namespace MissileFireControl.Mod.Diagnostics
             }
 
             CommandAuthorityStateSnapshot postState = CaptureCommandAuthorityState(candidate.CommandLauncherRuntimeObject);
-            WriteFleetWideBoundedLiveResult(request, cycleId, candidate, commandResultId, applyResult, preState, postState, selectedScope, selectionRelation, capReason);
+            WriteFleetWideBoundedLiveResult(request, cycleId, snapshot, result, candidate, allocation, scope, commandResultId, applyResult, preState, postState, selectedScope, selectionRelation, capReason);
             WriteFleetWideBoundedLiveState("fleetWideBoundedLivePostState", request, cycleId, candidate, commandResultId, postState, selectionRelation);
 
             if (request.AppliedCommands < FleetWideBoundedLiveGlobalCommandCap
@@ -1266,6 +1325,10 @@ namespace MissileFireControl.Mod.Diagnostics
                 return false;
             }
 
+            candidate.CandidateId = "cycle-" + cycleId.ToString(CultureInfo.InvariantCulture) + "-fleetwide-bounded-live-" + (request.AppliedCommands + 1).ToString(CultureInfo.InvariantCulture);
+            candidate.CommandScopeSource = "fleetWideBoundedLiveApply";
+            candidate.CommandScopeMissingReason = "none";
+
             if (request.CommandedShipIds.Contains(candidate.LauncherId))
             {
                 skipReason = "fleetWideBoundedLivePerShipCapBlocked";
@@ -1277,9 +1340,6 @@ namespace MissileFireControl.Mod.Diagnostics
                 target = FindFleetWideTargetById(scope, candidate.TargetId);
             }
 
-            candidate.CandidateId = "cycle-" + cycleId.ToString(CultureInfo.InvariantCulture) + "-fleetwide-bounded-live-" + (request.AppliedCommands + 1).ToString(CultureInfo.InvariantCulture);
-            candidate.CommandScopeSource = "fleetWideBoundedLiveApply";
-            candidate.CommandScopeMissingReason = "none";
             return true;
         }
 
@@ -1373,12 +1433,17 @@ namespace MissileFireControl.Mod.Diagnostics
         private static void WriteFleetWideBoundedLiveCandidate(
             FleetWideBoundedLiveApplyRequest request,
             int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult result,
             CommandCandidateDecision candidate,
             TargetAllocation allocation,
+            FleetWideScopeEvidence scope,
             SelectedScopeEvidence selectedScope,
             string selectionRelation,
             string capReason)
         {
+            BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures = BuildBoundedLiveAlternativeFeatureSummary(snapshot, result, scope, candidate);
+            LiveMissilePressureEstimate pressure = CaptureCandidatePriorInFlightPressure(request, candidate);
             StringBuilder builder = FleetWideBoundedLiveRecordBuilder("fleetWideBoundedLiveCandidate", request, cycleId);
             AppendPair(builder, "candidateId", candidate.CandidateId);
             AppendPair(builder, "commandResultId", request.ExperimentId + ":" + candidate.CandidateId);
@@ -1401,13 +1466,821 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "target", candidate.TargetName);
             AppendPair(builder, "targetTeam", candidate.TargetTeamId);
             AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
+            AppendPair(builder, "targetValue", allocation == null ? "unknown" : Format(allocation.TargetValue));
+            AppendPair(builder, "pdScore", allocation == null ? "unknown" : Format(allocation.PdScore));
+            AppendPair(builder, "saturationSize", allocation == null ? "unknown" : allocation.SaturationSize.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "killSize", allocation == null ? "unknown" : allocation.KillSize.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "launchWindowScore", allocation == null ? "unknown" : Format(allocation.LaunchWindowScore));
+            AppendPair(builder, "scorePerShot", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+            AppendPair(builder, "selectedTargetScore", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+            AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
+            AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
+            AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
             AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
+            AppendFleetWideTargetAlternativeEvidence(builder, scope, alternativeFeatures);
+            AppendFleetWideBoundedLiveMeasurementEvidence(builder, request, candidate, allocation, false, pressure);
+            AppendFleetWideBoundedLiveCapEvidence(builder, request, candidate, allocation, capReason);
             AppendPair(builder, "capReason", capReason);
             AppendPair(builder, "globalCap", FleetWideBoundedLiveGlobalCommandCap.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "perShipCap", FleetWideBoundedLivePerShipCommandCap.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "perTargetCap", FleetWideBoundedLivePerTargetCommandCap.ToString(CultureInfo.InvariantCulture));
             AppendPair(builder, "appliedCommands", "0");
             Log.Info("[AllocationLog] " + builder);
+        }
+
+        private static BoundedLiveTargetAlternativeFeatureSummary BuildBoundedLiveAlternativeFeatureSummary(
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult currentResult,
+            FleetWideScopeEvidence scope,
+            CommandCandidateDecision candidate)
+        {
+            BoundedLiveTargetAlternativeFeatureSummary summary = new BoundedLiveTargetAlternativeFeatureSummary();
+            if (snapshot == null || snapshot.Launcher == null || snapshot.Missile == null || snapshot.Inventory == null || scope == null)
+            {
+                summary.FeatureEvidence = "identityOnlyNoAllocatorFeatures";
+                summary.SelectedTargetRankConfidence = "alternativeFeaturesUnavailable";
+                return summary;
+            }
+
+            List<FleetWideTargetEvidence> alternatives = scope.Targets
+                .Where(target => target != null && target.Classification == "visibleHostile")
+                .ToList();
+            if (alternatives.Count == 0)
+            {
+                summary.FeatureEvidence = "none";
+                summary.SelectedTargetRankConfidence = "noVisibleHostileAlternatives";
+                return summary;
+            }
+
+            Dictionary<string, ShipSnapshot> targetSnapshots = new Dictionary<string, ShipSnapshot>();
+            foreach (FleetWideTargetEvidence target in alternatives)
+            {
+                ShipSnapshot targetSnapshot = BuildDiagnosticTargetSnapshot(snapshot, target);
+                if (targetSnapshot != null && HasConcreteToken(targetSnapshot.Id))
+                {
+                    targetSnapshots[target.Id] = targetSnapshot;
+                }
+            }
+
+            List<ShipSnapshot> enemyFleet = targetSnapshots.Values.ToList();
+            foreach (FleetWideTargetEvidence target in alternatives)
+            {
+                ShipSnapshot targetSnapshot;
+                if (!targetSnapshots.TryGetValue(target.Id, out targetSnapshot))
+                {
+                    summary.FeatureMissingCount++;
+                    continue;
+                }
+
+                TargetAllocation allocation = DiagnosticAllocationForTarget(snapshot, targetSnapshot, enemyFleet);
+                if (allocation == null)
+                {
+                    allocation = FindAllocationForTarget(currentResult, target.Id);
+                }
+
+                if (allocation == null)
+                {
+                    summary.FeatureMissingCount++;
+                    continue;
+                }
+
+                summary.AllocationsByTargetId[target.Id] = allocation;
+            }
+
+            summary.FeatureCount = summary.AllocationsByTargetId.Count;
+            if (summary.FeatureCount == alternatives.Count)
+            {
+                summary.FeatureEvidence = "allocatorComparableFeatures";
+            }
+            else if (summary.FeatureCount > 0)
+            {
+                summary.FeatureEvidence = "partialAllocatorComparableFeatures";
+            }
+            else
+            {
+                summary.FeatureEvidence = "identityOnlyNoAllocatorFeatures";
+            }
+
+            AddSelectedTargetRank(summary, candidate);
+            return summary;
+        }
+
+        private static ShipSnapshot BuildDiagnosticTargetSnapshot(
+            ExtractedCombatSnapshot snapshot,
+            FleetWideTargetEvidence target)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+
+            if (snapshot != null
+                && snapshot.Target != null
+                && string.Equals(snapshot.Target.Id, target.Id, StringComparison.Ordinal))
+            {
+                return snapshot.Target;
+            }
+
+            ShipSnapshot targetSnapshot = CombatSnapshotExtractor.ExtractTargetShipForDiagnostics(target.RuntimeShip, "fleetWideTarget");
+            if (targetSnapshot == null)
+            {
+                return null;
+            }
+
+            targetSnapshot.Id = HasConcreteToken(target.Id) ? target.Id : targetSnapshot.Id;
+            targetSnapshot.DisplayName = HasConcreteToken(target.Name) ? target.Name : targetSnapshot.DisplayName;
+            targetSnapshot.TeamId = HasConcreteTeam(target.TeamId) ? target.TeamId : targetSnapshot.TeamId;
+            return targetSnapshot;
+        }
+
+        private static TargetAllocation DiagnosticAllocationForTarget(
+            ExtractedCombatSnapshot snapshot,
+            ShipSnapshot target,
+            List<ShipSnapshot> enemyFleet)
+        {
+            if (snapshot == null || target == null || snapshot.Launcher == null || snapshot.Missile == null || snapshot.Inventory == null)
+            {
+                return null;
+            }
+
+            AllocationRequest request = new AllocationRequest
+            {
+                Missile = snapshot.Missile,
+                MinimumLaunchWindowScore = Main.Settings == null ? 0.35 : Main.Settings.MinimumLaunchScore
+            };
+            request.FriendlyLaunchers.Add(snapshot.Launcher);
+            request.EnemyTargets.Add(target);
+            foreach (ShipSnapshot fleetTarget in enemyFleet ?? new List<ShipSnapshot>())
+            {
+                if (fleetTarget != null)
+                {
+                    request.EnemyFleet.Add(fleetTarget);
+                }
+            }
+
+            request.MissileInventories.Add(new MissileInventorySnapshot
+            {
+                LauncherShipId = snapshot.Inventory.LauncherShipId,
+                WeaponId = snapshot.Inventory.WeaponId,
+                MissileProfileId = snapshot.Inventory.MissileProfileId,
+                AmmoGateBudgetShots = snapshot.Inventory.AmmoGateBudgetShots,
+                RemainingShots = snapshot.Inventory.RemainingShots,
+                AmmoGateBudgetEvidenceSource = snapshot.Inventory.AmmoGateBudgetEvidenceSource,
+                AmmoGateBudgetMissingReason = snapshot.Inventory.AmmoGateBudgetMissingReason,
+                AmmoEvidenceSource = snapshot.Inventory.AmmoEvidenceSource,
+                LiveWeaponState = snapshot.Inventory.LiveWeaponState,
+                AmmoGateWeaponCount = snapshot.Inventory.AmmoGateWeaponCount,
+                UnknownAmmoGateWeaponCount = snapshot.Inventory.UnknownAmmoGateWeaponCount
+            });
+
+            AllocationResult result = BuildAllocator().Allocate(request);
+            return FindAllocationForTarget(result, target.Id);
+        }
+
+        private static TargetAllocation FindAllocationForTarget(AllocationResult result, string targetId)
+        {
+            if (result == null || !HasConcreteToken(targetId))
+            {
+                return null;
+            }
+
+            TargetAllocation allocation = result.Allocations == null
+                ? null
+                : result.Allocations.FirstOrDefault(item => item != null && string.Equals(item.TargetId, targetId, StringComparison.Ordinal));
+            if (allocation != null)
+            {
+                return allocation;
+            }
+
+            return result.Rejections == null
+                ? null
+                : result.Rejections.FirstOrDefault(item => item != null && string.Equals(item.TargetId, targetId, StringComparison.Ordinal));
+        }
+
+        private static void AddSelectedTargetRank(
+            BoundedLiveTargetAlternativeFeatureSummary summary,
+            CommandCandidateDecision candidate)
+        {
+            if (summary == null || candidate == null || !HasConcreteToken(candidate.TargetId))
+            {
+                return;
+            }
+
+            TargetAllocation selected;
+            if (!summary.AllocationsByTargetId.TryGetValue(candidate.TargetId, out selected))
+            {
+                summary.SelectedTargetRankConfidence = "selectedTargetScoreUnavailable";
+                return;
+            }
+
+            const double epsilon = 0.0005;
+            int higher = 0;
+            int ties = 0;
+            foreach (TargetAllocation allocation in summary.AllocationsByTargetId.Values)
+            {
+                if (allocation == null)
+                {
+                    continue;
+                }
+
+                if (allocation.ScorePerShot > selected.ScorePerShot + epsilon)
+                {
+                    higher++;
+                }
+                else if (Math.Abs(allocation.ScorePerShot - selected.ScorePerShot) <= epsilon)
+                {
+                    ties++;
+                }
+            }
+
+            summary.SelectedTargetRank = (higher + 1).ToString(CultureInfo.InvariantCulture);
+            summary.SelectedTargetRankBasis = summary.ScoreBasis;
+            summary.SelectedTargetRankTieCount = Math.Max(1, ties).ToString(CultureInfo.InvariantCulture);
+            if (ties > 1)
+            {
+                summary.SelectedTargetRankConfidence = "tied";
+            }
+            else if (summary.FeatureEvidence == "allocatorComparableFeatures")
+            {
+                summary.SelectedTargetRankConfidence = "exact";
+            }
+            else
+            {
+                summary.SelectedTargetRankConfidence = "partialAlternativeFeatures";
+            }
+        }
+
+        private static void AppendSelectedTargetRankEvidence(
+            StringBuilder builder,
+            BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures)
+        {
+            if (alternativeFeatures == null)
+            {
+                AppendPair(builder, "selectedTargetRank", "unknown");
+                AppendPair(builder, "selectedTargetRankBasis", "unknown");
+                AppendPair(builder, "selectedTargetRankComparisonSpace", "unknown");
+                AppendPair(builder, "selectedTargetRankLevel", "unknown");
+                AppendPair(builder, "selectedTargetRankConfidence", "alternativeFeaturesUnavailable");
+                AppendPair(builder, "selectedTargetRankTieCount", "unknown");
+                return;
+            }
+
+            AppendPair(builder, "selectedTargetRank", alternativeFeatures.SelectedTargetRank);
+            AppendPair(builder, "selectedTargetRankBasis", alternativeFeatures.SelectedTargetRankBasis);
+            AppendPair(builder, "selectedTargetRankComparisonSpace", alternativeFeatures.SelectedTargetRankComparisonSpace);
+            AppendPair(builder, "selectedTargetRankLevel", alternativeFeatures.SelectedTargetRankLevel);
+            AppendPair(builder, "selectedTargetRankConfidence", alternativeFeatures.SelectedTargetRankConfidence);
+            AppendPair(builder, "selectedTargetRankTieCount", alternativeFeatures.SelectedTargetRankTieCount);
+        }
+
+        private static void AppendFleetWideTargetAlternativeEvidence(
+            StringBuilder builder,
+            FleetWideScopeEvidence scope,
+            BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures)
+        {
+            if (scope == null)
+            {
+                AppendPair(builder, "visibleTargetSource", "unknown");
+                AppendPair(builder, "visibleTargetConfidence", "unknown");
+                AppendPair(builder, "visibleTargetSourceCount", "unknown");
+                AppendPair(builder, "visibleHostileTargets", "unknown");
+                AppendPair(builder, "targetAlternativeDenominator", "unknown");
+                AppendPair(builder, "targetAlternativeEvidence", "missingFleetWideScope");
+                AppendPair(builder, "targetAlternativeIds", "unknown");
+                AppendPair(builder, "targetAlternativeNames", "unknown");
+                AppendPair(builder, "targetAlternativeTeams", "unknown");
+                AppendPair(builder, "targetAlternativeCountTruncated", "unknown");
+                AppendPair(builder, "targetAlternativeFeatureEvidence", "missingFleetWideScope");
+                AppendPair(builder, "targetAlternativeFeatureCount", "0");
+                AppendPair(builder, "targetAlternativeFeatureMissingCount", "unknown");
+                AppendPair(builder, "targetAlternativeValues", "unknown");
+                AppendPair(builder, "targetAlternativePdScores", "unknown");
+                AppendPair(builder, "targetAlternativeSaturationSizes", "unknown");
+                AppendPair(builder, "targetAlternativeKillSizes", "unknown");
+                AppendPair(builder, "targetAlternativeLaunchWindowScores", "unknown");
+                AppendPair(builder, "targetAlternativeScores", "unknown");
+                AppendPair(builder, "targetAlternativeScoreBasis", "unknown");
+                AppendPair(builder, "targetAlternativeScoreSpace", "unknown");
+                return;
+            }
+
+            List<FleetWideTargetEvidence> alternatives = scope.Targets
+                .Where(target => target != null && target.Classification == "visibleHostile")
+                .ToList();
+            List<FleetWideTargetEvidence> emitted = alternatives
+                .Take(FleetWideBoundedLiveTargetAlternativeListLimit)
+                .ToList();
+            int truncated = Math.Max(0, alternatives.Count - emitted.Count);
+
+            AppendPair(builder, "visibleTargetSource", scope.TargetSource);
+            AppendPair(builder, "visibleTargetConfidence", scope.TargetConfidence);
+            AppendPair(builder, "visibleTargetSourceCount", scope.Targets.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "visibleHostileTargets", alternatives.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "targetAlternativeDenominator", alternatives.Count.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "targetAlternativeEvidence", "visibleHostileTargetsFromActiveShips");
+            AppendPair(builder, "targetAlternativeIds", CompactFleetWideTargetList(emitted, target => target.Id));
+            AppendPair(builder, "targetAlternativeNames", CompactFleetWideTargetList(emitted, target => target.Name));
+            AppendPair(builder, "targetAlternativeTeams", CompactFleetWideTargetList(emitted, target => target.TeamId));
+            AppendPair(builder, "targetAlternativeCountTruncated", truncated.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "targetAlternativeFeatureEvidence", alternativeFeatures == null ? "identityOnlyNoAllocatorFeatures" : alternativeFeatures.FeatureEvidence);
+            AppendPair(builder, "targetAlternativeFeatureCount", alternativeFeatures == null ? "0" : alternativeFeatures.FeatureCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "targetAlternativeFeatureMissingCount", alternativeFeatures == null ? alternatives.Count.ToString(CultureInfo.InvariantCulture) : alternativeFeatures.FeatureMissingCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "targetAlternativeValues", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.TargetValue)));
+            AppendPair(builder, "targetAlternativePdScores", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.PdScore)));
+            AppendPair(builder, "targetAlternativeSaturationSizes", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => allocation.SaturationSize.ToString(CultureInfo.InvariantCulture)));
+            AppendPair(builder, "targetAlternativeKillSizes", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => allocation.KillSize.ToString(CultureInfo.InvariantCulture)));
+            AppendPair(builder, "targetAlternativeLaunchWindowScores", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.LaunchWindowScore)));
+            AppendPair(builder, "targetAlternativeScores", CompactFleetWideTargetFeatureList(emitted, alternativeFeatures, allocation => Format(allocation.ScorePerShot)));
+            AppendPair(builder, "targetAlternativeScoreBasis", alternativeFeatures == null ? "unknown" : alternativeFeatures.ScoreBasis);
+            AppendPair(builder, "targetAlternativeScoreSpace", alternativeFeatures == null ? "unknown" : alternativeFeatures.ScoreSpace);
+        }
+
+        private static string CompactFleetWideTargetList(IEnumerable<FleetWideTargetEvidence> targets, Func<FleetWideTargetEvidence, string> selector)
+        {
+            List<string> values = targets
+                .Select(selector)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList();
+            return values.Count == 0 ? "none" : string.Join("|", values.ToArray());
+        }
+
+        private static string CompactFleetWideTargetFeatureList(
+            IEnumerable<FleetWideTargetEvidence> targets,
+            BoundedLiveTargetAlternativeFeatureSummary features,
+            Func<TargetAllocation, string> selector)
+        {
+            if (targets == null || features == null || selector == null)
+            {
+                return "unknown";
+            }
+
+            List<string> values = new List<string>();
+            foreach (FleetWideTargetEvidence target in targets)
+            {
+                TargetAllocation allocation = null;
+                if (target != null && HasConcreteToken(target.Id))
+                {
+                    features.AllocationsByTargetId.TryGetValue(target.Id, out allocation);
+                }
+
+                values.Add(allocation == null ? "unknown" : selector(allocation));
+            }
+
+            return values.Count == 0 ? "none" : string.Join("|", values.ToArray());
+        }
+
+        private static LiveMissilePressureEstimate CaptureCandidatePriorInFlightPressure(
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate)
+        {
+            LiveMissilePressureEstimate pressure = EstimateLiveMissilePressure(candidate == null ? null : candidate.TargetId);
+            if (request != null && candidate != null && HasConcreteToken(candidate.CandidateId))
+            {
+                request.CandidatePriorInFlightPressure[candidate.CandidateId] = pressure;
+            }
+
+            return pressure;
+        }
+
+        private static LiveMissilePressureEstimate RecallCandidatePriorInFlightPressure(
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate)
+        {
+            if (request != null && candidate != null && HasConcreteToken(candidate.CandidateId))
+            {
+                LiveMissilePressureEstimate pressure;
+                if (request.CandidatePriorInFlightPressure.TryGetValue(candidate.CandidateId, out pressure))
+                {
+                    return pressure;
+                }
+            }
+
+            return EstimateLiveMissilePressure(candidate == null ? null : candidate.TargetId);
+        }
+
+        private static LiveMissilePressureEstimate EstimateLiveMissilePressure(string targetId)
+        {
+            LiveMissilePressureEstimate pressure = new LiveMissilePressureEstimate();
+            object spaceCombat = CurrentSpaceCombat();
+            if (spaceCombat == null)
+            {
+                pressure.Source = "GameControl.spaceCombat.unavailable";
+                pressure.Confidence = "targetOwnershipSourceUnavailable";
+                return pressure;
+            }
+
+            string source;
+            List<object> liveMissiles = FirstLiveMissileObjects(spaceCombat, out source);
+            pressure.Source = source == "none" ? "GameControl.spaceCombat.liveMissilesUnavailable" : source;
+            if (liveMissiles.Count == 0)
+            {
+                int countOnlyObserved = CountOnlyLiveMissiles(spaceCombat, out string countOnlySource);
+                if (countOnlyObserved > 0)
+                {
+                    pressure.Source = countOnlySource;
+                    pressure.TotalObserved = countOnlyObserved;
+                    pressure.UnknownTargetCount = countOnlyObserved;
+                    pressure.Confidence = "targetOwnershipSourceUnavailable";
+                    return pressure;
+                }
+
+                pressure.Confidence = source == "none" && countOnlySource == "none" ? "targetOwnershipSourceUnavailable" : "noLiveMissilesObserved";
+                return pressure;
+            }
+
+            pressure.TotalObserved = liveMissiles.Count;
+            foreach (object missile in liveMissiles)
+            {
+                object target = ExtractTargetObjectFromLiveMissile(missile);
+                if (target == null)
+                {
+                    pressure.UnknownTargetCount++;
+                    continue;
+                }
+
+                string missileTargetId = GameObjectReader.StableId(target, "target");
+                string missileTargetName = GameObjectReader.Label(target, "target");
+                if (TargetIdMatches(targetId, missileTargetId, missileTargetName))
+                {
+                    pressure.MatchingTargetCount++;
+                }
+            }
+
+            if (pressure.UnknownTargetCount == 0)
+            {
+                pressure.Confidence = "targetIdsRecoveredFromLiveMissiles";
+            }
+            else if (pressure.UnknownTargetCount < pressure.TotalObserved)
+            {
+                pressure.Confidence = "partialTargetIdsRecoveredFromLiveMissiles";
+            }
+            else
+            {
+                pressure.Confidence = "targetOwnershipSourceUnavailable";
+            }
+
+            return pressure;
+        }
+
+        private static IEnumerable<SelectedScopeCandidate> LiveMissileCandidates(object spaceCombat)
+        {
+            if (spaceCombat == null)
+            {
+                yield break;
+            }
+
+            foreach (string memberName in LiveMissileMemberNames)
+            {
+                yield return new SelectedScopeCandidate("GameControl.spaceCombat." + memberName, ReadMember(spaceCombat, memberName));
+            }
+        }
+
+        private static List<object> FirstLiveMissileObjects(object spaceCombat, out string source)
+        {
+            source = "none";
+            foreach (SelectedScopeCandidate candidate in LiveMissileCandidates(spaceCombat))
+            {
+                List<object> missiles = EnumerateLiveMissileObjects(candidate.Value).ToList();
+                if (missiles.Count == 0)
+                {
+                    continue;
+                }
+
+                source = candidate.Source;
+                return missiles;
+            }
+
+            return new List<object>();
+        }
+
+        private static IEnumerable<object> EnumerateLiveMissileObjects(object value)
+        {
+            if (value == null || value is string)
+            {
+                yield break;
+            }
+
+            if (value is IDictionary dictionary)
+            {
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    foreach (object missile in LiveMissileObjectsFromDictionaryEntry(entry))
+                    {
+                        yield return missile;
+                    }
+                }
+
+                yield break;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable == null)
+            {
+                if (LooksLikeActiveMissileController(value))
+                {
+                    yield return value;
+                }
+
+                yield break;
+            }
+
+            foreach (object item in enumerable)
+            {
+                if (item is DictionaryEntry entry)
+                {
+                    foreach (object missile in LiveMissileObjectsFromDictionaryEntry(entry))
+                    {
+                        yield return missile;
+                    }
+                }
+                else if (LooksLikeActiveMissileController(item))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        private static IEnumerable<object> LiveMissileObjectsFromDictionaryEntry(DictionaryEntry entry)
+        {
+            if (LooksLikeActiveMissileController(entry.Value))
+            {
+                yield return entry.Value;
+            }
+
+            if (LooksLikeActiveMissileController(entry.Key))
+            {
+                yield return entry.Key;
+            }
+        }
+
+        private static bool LooksLikeActiveMissileController(object value)
+        {
+            if (value == null || value is string)
+            {
+                return false;
+            }
+
+            bool? isMissile = TryReadBool(value, "isMissile", "IsMissile");
+            if (isMissile.HasValue && !isMissile.Value)
+            {
+                return false;
+            }
+
+            string typeName = value.GetType().Name;
+            if (!isMissile.GetValueOrDefault(false) && typeName.IndexOf("MissileController", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            bool? activeSelf = TryReadBool(ReadMember(value, "gameObject"), "activeSelf", "activeInHierarchy");
+            if (activeSelf.HasValue && !activeSelf.Value)
+            {
+                return false;
+            }
+
+            if (TryReadBool(value, "hasHit", "HasHit").GetValueOrDefault(false))
+            {
+                return false;
+            }
+
+            if (TryReadBool(value, "beenDestroyed", "BeenDestroyed", "isDestroyed", "IsDestroyed").GetValueOrDefault(false))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static int CountOnlyLiveMissiles(object spaceCombat, out string source)
+        {
+            source = "none";
+            if (spaceCombat == null)
+            {
+                return 0;
+            }
+
+            foreach (string memberName in LiveMissileCountMemberNames)
+            {
+                object value = ReadMember(spaceCombat, memberName);
+                int count = SumCountValues(value);
+                if (count > 0)
+                {
+                    source = "GameControl.spaceCombat." + memberName + "CountOnly";
+                    return count;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int SumCountValues(object value)
+        {
+            if (value == null || value is string)
+            {
+                return 0;
+            }
+
+            if (TryConvertInt(value, out int direct))
+            {
+                return Math.Max(0, direct);
+            }
+
+            int total = 0;
+            if (value is IDictionary dictionary)
+            {
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    if (TryConvertInt(entry.Value, out int count))
+                    {
+                        total += Math.Max(0, count);
+                    }
+                }
+
+                return total;
+            }
+
+            return 0;
+        }
+
+        private static bool TryConvertInt(object value, out int result)
+        {
+            result = 0;
+            if (!(value is IConvertible))
+            {
+                return false;
+            }
+
+            try
+            {
+                result = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static object ExtractTargetObjectFromLiveMissile(object missile)
+        {
+            object target = GameObjectReader.ReadFirstMember(missile, TargetObjectMemberNames);
+            return NormalizeCombatTargetObject(target);
+        }
+
+        private static object NormalizeCombatTargetObject(object value)
+        {
+            object current = value;
+            for (int depth = 0; depth < 6 && current != null; depth++)
+            {
+                object next = GameObjectReader.ReadFirstMember(
+                    current,
+                    "combatTargetableState",
+                    "CombatTargetableState",
+                    "GetCombatantState",
+                    "GetTargetableState",
+                    "combatantState",
+                    "CombatantState",
+                    "shipState",
+                    "ShipState",
+                    "weaponCarrierState",
+                    "WeaponCarrierState",
+                    "ref_ship",
+                    "RefShip",
+                    "state",
+                    "State");
+                if (next == null || ReferenceEquals(next, current))
+                {
+                    return current;
+                }
+
+                current = next;
+            }
+
+            return current;
+        }
+
+        private static bool TargetIdMatches(string expectedTargetId, string observedTargetId, string observedTargetName)
+        {
+            return HasConcreteToken(expectedTargetId)
+                && (string.Equals(expectedTargetId, observedTargetId, StringComparison.Ordinal)
+                    || string.Equals(expectedTargetId, observedTargetName, StringComparison.Ordinal));
+        }
+
+        private static string InFlightEstimateBound(LiveMissilePressureEstimate pressure)
+        {
+            if (pressure == null)
+            {
+                return "unknown";
+            }
+
+            if (pressure.TotalObserved == 0)
+            {
+                return pressure.Confidence == "noLiveMissilesObserved" ? "exact" : "unknown";
+            }
+
+            return pressure.UnknownTargetCount == 0 ? "exact" : "lowerBound";
+        }
+
+        private static string InFlightTargetAttribution(LiveMissilePressureEstimate pressure)
+        {
+            if (pressure == null)
+            {
+                return "unknown";
+            }
+
+            if (pressure.TotalObserved == 0)
+            {
+                return pressure.Confidence == "noLiveMissilesObserved" ? "noneObserved" : "unavailable";
+            }
+
+            if (pressure.UnknownTargetCount == 0)
+            {
+                return "fullyRecovered";
+            }
+
+            return pressure.UnknownTargetCount < pressure.TotalObserved
+                ? "partiallyRecovered"
+                : "unavailableForObservedLiveMissiles";
+        }
+
+        private static void AppendFleetWideBoundedLiveMeasurementEvidence(
+            StringBuilder builder,
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate,
+            TargetAllocation allocation,
+            bool applied,
+            LiveMissilePressureEstimate pressure)
+        {
+            int priorControlledShots = 0;
+            if (request != null && candidate != null && request.CommandedTargetAssignedShots.ContainsKey(candidate.TargetId))
+            {
+                priorControlledShots = request.CommandedTargetAssignedShots[candidate.TargetId];
+                if (applied)
+                {
+                    priorControlledShots = Math.Max(0, priorControlledShots - candidate.AssignedShots);
+                }
+            }
+
+            int newAssignedShots = applied && candidate != null ? candidate.AssignedShots : 0;
+            int cumulativeAssignedShots = priorControlledShots + newAssignedShots;
+
+            AppendPair(builder, "selectedTargetPriorControlledShots", priorControlledShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetPriorAllocatorShots", "unknown");
+            AppendPair(builder, "selectedTargetPriorVanillaShotsKnown", "unknown");
+            AppendPair(builder, "selectedTargetPriorMissileInFlightEstimate", pressure == null ? "unknown" : pressure.MatchingTargetCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateSource", pressure == null ? "unknown" : pressure.Source);
+            AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateConfidence", pressure == null ? "targetOwnershipSourceUnavailable" : pressure.Confidence);
+            AppendPair(builder, "selectedTargetPriorMissileInFlightEstimateBound", InFlightEstimateBound(pressure));
+            AppendPair(builder, "selectedTargetPriorMissileInFlightTargetAttribution", InFlightTargetAttribution(pressure));
+            AppendPair(builder, "selectedTargetPriorMissileInFlightObserved", pressure == null ? "unknown" : pressure.TotalObserved.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetPriorMissileInFlightUnknownTargetCount", pressure == null ? "unknown" : pressure.UnknownTargetCount.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetNewAssignedShots", newAssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetCumulativeAssignedShots", cumulativeAssignedShots.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetSaturationSize", allocation == null ? "unknown" : allocation.SaturationSize.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetKillSize", allocation == null ? "unknown" : allocation.KillSize.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "selectedTargetOverSaturationRatio", allocation == null || allocation.SaturationSize <= 0 ? "unknown" : Format((double)cumulativeAssignedShots / allocation.SaturationSize));
+            AppendPair(builder, "selectedTargetKillOvercommitRatio", allocation == null || allocation.KillSize <= 0 ? "unknown" : Format((double)cumulativeAssignedShots / allocation.KillSize));
+            AppendPair(builder, "targetSurvivedAfterControlledWindow", "unknown");
+            AppendPair(builder, "targetDestroyedAfterControlledWindow", "unknown");
+            AppendPair(builder, "timeToImpactWindowKnown", "unknown");
+            AppendPair(builder, "targetOutcomeAttribution", "evidenceLimited");
+            AppendPair(builder, "attributionConfidence", "outcomeHooksPending");
+        }
+
+        private static void AppendFleetWideBoundedLiveCapEvidence(
+            StringBuilder builder,
+            FleetWideBoundedLiveApplyRequest request,
+            CommandCandidateDecision candidate,
+            TargetAllocation allocation,
+            string capReason)
+        {
+            int globalRemaining = Math.Max(0, FleetWideBoundedLiveGlobalCommandCap - (request == null ? 0 : request.AppliedCommands));
+            int perShipUsed = 0;
+            int perTargetUsed = 0;
+            if (request != null && candidate != null)
+            {
+                perShipUsed = request.CommandedShipIds.Contains(candidate.LauncherId) ? 1 : 0;
+                foreach (string targetId in request.CommandedTargetIds)
+                {
+                    if (string.Equals(targetId, candidate.TargetId, StringComparison.Ordinal))
+                    {
+                        perTargetUsed++;
+                    }
+                }
+            }
+
+            AppendPair(builder, "globalCapRemaining", globalRemaining.ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "perShipCapRemaining", Math.Max(0, FleetWideBoundedLivePerShipCommandCap - perShipUsed).ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "perTargetCapRemaining", Math.Max(0, FleetWideBoundedLivePerTargetCommandCap - perTargetUsed).ToString(CultureInfo.InvariantCulture));
+            AppendPair(builder, "blockedCandidateLauncherId", capReason == "none" || candidate == null ? "none" : candidate.LauncherId);
+            AppendPair(builder, "blockedCandidateTargetId", capReason == "none" || candidate == null ? "none" : candidate.TargetId);
+            AppendPair(builder, "blockedCandidateScore", capReason == "none" || allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+            AppendPair(builder, "appliedCandidateScore", request != null && request.HasAppliedCandidateScore ? Format(request.LowestAppliedCandidateScore) : "unknown");
+            AppendPair(builder, "wouldHaveAppliedRankWithoutCap", capReason == "none" ? "none" : "unknown");
+            AppendPair(builder, "blockedCandidateWasBetterThanApplied", capReason != "none" && allocation != null && request != null && request.HasAppliedCandidateScore
+                ? (allocation.ScorePerShot > request.LowestAppliedCandidateScore ? "True" : "False")
+                : "unknown");
         }
 
         private static void WriteFleetWideBoundedLiveState(
@@ -1439,7 +2312,11 @@ namespace MissileFireControl.Mod.Diagnostics
         private static void WriteFleetWideBoundedLiveResult(
             FleetWideBoundedLiveApplyRequest request,
             int cycleId,
+            ExtractedCombatSnapshot snapshot,
+            AllocationResult allocationResult,
             CommandCandidateDecision candidate,
+            TargetAllocation allocation,
+            FleetWideScopeEvidence scope,
             string commandResultId,
             CommandApplyResult result,
             CommandAuthorityStateSnapshot preState,
@@ -1448,6 +2325,8 @@ namespace MissileFireControl.Mod.Diagnostics
             string selectionRelation,
             string capReason)
         {
+            BoundedLiveTargetAlternativeFeatureSummary alternativeFeatures = BuildBoundedLiveAlternativeFeatureSummary(snapshot, allocationResult, scope, candidate);
+            LiveMissilePressureEstimate pressure = RecallCandidatePriorInFlightPressure(request, candidate);
             StringBuilder builder = FleetWideBoundedLiveRecordBuilder("fleetWideBoundedLiveResult", request, cycleId);
             AppendPair(builder, "candidateId", candidate == null ? "none" : candidate.CandidateId);
             AppendPair(builder, "commandResultId", commandResultId);
@@ -1468,8 +2347,24 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "target", candidate.TargetName);
                 AppendPair(builder, "targetTeam", candidate.TargetTeamId);
                 AppendPair(builder, "assignedShots", candidate.AssignedShots.ToString(CultureInfo.InvariantCulture));
+                AppendPair(builder, "ammoGateBudgetShots", FormatCount(candidate.AmmoGateBudgetShots));
+                AppendPair(builder, "targetValue", allocation == null ? "unknown" : Format(allocation.TargetValue));
+                AppendPair(builder, "pdScore", allocation == null ? "unknown" : Format(allocation.PdScore));
+                AppendPair(builder, "saturationSize", allocation == null ? "unknown" : allocation.SaturationSize.ToString(CultureInfo.InvariantCulture));
+                AppendPair(builder, "killSize", allocation == null ? "unknown" : allocation.KillSize.ToString(CultureInfo.InvariantCulture));
+                AppendPair(builder, "launchWindowScore", allocation == null ? "unknown" : Format(allocation.LaunchWindowScore));
+                AppendPair(builder, "scorePerShot", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+                AppendPair(builder, "selectedTargetScore", allocation == null ? "unknown" : Format(allocation.ScorePerShot));
+                AppendPair(builder, "selectedTargetScoreBasis", allocation == null ? "unknown" : "scorePerShot");
+                AppendPair(builder, "selectedTargetScoreSpace", allocation == null ? "unknown" : "launcherCandidateAllocation");
+                AppendSelectedTargetRankEvidence(builder, alternativeFeatures);
+                AppendPair(builder, "candidateSource", candidate.CandidateSource);
+                AppendPair(builder, "allocatorEvidence", allocation == null ? "missingAllocatorSnapshotEvidence" : "currentAllocatorSnapshot");
+                AppendFleetWideBoundedLiveMeasurementEvidence(builder, request, candidate, allocation, result.AppliedCommands > 0, pressure);
+                AppendFleetWideBoundedLiveCapEvidence(builder, request, candidate, allocation, capReason);
             }
 
+            AppendFleetWideTargetAlternativeEvidence(builder, scope, alternativeFeatures);
             AppendPair(builder, "preLauncherPrimaryTargetId", preState == null ? "unknown" : preState.PrimaryTargetId);
             AppendPair(builder, "postLauncherPrimaryTargetId", postState == null ? "unknown" : postState.PrimaryTargetId);
             AppendPair(builder, "preStateVisible", result.PreStateVisible);
@@ -2246,7 +3141,8 @@ namespace MissileFireControl.Mod.Diagnostics
                 Name = GameObjectReader.Label(ship, "fleetWideTarget"),
                 TeamId = GameObjectReader.TeamId(ship),
                 Source = scope.TargetSource,
-                Confidence = scope.TargetConfidence
+                Confidence = scope.TargetConfidence,
+                RuntimeShip = ship
             };
             ClassifyFleetWideTarget(target, friendlyTeam);
             scope.Targets.Add(target);
@@ -4126,6 +5022,14 @@ namespace MissileFireControl.Mod.Diagnostics
             public HashSet<string> CommandedShipIds { get; } = new HashSet<string>();
 
             public HashSet<string> CommandedTargetIds { get; } = new HashSet<string>();
+
+            public Dictionary<string, int> CommandedTargetAssignedShots { get; } = new Dictionary<string, int>();
+
+            public Dictionary<string, LiveMissilePressureEstimate> CandidatePriorInFlightPressure { get; } = new Dictionary<string, LiveMissilePressureEstimate>();
+
+            public bool HasAppliedCandidateScore { get; set; }
+
+            public double LowestAppliedCandidateScore { get; set; }
         }
 
         private sealed class FleetWideCommandAuthorityProbeRequest
@@ -4258,6 +5162,48 @@ namespace MissileFireControl.Mod.Diagnostics
             public string Reason { get; set; } = "unknown";
 
             public string Confidence { get; set; } = "unavailable";
+
+            public object RuntimeShip { get; set; }
+        }
+
+        private sealed class BoundedLiveTargetAlternativeFeatureSummary
+        {
+            public Dictionary<string, TargetAllocation> AllocationsByTargetId { get; } = new Dictionary<string, TargetAllocation>();
+
+            public string FeatureEvidence { get; set; } = "identityOnlyNoAllocatorFeatures";
+
+            public int FeatureCount { get; set; }
+
+            public int FeatureMissingCount { get; set; }
+
+            public string ScoreBasis { get; set; } = "scorePerShot";
+
+            public string ScoreSpace { get; set; } = "diagnosticTargetAlternativeRecomputed";
+
+            public string SelectedTargetRank { get; set; } = "unknown";
+
+            public string SelectedTargetRankBasis { get; set; } = "unknown";
+
+            public string SelectedTargetRankComparisonSpace { get; set; } = "targetAlternativeScores";
+
+            public string SelectedTargetRankLevel { get; set; } = "target-level";
+
+            public string SelectedTargetRankConfidence { get; set; } = "alternativeFeaturesUnavailable";
+
+            public string SelectedTargetRankTieCount { get; set; } = "unknown";
+        }
+
+        private sealed class LiveMissilePressureEstimate
+        {
+            public string Source { get; set; } = "GameControl.spaceCombat.liveMissiles";
+
+            public string Confidence { get; set; } = "targetOwnershipSourceUnavailable";
+
+            public int TotalObserved { get; set; }
+
+            public int MatchingTargetCount { get; set; }
+
+            public int UnknownTargetCount { get; set; }
         }
 
         private sealed class ControlledDryRunRequest

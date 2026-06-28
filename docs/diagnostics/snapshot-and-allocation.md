@@ -681,6 +681,92 @@ recordType="fleetWideBoundedLivePostState"
 
 A row may use `launcherSelectionRelation="selectionUnknownFleetEligible"` when command-panel selected scope is unavailable but the launcher is fleet-eligible, player-side, commandable, missile-ready, and allocator-evidence-backed. This is evidence-limited command authority, not selected-scope proof.
 
+For target-over-concentration tuning review, bounded-live candidate/result rows should preserve real fleet-wide target alternative denominators from `FleetWideScopeEvidence`, such as:
+
+```text
+visibleTargetSource="GameControl.spaceCombat.activeShips"
+visibleTargetConfidence="visibleCombatants"
+visibleTargetSourceCount="..."
+visibleHostileTargets="..."
+targetAlternativeDenominator="..."
+targetAlternativeEvidence="visibleHostileTargetsFromActiveShips"
+targetAlternativeIds="..."
+targetAlternativeNames="..."
+targetAlternativeTeams="..."
+targetAlternativeCountTruncated="0"
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeValues="..."
+targetAlternativePdScores="..."
+targetAlternativeSaturationSizes="..."
+targetAlternativeKillSizes="..."
+targetAlternativeLaunchWindowScores="..."
+targetAlternativeScores="..."
+targetAlternativeScoreBasis="scorePerShot"
+targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"
+```
+
+These fields should be treated as the denominator for later target-over-concentration review. Do not use the older cycle-level `targetCount` field as that denominator; it only records whether the current snapshot has a target object.
+The target alternative identity lists are compact, bounded lists of visible
+hostile targets from the same scope snapshot. If
+`targetAlternativeCountTruncated` is nonzero, target identity comparison is
+evidence-limited even when the denominator count is present.
+When diagnostic-only allocator feature extraction succeeds for all emitted
+visible-hostile alternatives, `targetAlternativeFeatureEvidence` is
+`allocatorComparableFeatures` and the parallel compact feature lists use the
+same ordering as `targetAlternativeIds`. Partial or missing feature extraction
+is reported explicitly and remains a hard #43.4 measurement blocker.
+
+Bounded-live candidate/result rows also preserve allocator decision and
+measurement-readiness fields when they are available:
+
+```text
+targetValue="..." pdScore="..." saturationSize="..." killSize="..." launchWindowScore="..." scorePerShot="..."
+selectedTargetScore="..." selectedTargetRank="..."
+selectedTargetScoreSpace="launcherCandidateAllocation"
+selectedTargetRankBasis="scorePerShot" selectedTargetRankComparisonSpace="targetAlternativeScores"
+selectedTargetRankLevel="target-level" selectedTargetRankConfidence="exact"
+selectedTargetPriorControlledShots="..." selectedTargetCumulativeAssignedShots="..."
+selectedTargetPriorMissileInFlightEstimate="..."
+selectedTargetPriorMissileInFlightEstimateConfidence="..."
+selectedTargetPriorMissileInFlightEstimateBound="exact|lowerBound|unknown"
+selectedTargetPriorMissileInFlightTargetAttribution="..."
+selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
+targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
+```
+
+`selectedTargetScore` uses the allocator's current `scorePerShot` value with
+`selectedTargetScoreBasis="scorePerShot"` when that allocation evidence is
+available, but it is explicitly a launcher/candidate allocation score
+(`selectedTargetScoreSpace="launcherCandidateAllocation"`). It must not be
+directly compared to `targetAlternativeScores`, which are diagnostic
+target-alternative scores recomputed in `targetAlternativeScoreSpace`.
+`selectedTargetRank` is target-level: it ranks the selected target within
+`targetAlternativeScores` and reports that comparison space in
+`selectedTargetRankComparisonSpace`. Ties and partial feature coverage are
+represented by `selectedTargetRankConfidence`.
+
+`selectedTargetPriorMissileInFlightEstimate` is a best-effort pre-command
+target-level live missile count. The preferred source is active missile
+controllers reachable from `GameControl.spaceCombat._projectiles` or
+`GameControl.spaceCombat._reverseProjectiles`, because `MissileController`
+exposes the current guidance `target`. `GameControl.spaceCombat.liveMissiles`
+is only a faction-count fallback and cannot by itself attribute missiles to
+target ids. The estimate is not hit/damage/kill attribution. Its confidence and
+unknown target count fields define whether target ownership was recovered,
+partially recovered, unavailable, or no live missiles were observed. If live
+missiles are observed but one or more target ids cannot be recovered, the
+estimate is a lower-bound target count, even when the selected-target estimate
+value is `0`.
+
+The corpus importer separates hard #43.4 measurement blockers from external
+handoff blockers. Hard blockers include missing selected/alternative comparable
+score features, ambiguous selected-target rank, prior target pressure, and cap
+blocked-vs-applied comparison when comparison evidence is absent.
+External blockers include exact hit/damage/kill attribution pending #47 and
+vanilla salvo suppression / selected-ship distribution pending #48. Outcome
+fields should not be read as hit, damage, kill, or vanilla-salvo suppression
+evidence.
+
 A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
 
 ```text

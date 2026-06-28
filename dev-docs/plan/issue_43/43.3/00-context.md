@@ -1,12 +1,17 @@
 # Issue #43.3 context — Corpus review and no-tuning handoff
 
-Updated: 2026-06-23
+Updated: 2026-06-26
 Repo: `FennexFox/TI_Missile_Warfare`
 Local path: `dev-docs/plan/issue_43/43.3/00-context.md`
 Parent umbrella: `dev-docs/plan/issue_43/00-context.md`
 Previous slices:
 - `dev-docs/plan/issue_43/43.1/00-context.md`
 - `dev-docs/plan/issue_43/43.2/00-context.md`
+Latest #43.2 evidence:
+- `docs/diagnostics/runtime-validation-history.md`
+- `docs/diagnostics/snapshot-and-allocation.md`
+- implementation commit: `a40bacda1f8d74645a960c48ac4afdd58bb953b1`
+- final smoke doc commit: `67cc4929711f6cee3e6b55cc8eee6e6f5607e9d1`
 
 This is context for the third #43 sub-slice. It is not an implementation plan. Codex should read this context after #43.1/#43.2 evidence or blockers exist.
 
@@ -32,6 +37,42 @@ This slice is a review and handoff layer. It should not turn one batch into allo
 - fixture evidence proving schema/report behavior for the intended review surface.
 
 If none of these exist, #43.3 is premature.
+
+## Actual prior state entering #43.3
+
+#43.3 is no longer premature. #43.2 produced real bounded fleet-wide live evidence and was documented in `runtime-validation-history.md`.
+
+Confirmed #43.2 runtime smoke:
+
+```text
+experimentId="fleetwide-bounded-live-20260624T125727207Z-1"
+fleetWideBoundedLiveCandidate: 3
+fleetWideBoundedLivePreState: 3
+fleetWideBoundedLiveResult: 5
+fleetWideBoundedLivePostState: 3
+result="applied": 3
+result="skipped": 2
+failedCommands="0"
+directRuntimeContext LaunchLog rows: 21
+scopeViolation markers: 0
+same-team markers: 0
+```
+
+Applied commands:
+
+```text
+Thapsus -> Volcano, 7 shots
+Salamis -> Volcano, 7 shots
+Cannae -> Volcano, 7 shots
+```
+
+The two skipped rows were expected `perShipCap="1"` blocks:
+
+```text
+reason="fleetWideBoundedLivePerShipCapBlocked"
+```
+
+This proves bounded command authority, cap enforcement, and direct command-result launch/spend correlation for a small cap=3 fleet-wide run. It does not prove allocator quality, target-selection quality, kill attribution, vanilla salvo suppression, or general tuning safety.
 
 ## Evidence channels to keep separate
 
@@ -76,6 +117,8 @@ The #44 corpus layer should let this slice group or compare by:
 
 If the current corpus cannot express one of these, record that as a handoff gap instead of inventing a metric.
 
+Current local corpus state: #43.3 now has a private/raw-log-derived local corpus import under ignored `artifacts/experiments/bounded-live-playerlog-20260626/`, summarized at `artifacts/fitting/bounded-live-playerlog-20260626-summary/`. The import produced 8 real `fleet-wide-controlled` experiments, 24 applied bounded-live command results, 167 direct runtime launch rows, and `warnings: []`. Raw private `Player.log` remains uncommitted by policy; commit only code, docs, fixtures, and redacted summaries unless a later decision explicitly approves raw-log handling.
+
 ## Possible conclusions
 
 #43.3 should leave one clear conclusion:
@@ -88,6 +131,14 @@ If the current corpus cannot express one of these, record that as a handoff gap 
 - Safety evidence is still ambiguous.
 
 Each conclusion should name the next issue or sub-slice that should own the follow-up.
+
+Given the expanded 2026-06-26 corpus import, the current #43.3 conclusion remains conservative:
+
+```text
+No allocator tuning yet from command-authority evidence alone.
+```
+
+The earlier first task, collecting 2-3 additional bounded fleet-wide live runs, is complete for local/private evidence. The remaining decision is whether the 8-run corpus shows a repeated allocator-quality failure pattern strong enough to justify a narrow tuning issue, or whether outcome-hook measurement, vanilla-spillover separation, and battle/window provenance should own the next work.
 
 ## Non-goals
 
@@ -110,6 +161,14 @@ A future worker should be able to read the #43.3 output and know:
 - which evidence gaps matter most;
 - whether the next step is tuning, more live evidence, measurement work, uncontrolled-behavior work, or no change.
 
+## Suggested first steps
+
+1. Review the #43.2 bounded-live smoke evidence in `runtime-validation-history.md`.
+2. Decide how to represent that run in the #44 corpus without committing private raw logs.
+3. If needed, create local ignored `artifacts/experiments/...` metadata/summary/verdict files for the real run.
+4. Run `tools/summarize_experiment_corpus.py` against the corpus registry.
+5. Produce a #43.3 conclusion: tune, no tuning, more bounded live evidence, measurement blocker, vanilla-spillover blocker, or safety ambiguity.
+
 ## Files likely relevant to Codex
 
 - `dev-docs/plan/issue_43/00-context.md`
@@ -120,5 +179,6 @@ A future worker should be able to read the #43.3 output and know:
 - `docs/diagnostics/snapshot-and-allocation.md`
 - `dev-docs/plan/issue_39.1/00-context.md`
 - `tools/summarize_experiment_corpus.py`
+- `tools/import_player_log_experiments.py`
 - `tools/fit_shadow_allocation.py`
 - `tools/fixtures/experiment_corpus/`

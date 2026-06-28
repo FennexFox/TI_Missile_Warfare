@@ -1016,3 +1016,114 @@ reason="fleetWideBoundedLivePerShipCapBlocked"
 Those skips are expected: the same already-commanded launcher appeared in later allocator snapshots and was blocked by `perShipCap="1"`. The run therefore validates the bounded-live slice at cap=3 with allocator evidence preserved across cycles, direct launch/spend correlation present, and no observed same-team or scope-violation marker.
 
 This is sufficient to close the #43.2 command-authority / bounded-live proof slice and hand off to #43.3 for allocator quality, corpus, spillover, and tuning work.
+
+## Issue #43.3 expanded bounded fleet-wide corpus import: 8 real runs
+
+A private `Player.log` from 2026-06-25/2026-06-26 was imported with `tools/import_player_log_experiments.py` into ignored local artifacts:
+
+```text
+artifacts/experiments/bounded-live-playerlog-20260626/
+artifacts/fitting/bounded-live-playerlog-20260626-summary/
+```
+
+The raw `Player.log` is not committed. The generated local corpus summary recorded:
+
+```text
+experimentCount: 8
+runModeCounts.fleet-wide-controlled: 8
+warnings: []
+directRuntimeContext launch rows: 167
+fleet-wide bounded live applied command results: 24
+failed command results: 0
+pdEvidenceCategory: observedTemplateCapability for all 8 imported experiments
+```
+
+The import also validated the battle-aware importer behavior added for #43.3:
+
+```text
+EXP-IMPORTED-NONE: not generated after placeholder experimentId filtering
+battleSegmentBreakdown: present in per-experiment summary/metadata
+same-battle same-cycle PD context: recovered row-locally for all 8 experiments
+```
+
+Battle/window provenance notes:
+
+```text
+Z-5: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-6: AllocationLog rows are all in BATTLE-0001; LaunchLog/runtime context spans multiple detected battle segments.
+Z-7: BATTLE-0001 contains one skipped/noAllocatorAllocation row; the applied commands and launch runtime rows are in BATTLE-0002.
+```
+
+The final aggregate missing-evidence counters after deduplication are provenance limitations, not command failures:
+
+```text
+source Player.log path omitted from registry: 8
+launch runtime context spans multiple detected battle segments: 2
+allocation rows span multiple detected battle segments: 1
+```
+
+This expanded corpus is sufficient to say that the additional bounded-live evidence collection prerequisite for #43.3 has been met locally. It still does not justify broad allocator tuning without a repeated allocator-quality failure pattern or better outcome/spillover measurement.
+
+## Issue #43.4 bounded-live tuning-readiness measurement
+
+Runtime validation on 2026-06-28 showed a bounded-live run with a real
+same-cycle target alternative denominator:
+
+```text
+experimentId="fleetwide-bounded-live-20260628T023454808Z-1"
+targetAlternativeDenominator="5"
+targetAlternativeNames="Volcano|Kiyoshimo|Hellhound|Gorgon|Chimera"
+selectedTargetScore="3.677"
+selectedTargetScoreBasis="scorePerShot"
+selectedTargetPriorKnownShotPressure: 0 -> 6 -> 12
+```
+
+That run established that same-target concentration can be observed while
+multiple visible hostile target alternatives exist. It still left two hard
+measurement blockers: allocator-comparable alternative target features and
+target-level prior in-flight missile pressure.
+
+The follow-up #43.4 diagnostics add compact parallel alternative feature lists,
+selected-target rank evidence, and a best-effort pre-command in-flight missile
+pressure estimate with explicit confidence/source fields. Synthetic fixture
+coverage now demonstrates the intended fitting surface:
+
+```text
+targetAlternativeFeatureEvidence="allocatorComparableFeatures"
+targetAlternativeScores="3.42|2.1"
+targetAlternativeScoreSpace="diagnosticTargetAlternativeRecomputed"
+selectedTargetScoreSpace="launcherCandidateAllocation"
+selectedTargetRank="1"
+selectedTargetRankComparisonSpace="targetAlternativeScores"
+selectedTargetRankLevel="target-level"
+selectedTargetRankConfidence="exact"
+selectedTargetPriorMissileInFlightEstimate="0"
+selectedTargetPriorMissileInFlightEstimateConfidence="noLiveMissilesObserved"
+selectedTargetPriorMissileInFlightEstimateBound="exact"
+```
+
+The score spaces are intentionally different: `selectedTargetScore` is the
+launcher/candidate allocation score, while `targetAlternativeScores` are the
+target-level diagnostic comparison list used by `selectedTargetRank`. In-flight
+pressure is fully known only for no-live-missile or fully attributed live-missile
+evidence; observed live missiles with unknown target ids are lower-bound
+target-attribution-limited evidence.
+
+The final #43.4 measurement-boundary inspection selected Path A for target
+attribution. `SpaceCombatManager.liveMissiles` is count-only, but active
+`MissileController` objects are reachable from `_projectiles` /
+`_reverseProjectiles` and expose the current guidance `target`. Diagnostics now
+prefer those controller sources and use `liveMissiles` only as count-only
+lower-bound fallback when controller targets are unavailable.
+
+Exact outcome attribution remains an external #47 handoff. These diagnostics do
+not change allocator scoring, command caps, vanilla salvo behavior, or outcome
+hooks.
+
+### Issue #43.4 hook-timing boundary for first-row lower-bound pressure
+
+A later `fleetwide-bounded-live-20260628T102413012Z-1` validation confirmed Path A at runtime: active missile controllers from `GameControl.spaceCombat._projectiles` can expose `MissileController.target` and produce exact target-level in-flight pressure for later bounded-live applied rows. In that run, two applied rows recovered target ids through `_projectiles`, while one earlier row fell back to `liveMissiles` count-only evidence and remained lower-bound.
+
+The lower-bound first row is a diagnostic sampling boundary, not evidence that the first missile was outside controlled command influence. It means the sample observed live missile count before controller-target attribution was recoverable at that hook point. The current hook should not be moved merely to erase that case, because moving it later would risk contaminating pre-command pressure with missiles launched by the current command, and moving it earlier may reduce controller availability.
+
+If more precision is ever required, add a separate post-command or next-frame reconciliation field instead of changing the meaning of `selectedTargetPriorMissileInFlightEstimate`. For the next tuning slice, preserve row-level evidence quality and limit scope to controlled-shot / recovered-in-flight-pressure-aware overcommit retargeting. Exact hit/damage/kill attribution remains a #47 external handoff.

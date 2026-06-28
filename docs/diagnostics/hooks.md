@@ -64,8 +64,15 @@ reached from the hook's `CombatWeaponCarrierState` argument or
 launcher/carrier primary-target or focus-fire identity, not as proof of the
 actual in-flight missile guidance target. The live `MissileWeapon.target` /
 `MissileController.target` chain remains the stronger runtime source for
-projectile/controller target identity, but using it would require a separate
-observation point.
+projectile/controller target identity.
+
+Issue #43.4 final measurement-boundary review found that
+`SpaceCombatManager.liveMissiles` is a faction-count dictionary, not a missile
+object list. Target-level in-flight pressure should therefore prefer active
+`MissileController` objects reachable through `SpaceCombatManager._projectiles`
+or `_reverseProjectiles`, then read `MissileController.target`. If those
+controller objects are not available at the current hook point, the diagnostics
+fall back to count-only lower-bound pressure.
 
 Ammo/gate budget source discovery found that reliable ship ammo state is keyed as
 `TISpaceShipState.ammo[ModuleDataEntry]`. The projectile-state fire hook does
