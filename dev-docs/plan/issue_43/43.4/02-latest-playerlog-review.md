@@ -199,3 +199,13 @@ Active missile controllers are recoverable through `GameControl.spaceCombat._pro
 Diagnostics now prefer controller target recovery and fall back to count-only lower-bound pressure when controller objects are unavailable.
 If runtime validation still reports count-only lower-bound pressure, the safe next tuning scope remains controlled-shot-only overcommit mitigation until a runtime controller-target sample confirms full pressure recovery.
 ```
+
+## Hook timing boundary for first-row lower-bound pressure
+
+A later runtime validation of `fleetwide-bounded-live-20260628T102413012Z-1` confirmed that Path A works at runtime, but not necessarily for every applied row. Two applied rows recovered target ids from `GameControl.spaceCombat._projectiles` and were classified as exact in-flight pressure. One earlier applied row observed live missile count through the count-only fallback before controller target attribution was available, so it remained lower-bound.
+
+This lower-bound row should not be interpreted as evidence that the first missile was outside controlled command influence. It means the diagnostic sample saw live missile pressure before `MissileController.target` attribution had stabilized at the sampling hook. In this boundary case, `liveMissiles` count and active controller target recovery can be one diagnostic sample apart.
+
+Do not move the existing sampling hook merely to eliminate that first-row lower-bound case. Moving the sample later risks mixing missiles launched by the current bounded-live command into a field that is meant to describe pre-command pressure. Moving it earlier risks losing controller objects entirely. If this ever needs deeper treatment, use a separate post-command or next-frame reconciliation field rather than redefining `selectedTargetPriorMissileInFlightEstimate`.
+
+For now the safe next tuning scope remains narrow: controlled-shot overcommit retargeting / saturation-aware bounded-live target distribution, with row-level evidence quality preserved. Exact outcome attribution remains a #47 handoff.

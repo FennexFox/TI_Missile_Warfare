@@ -1119,3 +1119,11 @@ lower-bound fallback when controller targets are unavailable.
 Exact outcome attribution remains an external #47 handoff. These diagnostics do
 not change allocator scoring, command caps, vanilla salvo behavior, or outcome
 hooks.
+
+### Issue #43.4 hook-timing boundary for first-row lower-bound pressure
+
+A later `fleetwide-bounded-live-20260628T102413012Z-1` validation confirmed Path A at runtime: active missile controllers from `GameControl.spaceCombat._projectiles` can expose `MissileController.target` and produce exact target-level in-flight pressure for later bounded-live applied rows. In that run, two applied rows recovered target ids through `_projectiles`, while one earlier row fell back to `liveMissiles` count-only evidence and remained lower-bound.
+
+The lower-bound first row is a diagnostic sampling boundary, not evidence that the first missile was outside controlled command influence. It means the sample observed live missile count before controller-target attribution was recoverable at that hook point. The current hook should not be moved merely to erase that case, because moving it later would risk contaminating pre-command pressure with missiles launched by the current command, and moving it earlier may reduce controller availability.
+
+If more precision is ever required, add a separate post-command or next-frame reconciliation field instead of changing the meaning of `selectedTargetPriorMissileInFlightEstimate`. For the next tuning slice, preserve row-level evidence quality and limit scope to controlled-shot / recovered-in-flight-pressure-aware overcommit retargeting. Exact hit/damage/kill attribution remains a #47 external handoff.
