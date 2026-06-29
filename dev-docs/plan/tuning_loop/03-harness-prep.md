@@ -79,17 +79,19 @@ it.
 
 ### 3. First sweep boundary
 
-Document the first allowed sweep before writing heuristic code. The first sweep
-must stay inside pressure threshold / retarget preference behavior.
+Document the first allowed sweep before writing additional heuristic code. Code
+inspection shows the originally proposed Candidate A behavior is already present
+in the current #56 implementation, so the first sweep boundary should treat
+Candidate A as the current behavior to validate rather than a new code change.
 
 Recommended first sweep shape:
 
-- baseline: `thresholdMultiplier = 1.0`, current #56 behavior;
-- candidate A: a minimal pressure-aware retarget preference change that only
-  applies when exact pressure is at or above `max(killSize, saturationSize)` and
-  a comparable same-cycle alternative exists;
-- optional candidate B only if candidate A is too weak to move metrics, and only
-  if it remains in the same family.
+- baseline / Candidate A: `thresholdMultiplier = 1.0`, current #56 behavior;
+- validate Candidate A with a comparable follow-up run and the comparison
+  template;
+- optional Candidate B only if Candidate A produces `no material change`,
+  `inconclusive`, or sparse evidence while guardrails hold, and only if Candidate
+  B remains in the same pressure-aware family.
 
 The first sweep should not include more than one behavioral code change family.
 
@@ -146,6 +148,8 @@ python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment
 
 ## Next phase
 
-After this phase, enter the first pressure-aware tuning sweep. The next phase may
-apply one narrow heuristic change and then run the baseline/follow-up comparison
-from the documented template.
+After this phase, enter the first pressure-aware tuning sweep by validating the
+current Candidate A behavior with a comparable follow-up run and the
+baseline/follow-up comparison template. Do not implement a duplicate Candidate A
+change. The next code change, if any, should be Candidate B or a report-only
+comparison helper after Candidate A has been classified.

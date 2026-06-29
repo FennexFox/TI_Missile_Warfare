@@ -2,15 +2,36 @@
 
 ## Goal
 
-Define the first heuristic tuning sweep before any allocator behavior changes.
-This keeps the first loop small enough to interpret while still reducing the
-manual fatigue of deciding scope each time.
+Define the first pressure-aware sweep boundary without duplicating behavior that
+already exists in the current #56 implementation. This keeps the tuning loop
+small enough to interpret while reducing the manual fatigue of deciding scope
+each time.
 
 ## Sweep name
 
 `pressure-aware-bounded-live-v1`
 
-## Baseline candidate
+## Current implementation status
+
+Code inspection shows that the originally proposed Candidate A behavior is
+already present in `ShadowAllocationDiagnostics`:
+
+- bounded-live pressure decisions use prior controlled shots plus exact recovered
+  in-flight shots;
+- lower-bound in-flight pressure is recorded separately and remains
+  diagnostic-only;
+- selected-target pressure is compared against `max(killSize, saturationSize)`;
+- retargeting only proceeds when same-cycle alternatives exist;
+- retargeting requires `allocatorComparableFeatures` target-alternative evidence;
+- the chosen retarget is the best under-threshold alternative by the current
+  allocator score space.
+
+Therefore the first sweep should not implement Candidate A again. Treat Candidate
+A as the current baseline behavior that must be validated through comparison.
+The next code change, if any, should be Candidate B or a diagnostics-only
+comparison helper.
+
+## Baseline / Candidate A snapshot
 
 ```json
 {
@@ -20,8 +41,9 @@ manual fatigue of deciding scope each time.
   "thresholdMultiplier": 1.0,
   "pressureSourcePolicy": "priorControlledPlusExactRecoveredInFlightOnly",
   "lowerBoundPressurePolicy": "diagnosticOnly",
-  "retargetPolicy": "currentIssue56Behavior",
-  "viableAlternativePolicy": "allocatorComparableTargetFeaturesRequired",
+  "retargetPolicy": "preferBestViableUnderThresholdAlternativeWhenSelectedAtOrAboveThreshold",
+  "viableAlternativePolicy": "targetDenominatorGtOneAndAllocatorComparableFeaturesRequired",
+  "implementationStatus": "alreadyImplementedInIssue56",
   "deferredKnobs": [
     "targetValueWeights",
     "pointDefenseWeights",
@@ -30,15 +52,15 @@ manual fatigue of deciding scope each time.
     "vanillaSalvoSuppression",
     "commandAuthorityScope"
   ],
-  "notes": "Baseline for the first pressure-aware tuning sweep. Outcome rows are hook-health context only."
+  "notes": "Current pressure-aware bounded-live behavior. Outcome rows are hook-health context only."
 }
 ```
 
-## Candidate A: minimal exact-pressure retarget preference
+## Candidate A validation target
 
-Candidate A is the recommended first code change.
+Candidate A should be validated, not reimplemented.
 
-Allowed behavior:
+Expected behavior to preserve:
 
 - only applies to bounded-live controlled allocation rows;
 - only considers pressure from prior controlled shots plus exact recovered
@@ -51,7 +73,7 @@ Allowed behavior:
   candidate space;
 - keeps lower-bound in-flight pressure diagnostic-only.
 
-Not allowed:
+Not allowed in validation or follow-up changes:
 
 - lowering the threshold based on lower-bound pressure;
 - retargeting without comparable alternative feature evidence;
@@ -60,17 +82,35 @@ Not allowed:
 - changing selected/fleet scope or command authority;
 - using `[OutcomeLog]` rows as success/failure reward.
 
-Suggested parameter snapshot:
+## Optional Candidate B
+
+Do not implement Candidate B until Candidate A has a comparison record using
+`04-comparison-template.md` and the result is `no material change`,
+`inconclusive`, or too sparse to evaluate while guardrails hold.
+
+Possible Candidate B shapes, still inside the same family:
+
+- keep threshold at `1.0` but add clearer diagnostics for why an above-threshold
+  selected target was retained despite alternatives;
+- keep threshold and alternative policy fixed but add a small deterministic
+  tie-breaker against already pressured selected targets, only among fully
+  comparable alternatives;
+- keep behavior fixed and add a report-only comparison helper before changing any
+  additional heuristic behavior.
+
+Candidate B must not introduce a second heuristic family.
+
+Suggested Candidate B parameter snapshot, if later selected:
 
 ```json
 {
-  "heuristicCandidateId": "pressure-aware-bounded-live-v1-candidate-a",
+  "heuristicCandidateId": "pressure-aware-bounded-live-v1-candidate-b",
   "family": "pressure-aware-bounded-live-v1",
   "pressureReference": "maxKillSaturation",
   "thresholdMultiplier": 1.0,
   "pressureSourcePolicy": "priorControlledPlusExactRecoveredInFlightOnly",
   "lowerBoundPressurePolicy": "diagnosticOnly",
-  "retargetPolicy": "preferBestViableUnderThresholdAlternativeWhenSelectedAtOrAboveThreshold",
+  "retargetPolicy": "candidateBToBeDefinedAfterCandidateAComparison",
   "viableAlternativePolicy": "targetDenominatorGtOneAndAllocatorComparableFeaturesRequired",
   "deferredKnobs": [
     "targetValueWeights",
@@ -80,45 +120,36 @@ Suggested parameter snapshot:
     "vanillaSalvoSuppression",
     "commandAuthorityScope"
   ],
-  "notes": "First minimal pressure-aware tuning candidate."
+  "notes": "Do not implement until Candidate A/current behavior is compared."
 }
 ```
 
-## Optional Candidate B
-
-Do not implement Candidate B unless Candidate A produces `no material change` or
-is too sparse to evaluate while guardrails hold.
-
-Possible Candidate B shapes, still inside the same family:
-
-- keep threshold at `1.0` but loosen alternative rank acceptance only among fully
-  comparable alternatives;
-- keep alternative policy fixed but add a small deterministic tie-breaker against
-  already pressured selected targets;
-- add clearer diagnostics for why an above-threshold selected target was retained
-  despite alternatives.
-
-Candidate B must not introduce a second heuristic family.
-
 ## Required comparison
 
-For each candidate, compare against the baseline using
-`04-comparison-template.md`.
+Compare Candidate A/current behavior against the existing baseline corpus and any
+new comparable follow-up run using `04-comparison-template.md`.
 
-Primary expected movement:
+Primary expected movement or preservation:
 
 - `boundedLiveRetainedSelectedTargetDecisionsAboveThreshold` decreases or remains
   zero with an explanation;
-- `boundedLiveRetargetedDecisionsAboveThreshold` increases only when viable
+- `boundedLiveRetargetedDecisionsAboveThreshold` appears only when viable
   alternatives exist;
 - `boundedLiveLowerBoundPressureDiagnosticOnlyRows` remains diagnostic-only;
 - hard guardrails remain clean.
 
-A supportive verdict requires both objective movement and guardrail preservation.
+A supportive verdict requires both objective movement/preservation and guardrail
+preservation.
 
 ## Validation before live follow-up
 
-For the code change:
+For docs-only or comparison-template changes:
+
+```powershell
+python tools\check_layout.py
+```
+
+For any future code change:
 
 ```powershell
 dotnet build TI_Missile_Fire_Control.sln
@@ -136,13 +167,15 @@ python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment
 
 ## Live follow-up expectation
 
-After Candidate A is implemented and statically validated:
+Before Candidate B or any broader tuning change:
 
-1. run one comparable bounded-live combat scenario;
+1. run one comparable bounded-live combat scenario under the current Candidate A
+   behavior;
 2. import the new `Player.log` to an ignored follow-up artifact directory;
 3. summarize the follow-up corpus;
 4. fill out the comparison template;
-5. classify the verdict before deciding whether to keep, revert, or iterate.
+5. classify the verdict before deciding whether to keep current behavior,
+   improve diagnostics, or design Candidate B.
 
 ## Fixture verdict policy
 
@@ -158,8 +191,8 @@ Recommended next cleanup:
 - upgrade those fixtures with the current required hook labels and make parser
   verdict OK part of their acceptance.
 
-This fixture cleanup is not a blocker for Candidate A, but it should be resolved
-before treating fixture parse verdicts as hard regression gates.
+This fixture cleanup is not a blocker for Candidate A validation, but it should
+be resolved before treating fixture parse verdicts as hard regression gates.
 
 ## Exit criteria for large preparation
 
@@ -169,4 +202,6 @@ Large preparation is complete when:
 - the comparison template is available;
 - parameter snapshots can be recorded in run notes or import metadata;
 - compact fixture verdict status is documented;
-- the next change is a narrow Candidate A implementation, not more preparation.
+- Candidate A/current behavior is recognized as already implemented;
+- the next code change, if any, is Candidate B or a report-only comparison helper,
+  not a duplicate Candidate A implementation.
