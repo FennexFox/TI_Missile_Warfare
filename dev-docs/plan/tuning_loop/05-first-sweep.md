@@ -98,6 +98,13 @@ Possible Candidate B shapes, still inside the same family:
 - keep behavior fixed and add a report-only comparison helper before changing any
   additional heuristic behavior.
 
+The selected Candidate B starting point is the report-only helper. It should not
+change combat behavior, allocator scoring, command authority, command caps, or
+outcome correlation. Its job is to turn baseline/follow-up corpus summaries into
+the comparison verdict vocabulary from `04-comparison-template.md`, so later
+behavioral candidates start from a recorded comparison instead of ad hoc log
+inspection.
+
 Candidate B must not introduce a second heuristic family.
 
 Suggested Candidate B parameter snapshot, if later selected:
@@ -161,7 +168,7 @@ python tools\parse_player_log.py --require-launchlogs
 If parser/importer/comparison tooling changes are included:
 
 ```powershell
-python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py tools\import_player_log_experiments.py tools\summarize_experiment_corpus.py
+python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py tools\import_player_log_experiments.py tools\summarize_experiment_corpus.py tools\compare_experiment_summaries.py
 python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment_corpus\registry.jsonl --output artifacts\fitting\corpus-summary-fixture
 ```
 
