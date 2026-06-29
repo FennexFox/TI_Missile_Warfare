@@ -1296,16 +1296,16 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                     correlation = pairs.get("controlledCommandCorrelation")
                     if correlation:
                         fleet_wide_command_authority_correlation_counts[correlation] += 1
+
+                if record_type == "fleetWideCommandAuthorityResult":
+                    fleet_wide_command_authority_result_counts[pairs.get("result", "unknown")] += 1
+                    fleet_wide_command_authority_reason_counts[pairs.get("reason", "unknown")] += 1
                     fleet_wide_command_authority_applied_commands += (
                         try_parse_int(pairs.get("appliedCommands")) or 0
                     )
                     fleet_wide_command_authority_failed_commands += (
                         try_parse_int(pairs.get("failedCommands")) or 0
                     )
-
-                if record_type == "fleetWideCommandAuthorityResult":
-                    fleet_wide_command_authority_result_counts[pairs.get("result", "unknown")] += 1
-                    fleet_wide_command_authority_reason_counts[pairs.get("reason", "unknown")] += 1
 
                 if record_type in FLEET_WIDE_BOUNDED_LIVE_ALLOCATION_RECORD_TYPES:
                     relation = pairs.get("launcherSelectionRelation")

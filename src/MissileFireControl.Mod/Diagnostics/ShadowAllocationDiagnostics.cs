@@ -1781,12 +1781,15 @@ namespace MissileFireControl.Mod.Diagnostics
                 return snapshot.Target;
             }
 
-            ShipSnapshot targetSnapshot = CombatSnapshotExtractor.ExtractTargetShipForDiagnostics(target.RuntimeShip, "fleetWideTarget");
-            if (targetSnapshot == null)
+            ExtractedCombatSnapshot targetDiagnosticSnapshot = CombatSnapshotExtractor.ExtractTargetSnapshotForDiagnostics(
+                target.RuntimeShip,
+                "fleetWideTarget");
+            if (targetDiagnosticSnapshot == null || targetDiagnosticSnapshot.Target == null)
             {
                 return null;
             }
 
+            ShipSnapshot targetSnapshot = targetDiagnosticSnapshot.Target;
             targetSnapshot.Id = HasConcreteToken(target.Id) ? target.Id : targetSnapshot.Id;
             targetSnapshot.DisplayName = HasConcreteToken(target.Name) ? target.Name : targetSnapshot.DisplayName;
             targetSnapshot.TeamId = HasConcreteTeam(target.TeamId) ? target.TeamId : targetSnapshot.TeamId;

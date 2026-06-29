@@ -22,9 +22,11 @@
       "parser_summary": {
         "allocation_summary": {
           "missing_input_counts": {},
-          "controlled_live_apply_skipped": 0,
+          "controlled_live_apply_skipped": 1,
           "controlled_live_apply_failed": 0,
-          "controlled_live_apply_reason_counts": {},
+          "controlled_live_apply_reason_counts": {
+            "blockedByRecommendationOnlyMode": 1
+          },
           "controlled_live_apply_mismatch_counts": {},
           "same_team_missile_target_snapshots": 0,
           "suspicious_patterns": ["none"]

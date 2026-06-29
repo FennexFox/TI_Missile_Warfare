@@ -1,20 +1,20 @@
 # Issue #56 context — Saturation-aware bounded-live target distribution
 
 Remote issue: https://github.com/FennexFox/TI_Missile_Warfare/issues/56
-Parent / umbrella: #43 fleet-wide controlled allocation
-Origin: post-#43.4 tuning-readiness handoff
+Parent / umbrella: Issue `#43` fleet-wide controlled allocation
+Origin: post-Issue `#43.4` tuning-readiness handoff
 
 ## Status
 
-#56 is the first narrow behavior-tuning slice after #43.4. It remains logically under the #43 fleet-wide controlled missile allocation path, but it is tracked as a separate issue so #43 can stay an umbrella / roadmap issue rather than accumulating another large behavior-changing slice.
+Issue `#56` is the first narrow behavior-tuning slice after Issue `#43.4`. It remains logically under the Issue `#43` fleet-wide controlled missile allocation path, but it is tracked as a separate issue so Issue `#43` can stay an umbrella / roadmap issue rather than accumulating another large behavior-changing slice.
 
-This issue is no longer measurement-readiness work. #43.4 established the measurement boundary needed to begin a limited tuning loop. #56 should implement a small, explainable overcommit mitigation heuristic using the evidence #43.4 made available.
+This issue is no longer measurement-readiness work. Issue `#43.4` established the measurement boundary needed to begin a limited tuning loop. Issue `#56` should implement a small, explainable overcommit mitigation heuristic using the evidence Issue `#43.4` made available.
 
 ## Problem statement
 
 The bounded-live path can repeatedly assign additional controlled missile packages to the same selected target even after controlled assigned shot pressure has reached or exceeded a reasonable `killSize` / `saturationSize` reference.
 
-Recent #43.4 validation showed this pattern can occur while:
+Recent Issue `#43.4` validation showed this pattern can occur while:
 
 - real same-cycle hostile target alternatives exist;
 - comparable target-level feature evidence exists;
@@ -28,7 +28,7 @@ The candidate problem is therefore not broad target-value mismatch. It is narrow
 
 ## Measurement handoff from #43.4
 
-#43.4 established and validated the following diagnostic surface:
+Issue `#43.4` established and validated the following diagnostic surface:
 
 - `targetAlternativeDenominator` identifies real same-cycle hostile target alternatives.
 - `targetAlternativeFeatureEvidence=allocatorComparableFeatures` can provide comparable target-level features.
@@ -47,7 +47,7 @@ Do not move the pre-command pressure hook merely to eliminate that first-row low
 
 ## Scope
 
-#56 may tune bounded-live target distribution using:
+Issue `#56` may tune bounded-live target distribution using:
 
 - prior controlled assigned shots;
 - recovered in-flight pressure when evidence is exact;

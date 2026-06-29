@@ -76,6 +76,11 @@ same-team / neutral / unknown / ambiguous target is false
 caps pass
 ```
 
+The explicit trigger is consumed by the first parser-visible candidate/result
+row, whether that row applies, skips, blocks, or fails. It does not remain armed
+across later allocator cycles unless the player explicitly arms a new bounded
+fleet-wide live apply attempt.
+
 Do not reuse #43.1 dry-run report trigger for live behavior. #43.1 `scopeMode="fleetWideReportOnly"` must remain report-only forever.
 
 ## Result rows
@@ -203,7 +208,7 @@ all direct launch/spend correlation either present or explicitly marked missing
 
 ## Handoff to #43.3
 
-#43.3 may start after this slice only if the output is one of:
+Issue `#43.3` may start after this slice only if the output is one of:
 
 ```text
 clean fleet-wide-controlled evidence
@@ -213,9 +218,14 @@ clear command-authority blocker explaining why broader live apply remains unsafe
 
 If vanilla spillover remains large or direct correlation is missing, #43.3 should review it as measurement/authority work, not allocator tuning evidence.
 
-## Implementation note — multi-cycle bounded trigger
+## Implementation note — single-use bounded trigger
 
-The first bounded-live implementation should preserve current allocator evidence rather than infer commands for every visible launcher in one frame. The trigger may remain armed across allocation cycles and apply at most one allocator-evidence-backed command per cycle until the global cap is reached.
+The first bounded-live implementation should preserve current allocator
+evidence rather than infer commands for every visible launcher in one frame. The
+one-shot trigger should evaluate the next allocator-evidence-backed cycle and
+emit at most one candidate/result row before disarming. A later issue can add a
+separate multi-cycle trigger namespace if it deliberately wants repeated
+per-cycle application up to a global cap.
 
 Initial implementation shape:
 
@@ -223,7 +233,7 @@ Initial implementation shape:
 experiment id prefix: fleetwide-bounded-live-
 global cap: 3
 per-ship cap: 1
-per-target cap: 3
+per-target cap: 1 or target-level assigned-shot cap, whichever is stricter
 scopeMode="fleetWideBoundedLiveApply"
 runMode="fleet-wide-controlled"
 recordType="fleetWideBoundedLiveCandidate"

@@ -470,16 +470,20 @@ def ensure_safe_output(output_path: Path) -> None:
         "candidate-comparison.csv",
         "scenario-breakdown.md",
     }
-    if not any((output_path / sentinel).exists() for sentinel in sentinels):
-        artifacts_root = (repo_root() / "artifacts/fitting").resolve()
-        resolved_output = output_path.resolve()
-        try:
-            resolved_output.relative_to(artifacts_root)
-        except ValueError as exc:
-            raise SystemExit(
-                "Refusing to overwrite non-empty directory without corpus summary "
-                f"sentinel outside {artifacts_root}: {output_path}"
-            ) from exc
+    artifacts_root = (repo_root() / "artifacts/fitting").resolve()
+    resolved_output = output_path.resolve()
+    try:
+        resolved_output.relative_to(artifacts_root)
+    except ValueError as exc:
+        raise SystemExit(
+            f"Refusing to overwrite non-empty directory outside {artifacts_root}: {output_path}"
+        ) from exc
+    existing = {child.name for child in output_path.iterdir()}
+    unexpected = existing - sentinels
+    if unexpected:
+        raise SystemExit(
+            f"Refusing to overwrite directory with unexpected contents: {output_path}"
+        )
     shutil.rmtree(output_path)
 
 

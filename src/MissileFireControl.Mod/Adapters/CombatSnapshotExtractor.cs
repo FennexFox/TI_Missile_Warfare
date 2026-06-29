@@ -73,6 +73,12 @@ namespace MissileFireControl.Mod.Adapters
     {
         public static ShipSnapshot ExtractTargetShipForDiagnostics(object targetObject, string fallback)
         {
+            ExtractedCombatSnapshot snapshot = ExtractTargetSnapshotForDiagnostics(targetObject, fallback);
+            return snapshot == null ? null : snapshot.Target;
+        }
+
+        public static ExtractedCombatSnapshot ExtractTargetSnapshotForDiagnostics(object targetObject, string fallback)
+        {
             object normalized = NormalizeTarget(targetObject);
             if (normalized == null)
             {
@@ -86,7 +92,7 @@ namespace MissileFireControl.Mod.Adapters
             };
             AddTargetVelocityEvidence(snapshot);
             AddPdWeightEvidence(snapshot, normalized);
-            return snapshot.Target;
+            return snapshot;
         }
 
         public static ExtractedCombatSnapshot FromProjectileMissileFire(

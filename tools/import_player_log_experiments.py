@@ -955,8 +955,12 @@ def add_bounded_live_launch_pressure(
 ) -> None:
     """Add best-effort launch pressure fields from imported launch rows."""
     target_id = command.get("targetId")
-    non_correlated_same_target = [
+    same_segment_launch_rows = [
         row for row in launch_rows
+        if row.battle_segment_id == result_row.battle_segment_id
+    ]
+    non_correlated_same_target = [
+        row for row in same_segment_launch_rows
         if row.pairs.get("controlledCommandCorrelation", "missing") in {"none", "missing"}
         and launch_target_matches(row, target_id)
     ]
@@ -971,11 +975,17 @@ def add_bounded_live_launch_pressure(
     command["missileSpendConfirmed"] = "True" if assigned > 0 and direct_rows == assigned else "False"
     command["nonCorrelatedLaunchRowsNearWindow"] = len(non_correlated_same_target)
     command["vanillaSpilloverRowsNearTarget"] = len(non_correlated_same_target)
-    command["selectedTargetPriorVanillaShotsKnown"] = "True"
-    command["selectedTargetPriorVanillaShotsNearWindow"] = len(prior_non_correlated)
+    if same_segment_launch_rows:
+        command["selectedTargetPriorVanillaShotsKnown"] = "True"
+        command["selectedTargetPriorVanillaShotsNearWindow"] = len(prior_non_correlated)
+        command["selectedTargetPriorKnownShotPressure"] = prior_controlled + len(prior_non_correlated)
+    else:
+        command.setdefault("selectedTargetPriorVanillaShotsKnown", "unknown")
+        command.setdefault("selectedTargetPriorVanillaShotsNearWindow", "unknown")
+        if not has_concrete_value(command.get("selectedTargetPriorKnownShotPressure")):
+            command["selectedTargetPriorKnownShotPressure"] = "unknown"
     if not has_concrete_value(command.get("selectedTargetPriorMissileInFlightEstimate")):
         command["selectedTargetPriorMissileInFlightEstimate"] = "unknown"
-    command["selectedTargetPriorKnownShotPressure"] = prior_controlled + len(prior_non_correlated)
 
 
 def denominator_bucket(command: dict[str, Any]) -> str:
@@ -1466,11 +1476,6 @@ def evidence_summary_from_group(
         evidence["vanilla_spillover_counts"] = {
             "none-or-missing correlated launch rows with experiment id": none_rows
         }
-    same_team = summary["logs"][0]["parser_summary"]["allocation_summary"].get(
-        "same_team_missile_target_snapshots", 0
-    )
-    if same_team:
-        evidence["regression_counts"] = {"same-team missile target snapshots": same_team}
     missing_counts = Counter(evidence["missing_evidence_counts"])
     if pd_category == "unknown":
         missing_counts["pd evidence context not attached by experimentId importer"] += 1

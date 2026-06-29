@@ -19,7 +19,7 @@
     {
       "controlled_cap_spillover_diagnostics": [
         {
-          "experiment_id": "dryrun-fixture-cap-1",
+          "experiment_id": "EXP-LIVE-0001",
           "target_id": "live-target-1",
           "target": "Fixture Target#live-target-1[team=enemy]",
           "same_target_none_correlated_try_fire_count": 1
@@ -27,7 +27,7 @@
       ],
       "applied_launcher_post_budget_spillover_diagnostics": [
         {
-          "experiment_id": "dryrun-fixture-cap-1",
+          "experiment_id": "EXP-LIVE-0001",
           "target_id": "live-target-1",
           "target": "Fixture Target#live-target-1[team=enemy]",
           "same_target_none_correlated_try_fire_count": 1

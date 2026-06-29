@@ -74,7 +74,7 @@ experiments are diagnostics-only. When `AllowCommandApply=True` but
 `EnableRecommendationOnlyMode=True`, the gate still blocks with
 `blockedByRecommendationOnlyMode`. Live apply requires both
 `AllowCommandApply=True` and `EnableRecommendationOnlyMode=False`; then Issue
-#38 can perform at most one live command attempt per selected ship and at most
+Issue `#38` can perform at most one live command attempt per selected ship and at most
 three live command attempts total for the next explicitly armed selected-group
 controlled experiment. The reviewed command path is
 `SelectSalvoTargetCommand.OnCommandExecute(TISpaceShipState,
@@ -734,7 +734,7 @@ selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
 targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
 ```
 
-#56 bounded-live saturation-aware target distribution adds v1 pressure-decision
+## Issue #56 bounded-live saturation-aware target distribution adds v1 pressure-decision
 fields to the same candidate/result rows:
 
 ```text
@@ -798,11 +798,14 @@ vanilla salvo suppression / selected-ship distribution pending #48. Outcome
 fields should not be read as hit, damage, kill, or vanilla-salvo suppression
 evidence.
 
-A bounded run is fitting/corpus-useful only if later `LaunchLog` rows preserve command-result correlation such as:
+A bounded run is not fit-worthy for command-correlation tuning unless later
+`LaunchLog` rows preserve command-result correlation such as:
 
 ```text
 controlledCommandCorrelation="directRuntimeContext"
 commandResultId="fleetwide-bounded-live-...:cycle-..."
 ```
 
-Rows with `controlledCommandCorrelation="none"` or `commandResultId="none"` remain vanilla or uncorrelated spillover.
+Rows with `controlledCommandCorrelation="none"` or `commandResultId="none"`
+remain valid vanilla or uncorrelated spillover evidence for analysis; they are
+not direct controlled command spend.

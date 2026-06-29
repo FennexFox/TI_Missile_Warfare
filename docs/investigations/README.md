@@ -17,8 +17,9 @@ issue or PR plan.
 - Link to confirmed diagnostics, research, or ADRs instead of copying long log
   excerpts.
 - When an investigation becomes accepted architecture or policy, summarize it in
-  the relevant durable doc and create or update an ADR if future work depends on
-  the decision.
+  the relevant durable doc. If future work depends on the decision, create a new
+  ADR and mark any prior ADR as superseded instead of revising its decision in
+  place.
 
 Do not use this directory as a permanent copy of disposable implementation
 plans.

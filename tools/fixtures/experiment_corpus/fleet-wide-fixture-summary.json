@@ -53,7 +53,7 @@
           },
           "fleet_wide_report_only_candidate_reason_counts": {
             "fleetReportOnlyPerShipCapWouldBlock": 1,
-            "missingAllocatorSnapshotEvidence": 2,
+            "missingAllocatorSnapshotEvidence": 3,
             "none": 1
           },
           "suspicious_patterns": ["none"]

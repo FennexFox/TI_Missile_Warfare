@@ -19,7 +19,7 @@ still requires a stable combat outcome hook.
 
 Needs verification: actual vanilla salvo suppression and selected-ship budget
 distribution remain unresolved and need a later focused design before or during
-#43.
+Issue `#43`.
 
 ## Target identity bridge note
 
