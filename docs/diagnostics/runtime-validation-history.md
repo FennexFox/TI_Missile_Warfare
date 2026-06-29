@@ -1173,6 +1173,6 @@ Outcome attribution levels remained intentionally conservative:
 The run confirms that #47 hooks patch and emit useful event-level evidence in a
 real deployed combat log. It does not claim unique projectile kill attribution:
 ship damage/destruction surfaces expose attacker and weapon fields, but not a
-unique projectile id. `AllocationLog` rows that still report
-`attributionConfidence="outcomeHooksPending"` are a later correlation-language
-cleanup, not a blocker for closing #47.
+unique projectile id. `AllocationLog` rows now report
+`attributionConfidence="outcomeCorrelationPending"` to show that outcome hooks
+exist, but allocation-to-outcome joining remains separate.

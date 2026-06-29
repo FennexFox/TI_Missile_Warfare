@@ -731,7 +731,7 @@ selectedTargetPriorMissileInFlightEstimateConfidence="..."
 selectedTargetPriorMissileInFlightEstimateBound="exact|lowerBound|unknown"
 selectedTargetPriorMissileInFlightTargetAttribution="..."
 selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
-targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
+targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeCorrelationPending"
 ```
 
 ## Issue #56 bounded-live saturation-aware target distribution adds v1 pressure-decision
@@ -788,6 +788,9 @@ partially recovered, unavailable, or no live missiles were observed. If live
 missiles are observed but one or more target ids cannot be recovered, the
 estimate is a lower-bound target count, even when the selected-target estimate
 value is `0`.
+
+`outcomeCorrelationPending` means outcome hooks exist, but allocation rows are
+not yet joined to `[OutcomeLog]` rows under a conservative attribution policy.
 
 The corpus importer separates hard #43.4 measurement blockers from external
 handoff blockers. Hard blockers include missing selected/alternative comparable

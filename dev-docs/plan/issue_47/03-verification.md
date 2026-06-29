@@ -58,8 +58,8 @@
 - Do not claim outcome hooks are runtime-confirmed until a fresh deployed build
   emits `patched=7`, `skipped=0` and nonzero `[OutcomeLog]` rows during combat.
 - The active 2026-06-29 `Player.log` satisfies that runtime-confirmation bar.
-- `AllocationLog` `outcomeHooksPending` terminology is a later correlation
-  cleanup, not part of #47 hook installation.
+- `AllocationLog` outcome-correlation terminology is separate from #47 hook
+  installation.
 
 ## Outcomes / Retrospective
 

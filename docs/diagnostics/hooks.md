@@ -213,10 +213,10 @@ only promoted to `ammoGateBudgetShots` when paired with those gates.
 - Issue #47 outcome hooks are diagnostics-only postfixes and should not alter
   damage, destruction, targeting, projectile physics, command behavior, or
   allocator behavior.
-- `AllocationLog` rows that still say `attributionConfidence="outcomeHooksPending"`
-  are a follow-up correlation-language cleanup, not a failure of #47 hook
-  installation. #47 only establishes the separate `[OutcomeLog]` evidence
-  stream.
+- `AllocationLog` rows may report
+  `attributionConfidence="outcomeCorrelationPending"` because #47 only
+  establishes the separate `[OutcomeLog]` evidence stream. Allocation-to-outcome
+  joining remains a separate follow-up.
 - `TISpaceShipState.FireWeapon` also observes non-missile weapon fire. Missile
   analysis should filter by hook label and missile/template fields rather than
   treating every `FireWeapon` row as a missile launch.

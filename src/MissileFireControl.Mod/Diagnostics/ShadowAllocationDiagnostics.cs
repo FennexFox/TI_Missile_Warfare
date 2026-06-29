@@ -2447,7 +2447,7 @@ namespace MissileFireControl.Mod.Diagnostics
             AppendPair(builder, "targetDestroyedAfterControlledWindow", "unknown");
             AppendPair(builder, "timeToImpactWindowKnown", "unknown");
             AppendPair(builder, "targetOutcomeAttribution", "evidenceLimited");
-            AppendPair(builder, "attributionConfidence", "outcomeHooksPending");
+            AppendPair(builder, "attributionConfidence", "outcomeCorrelationPending");
         }
 
         private static void AppendFleetWideBoundedLivePressureDecision(
