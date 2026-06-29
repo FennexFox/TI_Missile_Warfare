@@ -1,0 +1,15 @@
+[MissileWarfare] Version '0.1.0'. Loading.
+[MissileWarfare] [MFC] Patched primary ship fire hook: PavonisInteractive.TerraInvicta.TISpaceShipState.FireWeapon
+[MissileWarfare] [MFC] Patched secondary missile try-fire hook: PavonisInteractive.TerraInvicta.Ship.MissileWeapon.TryFire
+[MissileWarfare] [MFC] Patched secondary missile projectile fire hook: PavonisInteractive.TerraInvicta.TISpaceCombatProjectileState.Fire
+[MissileWarfare] [MFC] Patched outcome missile damage hook: PavonisInteractive.TerraInvicta.SpaceCombat.MissileController.ApplyDamage
+[MissileWarfare] [MFC] Patched outcome missile lifecycle hook: PavonisInteractive.TerraInvicta.SpaceCombat.MissileController.Destruct
+[MissileWarfare] [MFC] Patched outcome ship damage hook: PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController.ApplyDamage
+[MissileWarfare] [MFC] Patched outcome ship destruction hook: PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController.TriggerShipDestruction
+[MissileWarfare] [MFC] Combat launch diagnostics patch bootstrap complete. patched=7, skipped=0
+[MissileWarfare] [MFC] MissileWarfare loaded. Current build is scaffold/logging-first only.
+[MissileWarfare] [MFC] MissileWarfare enabled.
+[MissileWarfare] Active.
+[MissileWarfare] [MFC] [LaunchLog] seq="1" hook="MissileWeapon.TryFire" utc="2026-06-29T00:00:00.0000000Z"
+[MissileWarfare] [MFC] [OutcomeLog] seq="1" recordType="shipDamage" eventLevel="damageApplication" attributionLevel="missileDamageSource" utc="2026-06-29T00:00:01.0000000Z" sourceHook="CombatShipController.ApplyDamage" targetId="target-red" target="Red" damageSourceType="PavonisInteractive.TerraInvicta.SpaceCombat.MissileController+MissileDamage" damageWeaponIsMissile="True" damageAmount="12.5" identityBridge="damageSourceAttackerWeaponNoProjectileId"
+[MissileWarfare] [MFC] [OutcomeLog] seq="2" recordType="shipDestroyed" eventLevel="shipDestruction" attributionLevel="destroyedStateWithKillerWeapon" utc="2026-06-29T00:00:02.0000000Z" sourceHook="CombatShipController.TriggerShipDestruction" targetId="target-red" target="Red" killerWeaponIsMissile="True" identityBridge="killerCombatantAndWeaponNoProjectileId"

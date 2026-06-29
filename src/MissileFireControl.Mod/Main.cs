@@ -67,6 +67,9 @@ namespace MissileFireControl.Mod
             Settings.EnableFleetWideBoundedLiveApplyDiagnostics = GUILayout.Toggle(
                 Settings.EnableFleetWideBoundedLiveApplyDiagnostics,
                 "Enable bounded fleet-wide live apply (#43.2b cap=3)");
+            Settings.EnableOutcomeDiagnostics = GUILayout.Toggle(
+                Settings.EnableOutcomeDiagnostics,
+                "Enable combat outcome hook diagnostics (#47 log-only)");
             Settings.AllowCommandApply = GUILayout.Toggle(
                 Settings.AllowCommandApply,
                 "Allow controlled command apply (selected group, capped)");

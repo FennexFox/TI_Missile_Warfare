@@ -68,6 +68,50 @@ namespace MissileFireControl.Mod.Patches
                 ref patched,
                 ref skipped);
 
+            TryPatch(
+                harmony,
+                "outcome missile damage hook",
+                "PavonisInteractive.TerraInvicta.SpaceCombat.MissileController",
+                "ApplyDamage",
+                new[] { "PavonisInteractive.TerraInvicta.Ship.DamageSource" },
+                null,
+                nameof(OutcomeDiagnostics.OnMissileApplyDamagePostfix),
+                ref patched,
+                ref skipped);
+
+            TryPatch(
+                harmony,
+                "outcome missile lifecycle hook",
+                "PavonisInteractive.TerraInvicta.SpaceCombat.MissileController",
+                "Destruct",
+                new[] { "System.Boolean" },
+                null,
+                nameof(OutcomeDiagnostics.OnMissileDestructPostfix),
+                ref patched,
+                ref skipped);
+
+            TryPatch(
+                harmony,
+                "outcome ship damage hook",
+                "PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController",
+                "ApplyDamage",
+                new[] { "PavonisInteractive.TerraInvicta.Ship.DamageSource" },
+                null,
+                nameof(OutcomeDiagnostics.OnShipApplyDamagePostfix),
+                ref patched,
+                ref skipped);
+
+            TryPatch(
+                harmony,
+                "outcome ship destruction hook",
+                "PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController",
+                "TriggerShipDestruction",
+                new[] { "TIGameState", "TIShipWeaponTemplate" },
+                null,
+                nameof(OutcomeDiagnostics.OnShipDestructionPostfix),
+                ref patched,
+                ref skipped);
+
             Log.Info($"Combat launch diagnostics patch bootstrap complete. patched={patched}, skipped={skipped}");
         }
 
@@ -107,14 +151,14 @@ namespace MissileFireControl.Mod.Patches
 
                 MethodInfo prefix = string.IsNullOrEmpty(prefixName)
                     ? null
-                    : AccessTools.Method(typeof(CombatLaunchDiagnostics), prefixName);
+                    : FindPatchMethod(prefixName);
                 if (!string.IsNullOrEmpty(prefixName) && prefix == null)
                 {
                     Skip(description, $"prefix method not found: {prefixName}", ref skipped);
                     return;
                 }
 
-                MethodInfo postfix = AccessTools.Method(typeof(CombatLaunchDiagnostics), postfixName);
+                MethodInfo postfix = FindPatchMethod(postfixName);
                 if (postfix == null)
                 {
                     Skip(description, $"postfix method not found: {postfixName}", ref skipped);
@@ -151,10 +195,18 @@ namespace MissileFireControl.Mod.Patches
             return result;
         }
 
+        private static MethodInfo FindPatchMethod(string methodName)
+        {
+            return AccessTools.Method(typeof(CombatLaunchDiagnostics), methodName)
+                ?? AccessTools.Method(typeof(OutcomeDiagnostics), methodName);
+        }
+
         private static Type ResolveType(string typeName)
         {
             switch (typeName)
             {
+                case "System.Boolean":
+                    return typeof(bool);
                 case "System.DateTime":
                     return typeof(DateTime);
                 case "UnityEngine.Vector3":

@@ -15,6 +15,7 @@ namespace MissileFireControl.Mod
         public bool EnableFleetWideLiveApplyDiagnostics = false;
         public bool EnableFleetWideCommandAuthorityProbeDiagnostics = false;
         public bool EnableFleetWideBoundedLiveApplyDiagnostics = false;
+        public bool EnableOutcomeDiagnostics = false;
         public bool AllowCommandApply = false;
         public bool EnableRecommendationOnlyMode = true;
         public bool EnableLaunchDiscipline = false;
