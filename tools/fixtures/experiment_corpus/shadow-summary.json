@@ -1,0 +1,19 @@
+{
+  "input": "fixture-shadow",
+  "log_count": 1,
+  "evidence_log_count": 1,
+  "real_evidence_log_count": 0,
+  "synthetic_fixture_count": 1,
+  "parser_failures": 0,
+  "classification_counts": {
+    "plausible": 3,
+    "partial saturation": 1,
+    "overkill": 0,
+    "underkill": 0,
+    "target-value mismatch": 0,
+    "missing-evidence-limited": 0,
+    "command-safety no-op": 0
+  },
+  "limitation_counts": {},
+  "logs": []
+}

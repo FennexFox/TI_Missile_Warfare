@@ -1,0 +1,64 @@
+{
+  "input": "tools/fixtures/fleet_wide_report_only.txt",
+  "log_count": 1,
+  "evidence_log_count": 1,
+  "real_evidence_log_count": 0,
+  "synthetic_fixture_count": 1,
+  "parser_failures": 0,
+  "classification_counts": {
+    "plausible": 1,
+    "partial saturation": 0,
+    "overkill": 0,
+    "underkill": 0,
+    "target-value mismatch": 0,
+    "missing-evidence-limited": 3,
+    "command-safety no-op": 0
+  },
+  "limitation_counts": {
+    "fleet-wide report-only missing allocator evidence": 3
+  },
+  "logs": [
+    {
+      "parser_summary": {
+        "allocation_summary": {
+          "fleet_wide_report_only_experiments": 1,
+          "fleet_wide_report_only_launchers": 2,
+          "fleet_wide_report_only_targets": 4,
+          "fleet_wide_report_only_command_candidates": 4,
+          "fleet_wide_report_only_cap_state_records": 1,
+          "fleet_wide_report_only_results": 1,
+          "fleet_wide_report_only_experiment_ids": ["fleetwide-fixture-43-1"],
+          "fleet_wide_report_only_eligible_launchers": 1,
+          "fleet_wide_report_only_excluded_launchers": 1,
+          "fleet_wide_report_only_visible_hostile_targets": 4,
+          "fleet_wide_report_only_candidate_rows": 4,
+          "fleet_wide_report_only_emitted_candidate_rows": 4,
+          "fleet_wide_report_only_eligible_candidate_rows": 1,
+          "fleet_wide_report_only_cap_would_block_candidates": 1,
+          "fleet_wide_report_only_missing_evidence_candidates": 3,
+          "fleet_wide_report_only_applied_commands": 0,
+          "fleet_wide_report_only_scope_mode_counts": {
+            "fleetWideReportOnly": 13
+          },
+          "fleet_wide_report_only_launcher_classification_counts": {
+            "eligible": 1,
+            "wouldSkip": 1
+          },
+          "fleet_wide_report_only_target_classification_counts": {
+            "visibleHostile": 4
+          },
+          "fleet_wide_report_only_candidate_classification_counts": {
+            "eligible": 1,
+            "wouldSkip": 3
+          },
+          "fleet_wide_report_only_candidate_reason_counts": {
+            "fleetReportOnlyPerShipCapWouldBlock": 1,
+            "missingAllocatorSnapshotEvidence": 3,
+            "none": 1
+          },
+          "suspicious_patterns": ["none"]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "verdict": "safety-blocked",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-23T00:30:00Z",
+  "summary": "Recommendation-only mode blocked command application.",
+  "evidenceGaps": [],
+  "nextAction": "Use as safety-gate regression coverage."
+}

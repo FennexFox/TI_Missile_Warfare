@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "verdict": "evidence-limited",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-23T00:20:00Z",
+  "summary": "Controlled command spend is direct, but vanilla spillover remains visible.",
+  "evidenceGaps": ["exact kill attribution", "vanilla salvo suppression"],
+  "nextAction": "Keep as controlled-live evidence and do not tune from this run alone."
+}

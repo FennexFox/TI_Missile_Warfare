@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "heuristicCandidateId": "baseline-fleet-wide-bounded-live-v1",
+  "issue": "#43.2",
+  "mode": "bounded-live",
+  "liveBehavior": "bounded fleet-wide controlled command apply",
+  "scopeMode": "fleetWideBoundedLiveApply",
+  "fleetEligibilitySource": "active-player-side combatants plus allocator evidence",
+  "targetSource": "current allocator snapshot target with visible hostile evidence",
+  "diagnosticCaps": {
+    "globalCommandCap": 3,
+    "perShipCommandCap": 1,
+    "perTargetCommandCap": 3,
+    "perCycleCommandCap": 1
+  },
+  "safetyAssertions": {
+    "requiresExplicitTrigger": true,
+    "requiresAllowCommandApply": true,
+    "requiresRecommendationOnlyModeDisabled": true,
+    "requiresBoundedLiveDiagnosticsEnabled": true,
+    "sameTeamMarkersExpected": 0,
+    "scopeViolationMarkersExpected": 0
+  },
+  "evidenceAssertions": {
+    "requiresDirectRuntimeContextCorrelation": true,
+    "separateVanillaOrNoneCorrelatedSpillover": true,
+    "rawPrivateLogsCommitted": false
+  }
+}
