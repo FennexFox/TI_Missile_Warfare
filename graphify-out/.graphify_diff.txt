@@ -1,0 +1,3 @@
+353 nodes removed, 822 edges removed
+New nodes: none
+New edges: 0
