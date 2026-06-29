@@ -165,8 +165,8 @@ change allocator heuristics, live command behavior, or command scope. Until a
 stable hook is found, vanilla `DestroyShip` text remains a conservative outcome
 hint only, not exact kill attribution.
 
-Current source-reviewed #47 implementation adds default-off `[OutcomeLog]`
-diagnostics for:
+Current source-reviewed and runtime-confirmed #47 implementation adds
+default-off `[OutcomeLog]` diagnostics for:
 
 - `MissileController.ApplyDamage(DamageSource)`;
 - `MissileController.Destruct(bool)`;
@@ -177,5 +177,11 @@ These hooks are deliberately concrete-class postfixes rather than broad
 `IDamageable` interface patches. They can provide projectile lifecycle,
 point-defense / missile-damage, ship-damage, and ship-destruction evidence, but
 the current ship damage/destruction surfaces expose attacker and weapon fields
-rather than a unique projectile id. Runtime confirmation remains required after
-deploying the new build.
+rather than a unique projectile id.
+
+Fresh runtime validation on the active 2026-06-29 `Player.log` confirmed the
+deployed build patched all seven launch/outcome hooks with `skipped=0` and
+emitted 221 `[OutcomeLog]` rows across all four outcome source hooks. This
+closes the hook-installation and row-emission question for #47, while leaving
+AllocationLog-to-OutcomeLog correlation terminology and exact projectile kill
+attribution to later focused work.

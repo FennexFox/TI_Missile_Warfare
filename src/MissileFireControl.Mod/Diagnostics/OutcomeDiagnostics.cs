@@ -66,7 +66,7 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendTargetFields(builder, "target", shipState ?? __instance);
                 AppendDamageSourceFields(builder, source);
                 AppendPair(builder, "appliedDamage", FormatNumber(__result));
-                AppendPair(builder, "targetDestroyed", Describe(ReadMember(__instance, "destructionTriggered")));
+                AppendPair(builder, "shipDamageTargetDestructionTriggered", Describe(ReadMember(__instance, "destructionTriggered")));
                 AppendPair(builder, "identityBridge", IdentityBridgeForDamageSource(source));
                 AppendPair(builder, "battle", BattleContext());
             });

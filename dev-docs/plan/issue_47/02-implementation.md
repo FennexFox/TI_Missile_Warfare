@@ -41,7 +41,7 @@
   damage source, damage amount/type, weapon, hit position, result amount, and
   evidence-level labels.
 - Add parser counters and a summary section for `[OutcomeLog]`.
-- Update docs with confirmed source-review status and runtime-validation gap.
+- Update docs with confirmed source-review and runtime-validation status.
 
 ## Acceptance criteria
 
@@ -59,8 +59,8 @@
 
 ## Manual smoke tests
 
-- Runtime smoke pending: deploy to Terra Invicta, enable diagnostic logging and
-  outcome diagnostics, run combat, and parse `Player.log`.
+- Runtime smoke completed on the active 2026-06-29 `Player.log` with
+  diagnostic logging and outcome diagnostics enabled.
 
 ## Rollback risks
 
@@ -87,3 +87,6 @@
 - Added default-off outcome diagnostics, parser support, a fixture, and durable
   docs. The implementation remains diagnostics-only and does not change
   allocator behavior or command application.
+- Follow-up runtime validation confirmed hook installation and row emission in
+  a deployed combat log; AllocationLog-to-OutcomeLog correlation terminology
+  remains a later issue.

@@ -48,8 +48,9 @@
 
 ## Known Risks And Assumptions
 
-- Runtime validation still requires a real Terra Invicta combat smoke after the
-  mod is rebuilt and deployed.
+- Runtime validation completed on the active 2026-06-29 `Player.log` with
+  `patched=7`, `skipped=0`, and nonzero `[OutcomeLog]` rows from all four
+  source-reviewed outcome hooks.
 - Outcome rows may prove event-level evidence such as projectile destruction,
   ship damage, or ship destruction without proving unique kill causality.
 - Hook bootstrap health must not regress the already confirmed launch hooks.

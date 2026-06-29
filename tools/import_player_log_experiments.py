@@ -1213,7 +1213,7 @@ def bounded_live_tuning_readiness(
                 ] += 1
             command_hard_blocked = True
         if command.get("targetOutcomeAttribution") in {None, "", "unknown", "evidenceLimited"}:
-            external_blockers["exact outcome attribution pending #47"] += 1
+            external_blockers["exact outcome attribution pending OutcomeLog correlation"] += 1
             command_external_blocked = True
         if optional_int(command.get("vanillaSpilloverRowsNearTarget")) not in (None, 0):
             external_blockers["vanilla spillover / selected-ship distribution pending #48"] += 1

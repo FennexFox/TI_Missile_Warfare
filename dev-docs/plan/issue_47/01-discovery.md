@@ -48,8 +48,8 @@
 
 ## Manual smoke tests
 
-- Runtime smoke pending: enable diagnostics and outcome diagnostics, run a
-  combat, then parse the active `Player.log`.
+- Runtime smoke completed during verification after the source-reviewed hooks
+  were implemented and deployed.
 
 ## Rollback risks
 

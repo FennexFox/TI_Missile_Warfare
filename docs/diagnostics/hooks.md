@@ -2,8 +2,9 @@
 
 This note records Terra Invicta runtime hooks used by the MissileWarfare
 diagnostics build. Launch hooks below are confirmed from local deployed runs and
-`Player.log` parser output. Issue #47 outcome hooks are source-reviewed and
-implemented diagnostics-only, but still need fresh runtime confirmation.
+`Player.log` parser output. Issue #47 outcome hooks are source-reviewed,
+implemented diagnostics-only, and runtime-confirmed in a fresh deployed combat
+log.
 
 ## Launch hook confirmation snapshot
 
@@ -70,8 +71,10 @@ them in a separate summary by record type, event level, attribution level,
 identity bridge, and source hook.
 
 These hooks are source-reviewed against the local decompiled Terra Invicta
-workspace and build cleanly, but they are not yet runtime-confirmed in a fresh
-deployed combat log.
+workspace, build cleanly, and were runtime-confirmed on the active
+`Player.log` written on 2026-06-29. The parser reported `patched=7`,
+`skipped=0`, `OutcomeLog entries: 221`, contiguous outcome `seq` values, and
+all four source hooks below.
 
 | Role | Target method | Parameter signature used by bootstrap | Patch method(s) | OutcomeLog record type | Evidence level |
 | --- | --- | --- | --- | --- | --- |
@@ -83,7 +86,10 @@ deployed combat log.
 Outcome rows include fields such as `eventLevel`, `attributionLevel`,
 `identityBridge`, target identity/team, attacker identity/team, damage source
 type, weapon identity/class, damage amount/type, hit position, and battle
-context where visible.
+context where visible. `shipDamage` rows also include the
+`shipDamageTargetDestructionTriggered` field from the concrete
+`CombatShipController` instance; the generic target snapshot keeps its own
+`targetDestroyed` field.
 
 Important attribution limits:
 
@@ -207,6 +213,10 @@ only promoted to `ammoGateBudgetShots` when paired with those gates.
 - Issue #47 outcome hooks are diagnostics-only postfixes and should not alter
   damage, destruction, targeting, projectile physics, command behavior, or
   allocator behavior.
+- `AllocationLog` rows that still say `attributionConfidence="outcomeHooksPending"`
+  are a follow-up correlation-language cleanup, not a failure of #47 hook
+  installation. #47 only establishes the separate `[OutcomeLog]` evidence
+  stream.
 - `TISpaceShipState.FireWeapon` also observes non-missile weapon fire. Missile
   analysis should filter by hook label and missile/template fields rather than
   treating every `FireWeapon` row as a missile launch.

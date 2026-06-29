@@ -793,10 +793,10 @@ The corpus importer separates hard #43.4 measurement blockers from external
 handoff blockers. Hard blockers include missing selected/alternative comparable
 score features, ambiguous selected-target rank, prior target pressure, and cap
 blocked-vs-applied comparison when comparison evidence is absent.
-External blockers include exact hit/damage/kill attribution pending #47 and
-vanilla salvo suppression / selected-ship distribution pending #48. Outcome
-fields should not be read as hit, damage, kill, or vanilla-salvo suppression
-evidence.
+External blockers include exact hit/damage/kill correlation pending later
+OutcomeLog correlation work and vanilla salvo suppression / selected-ship
+distribution pending #48. Outcome fields should not be read as hit, damage,
+kill, or vanilla-salvo suppression evidence.
 
 A bounded run is not fit-worthy for command-correlation tuning unless later
 `LaunchLog` rows preserve command-result correlation such as:
