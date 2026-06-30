@@ -70,9 +70,11 @@
 
 - `python tools/check_layout.py`
 - `python -m compileall tools`
-- `python tools/parse_player_log.py --require-launchlogs`
-- Add the final dataset command over committed fixtures once its filename and
-  fixture inputs are known.
+- Add the final fixture-backed dataset command once its filename and committed
+  fixture inputs are known. This command is the phase gate and must not depend
+  on the default private `Player.log` path.
+- Optional parser smoke, separate from dataset validation:
+  `python tools/parse_player_log.py tools/fixtures/outcome_hooks.txt --require-launchlogs`
 
 ## Manual smoke tests
 
