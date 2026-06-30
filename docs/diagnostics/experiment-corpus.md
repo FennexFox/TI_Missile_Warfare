@@ -281,3 +281,29 @@ the `pressure`, `uncertainty`, and `replayReadiness` groups.
 Registry entries without `sourceLogPath` are treated as summary-only evidence:
 the command records a warning and does not invent row-level contexts from
 aggregate counters. Keep generated datasets under ignored `artifacts/` paths.
+
+## Offline-fitting replay
+
+Use `tools/replay_offline_fitting_candidates.py` to replay candidate policies
+over a generated decision-context dataset and emit machine-readable scoring
+artifacts.
+
+Fixture validation uses:
+
+```powershell
+python tools\replay_offline_fitting_candidates.py --dataset artifacts\offline-fitting\fixture-dataset\decision-contexts.jsonl --output artifacts\offline-fitting\fixture-replay --require-replay-evidence --force
+```
+
+The command writes:
+
+- `replay-results.jsonl`: one row per decision context and replayed policy.
+- `replay-results.json`: the same replay rows wrapped in a JSON object.
+- `candidate-summary.json`: policy-level soft objective totals, hard guardrail
+  failures, and retained-above-threshold classification counts.
+
+The current policy id `pressure-aware-bounded-live-v1` is replayed as measured
+current behavior, not as a validated improvement. The first report-only policy,
+`report-only-pressure-relief-v1`, may suggest an alternate target only when
+pressure evidence is exact and at or above threshold. Lower-bound pressure,
+missing alternatives, and command-safety failures block favorable conclusions.
+Replay output separates soft surrogate penalties from hard guardrail failures.

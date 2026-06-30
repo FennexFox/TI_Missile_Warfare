@@ -29,10 +29,13 @@
 
 ## Affected files
 
-- Likely `tools/fit_shadow_allocation.py`
-- Likely `tools/compare_experiment_summaries.py`
-- Likely new or updated fixtures under `tools/fixtures/experiment_corpus/**`
-- Relevant docs under `docs/planning/` and `docs/diagnostics/`
+- `tools/replay_offline_fitting_candidates.py`
+- `tools/fixtures/offline_fitting/retained_above_threshold_cases.txt`
+- `tools/fixtures/offline_fitting/registry.jsonl`
+- `docs/diagnostics/experiment-corpus.md`
+- `dev-docs/plan/issue_60/00-master-plan.md`
+- `dev-docs/plan/issue_60/02-dataset.md`
+- `dev-docs/plan/issue_60/03-replay.md`
 
 ## Implementation steps
 
@@ -60,8 +63,8 @@
 
 - `python tools/check_layout.py`
 - `python -m compileall tools`
-- Add the final replay/scoring command over committed fixtures once its filename
-  is known.
+- `python tools/build_offline_fitting_dataset.py --registry tools/fixtures/offline_fitting/registry.jsonl --output artifacts/offline-fitting/fixture-dataset --require-row-evidence --force`
+- `python tools/replay_offline_fitting_candidates.py --dataset artifacts/offline-fitting/fixture-dataset/decision-contexts.jsonl --output artifacts/offline-fitting/fixture-replay --require-replay-evidence --force`
 
 ## Manual smoke tests
 
@@ -76,7 +79,13 @@
 
 ## Progress
 
-- Not started.
+- Implemented replay over Phase 2 decision-context rows.
+- Replays current `pressure-aware-bounded-live-v1` as measured current behavior.
+- Adds report-only `report-only-pressure-relief-v1`, which only suggests an
+  alternate target with exact at-or-above-threshold pressure evidence.
+- Fixture replay emits 16 records across 8 decision contexts and 2 policies.
+- Retained above-threshold fixture cases cover `avoidable`, `unavoidable`, and
+  `inconclusive`; selected-scope `wouldFail` exercises hard guardrail output.
 
 ## Decision log
 
@@ -84,7 +93,14 @@
   improvement.
 - Candidate B remains report-only infrastructure until #60 produces evidence
   for a later behavior-changing issue.
+- Soft objective metrics are reported separately from hard guardrail failures.
+- Lower-bound pressure and missing alternatives block favorable report-only
+  retarget conclusions instead of being treated as exact evidence.
+- The first report-only policy prefers the highest-score non-pressure target
+  only when exact pressure is at or above threshold. It is scoring
+  infrastructure, not live allocator logic.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Phase 3 is complete for fixture-backed replay. It does not change live combat
+  behavior and does not use outcome rows as rewards.

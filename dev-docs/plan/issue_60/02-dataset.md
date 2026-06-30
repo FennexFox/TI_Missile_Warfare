@@ -90,8 +90,9 @@
 - Implemented the Phase 2 dataset command and committed fixture registry.
 - The command emits `decision-contexts.jsonl`, `decision-contexts.json`, and
   `dataset-summary.json` under ignored `artifacts/` output paths.
-- Fixture validation currently emits five rows: four bounded-live rows with
-  target alternatives and one selected-scope `wouldFail` command candidate.
+- Fixture validation currently emits eight rows: bounded-live rows with target
+  alternatives, retained above-threshold classification cases, lower-bound
+  pressure, and one selected-scope `wouldFail` command candidate.
 
 ## Decision log
 
