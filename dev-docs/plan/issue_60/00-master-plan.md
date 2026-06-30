@@ -38,6 +38,7 @@
 3. [Candidate replay and scoring](03-replay.md)
 4. [Report closure and validation](04-reporting.md)
 5. [Quality pass and evidence semantics](05-quality-pass.md)
+6. [Merge-readiness evidence follow-up](06-merge-readiness-follow-up.md)
 
 ## Phase Dependencies
 
@@ -46,6 +47,7 @@
 - Phase 3 depends on completion and validation of phase 2.
 - Phase 4 depends on completion and validation of phase 3.
 - Phase 5 depends on completion and validation of phase 4.
+- Phase 6 depends on completion and validation of phase 5.
 
 ## Source Of Truth Decisions
 

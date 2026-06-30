@@ -86,8 +86,15 @@ def auditable_alternatives_ready(row: dict[str, Any]) -> bool:
     return evidence.get("targetAlternatives") == "exact" and evidence.get("scoreRank") == "exact"
 
 
+def is_known_friendly_alternative(row: dict[str, Any], alternative: dict[str, Any]) -> bool:
+    """Return whether a target alternative is known friendly to the launcher."""
+    launcher_team = row.get("launcher", {}).get("launcherTeam")
+    target_team = alternative.get("targetTeam")
+    return bool(launcher_team and target_team and launcher_team == target_team)
+
+
 def best_report_only_alternative(row: dict[str, Any]) -> dict[str, Any] | None:
-    """Pick the highest-score non-pressure target when exact over-pressure exists."""
+    """Pick the highest-score safe non-pressure target when exact over-pressure exists."""
     pressure = row.get("pressure", {})
     if (
         pressure.get("atOrAboveThreshold") is not True
@@ -101,6 +108,7 @@ def best_report_only_alternative(row: dict[str, Any]) -> dict[str, Any] | None:
         if alternative.get("isPressureTarget") is not True
         and alternative.get("targetId")
         and numeric(alternative.get("score")) is not None
+        and not is_known_friendly_alternative(row, alternative)
     ]
     if not alternatives:
         return None
@@ -271,12 +279,16 @@ def row_evaluation(row: dict[str, Any], chosen: dict[str, Any], policy_id: str) 
     target_changed = bool(chosen.get("targetId") and chosen.get("targetId") != selected.get("targetId"))
     classification = retained_above_threshold_classification(row)
     exclusion_reasons = observed_failures + candidate_failures + blockers
-    is_favorable = (
+    is_diagnostic_signal = (
         not exclusion_reasons
-        and (
-            classification == "avoidable"
-            or (policy_id == REPORT_ONLY_POLICY_ID and target_changed and chosen.get("isPressureTarget") is not True)
-        )
+        and policy_id == CURRENT_POLICY_ID
+        and classification == "avoidable"
+    )
+    is_candidate_improvement = (
+        not exclusion_reasons
+        and policy_id == REPORT_ONLY_POLICY_ID
+        and target_changed
+        and chosen.get("isPressureTarget") is not True
     )
     return {
         "rowEligibility": "excluded" if exclusion_reasons else "eligible",
@@ -288,7 +300,8 @@ def row_evaluation(row: dict[str, Any], chosen: dict[str, Any], policy_id: str) 
         "diagnosticWarningCount": len(warnings),
         "targetChanged": target_changed,
         "scoreDelta": score_delta,
-        "isFavorableSignal": is_favorable,
+        "isDiagnosticSignal": is_diagnostic_signal,
+        "isCandidateImprovementSignal": is_candidate_improvement,
     }
 
 
@@ -365,6 +378,12 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             for evaluation in row_evaluations
             if evaluation.get("rowEligibility") == "eligible" and evaluation.get("targetChanged") is True
         )
+        diagnostic_signals = sum(
+            1 for evaluation in row_evaluations if evaluation.get("isDiagnosticSignal") is True
+        )
+        candidate_improvements = sum(
+            1 for evaluation in row_evaluations if evaluation.get("isCandidateImprovementSignal") is True
+        )
         policies.append(
             {
                 "policyId": policy_id,
@@ -375,7 +394,8 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "badObservedRowCount": sum(observed_failures.values()),
                 "badCandidateRowCount": sum(candidate_failures.values()),
                 "evidenceBlockedRowCount": sum(1 for evaluation in row_evaluations if evaluation.get("evidenceBlockers")),
-                "favorableRowCount": sum(1 for evaluation in row_evaluations if evaluation.get("isFavorableSignal") is True),
+                "diagnosticSignalRowCount": diagnostic_signals,
+                "candidateImprovementRowCount": candidate_improvements,
                 "targetChangeCount": changed_eligible,
                 "scoreDeltaTotalEligible": round(sum(eligible_score_deltas), 6),
                 "scoreDeltaAverageEligible": round(sum(eligible_score_deltas) / len(eligible_score_deltas), 6)

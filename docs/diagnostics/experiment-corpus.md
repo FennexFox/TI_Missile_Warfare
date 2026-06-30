@@ -282,6 +282,16 @@ the `pressure`, `uncertainty`, `evidenceState`, and `replayReadiness` groups.
 are `exact`, `lower-bound`, `unknown`, `inferred`, and `not-applicable`.
 Subfields classify target alternatives, pressure, score/rank comparison,
 command correlation, outcome context, and an overall conservative row state.
+Row-level pressure is `exact` only when both
+`selectedTargetPriorMissileInFlightEstimateBound` and
+`boundedLiveDecisionInFlightEvidenceQuality` are exact. An exact prior bound
+with unknown in-flight evidence quality is `inferred`, not exact.
+
+Each normalized target alternative also carries `pressureEvidenceState`,
+`pressureEvidenceReason`, and nested `evidenceState.pressure`. The pressure
+target inherits the row pressure state. Non-pressure alternatives explicitly use
+`not-applicable` when a bounded pressure decision exists, or `unknown` when no
+pressure decision is present, so `pressure=null` is not the only evidence cue.
 Favorable pressure classifications require exact pressure plus exact
 target-alternative and score/rank evidence.
 
@@ -308,17 +318,25 @@ The command writes:
 - `candidate-summary.json`: policy-level soft objective totals,
   retained-above-threshold classification counts, row eligibility counts, bad
   observed-row counts, bad candidate-row counts, evidence-blocked row counts,
-  favorable row counts, target-change counts, and eligible score deltas.
+  diagnostic signal counts, candidate-improvement signal counts, target-change
+  counts, and eligible score deltas.
 
 The current policy id `pressure-aware-bounded-live-v1` is replayed as measured
 current behavior, not as a validated improvement. The first report-only policy,
 `report-only-pressure-relief-v1`, may suggest an alternate target only when
 pressure evidence is exact and at or above threshold, and target alternatives
-plus score/rank evidence are exact. Lower-bound or unknown pressure, missing or
-weak alternatives, weak score/rank evidence, and command-safety failures block
-favorable conclusions. Replay output separates soft surrogate penalties from
-observed row failures, candidate guardrail failures, evidence blockers, and
-diagnostic warnings in each row's `rowEvaluation`.
+plus score/rank evidence are exact. It filters known friendly alternatives out
+of the real report-only policy. Lower-bound, unknown, or inferred pressure,
+missing or weak alternatives, weak score/rank evidence, and command-safety
+failures block favorable conclusions. Replay output separates soft surrogate
+penalties from observed row failures, candidate guardrail failures, evidence
+blockers, diagnostic warnings, current-policy diagnostic signals, and
+report-only candidate-improvement signals in each row's `rowEvaluation`.
+
+Committed fixture rows may still include known friendly alternatives as
+guardrail stress cases. Those fixtures test that unsafe candidate choices would
+be counted separately; the real report-only policy should skip them and should
+not treat them as candidate-quality results.
 
 ## Offline-fitting report closure
 
@@ -334,8 +352,8 @@ python tools\report_offline_fitting_candidates.py --replay artifacts\offline-fit
 The command writes:
 
 - `ranked-candidates.md`: ranked policy table with verdicts, row eligibility
-  counts, favorable row counts, target-change counts, eligible score deltas, and
-  downgrade reasons.
+  counts, diagnostic signal counts, candidate-improvement signal counts,
+  target-change counts, eligible score deltas, and downgrade reasons.
 - `candidate-verdicts.json`: machine-readable verdicts using
   `candidate-filtered`, `needs-live-validation`, `inconclusive`, or `blocked`.
 - `guardrail-report.md`: bad observed rows, bad candidate rows,
@@ -345,9 +363,10 @@ The command writes:
 Verdict rules are intentionally conservative. Candidate guardrail failures
 produce `blocked`, as does excluding every row for a policy. Bad observed rows
 and evidence-blocked rows are reported as downgrades instead of being hidden
-inside soft scores. Parser warnings, lower-bound or unknown pressure, missing
-alternatives, weak score/rank evidence, and spillover ambiguity prevent
-favorable row signals. Fixture-only evidence remains `inconclusive` for live
-validation. Any future `candidate-filtered` or `needs-live-validation` result
-remains a live-validation candidate only, not a behavior-changing
-implementation approval.
+inside soft scores. Parser warnings, lower-bound, unknown, or inferred
+pressure, missing alternatives, weak score/rank evidence, and spillover
+ambiguity prevent favorable row signals. Current-policy diagnostic signals and
+report-only candidate-improvement signals are reported separately. Fixture-only
+evidence remains `inconclusive` for live validation. Any future
+`candidate-filtered` or `needs-live-validation` result remains a
+live-validation candidate only, not a behavior-changing implementation approval.

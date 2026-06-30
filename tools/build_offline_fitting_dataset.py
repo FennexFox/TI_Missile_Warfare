@@ -143,6 +143,21 @@ def typed_pipe_value(values: list[str], index: int, kind: str) -> Any:
     return value
 
 
+def pressure_evidence_state(pairs: dict[str, Any]) -> str:
+    """Classify pressure evidence quality."""
+    if pairs.get("boundedLivePressureDecision") is None:
+        return "not-applicable"
+    bound = str(pairs.get("selectedTargetPriorMissileInFlightEstimateBound", "unknown"))
+    quality = str(pairs.get("boundedLiveDecisionInFlightEvidenceQuality", "unknown"))
+    if bound == "exact" and quality == "exact":
+        return "exact"
+    if bound == "lowerBound" or quality == "lowerBound":
+        return "lower-bound"
+    if bound == "exact" and quality == "unknown":
+        return "inferred"
+    return "unknown"
+
+
 def list_warnings_for_alternatives(pairs: dict[str, Any], lengths: dict[str, int]) -> list[str]:
     """Return explicit warnings for malformed alternative pipe lists."""
     warnings: list[str] = []
@@ -183,6 +198,7 @@ def target_alternatives(pairs: dict[str, Any]) -> tuple[list[dict[str, Any]], li
     pressure_target_id = pairs.get("boundedLiveOriginalTargetId") or selected_id
     threshold = optional_int(pairs.get("boundedLivePressureThreshold"))
     selected_pressure = optional_int(pairs.get("boundedLiveDecisionPressure"))
+    row_pressure_state = pressure_evidence_state(pairs)
     alternatives: list[dict[str, Any]] = []
     for index in range(count):
         alternative_id = pipe_value(ids, index)
@@ -191,6 +207,20 @@ def target_alternatives(pairs: dict[str, Any]) -> tuple[list[dict[str, Any]], li
             alternative_id and pressure_target_id and alternative_id == pressure_target_id
         )
         pressure = selected_pressure if is_pressure_target else None
+        pressure_state = (
+            row_pressure_state
+            if is_pressure_target
+            else "not-applicable"
+            if pairs.get("boundedLivePressureDecision") is not None
+            else "unknown"
+        )
+        pressure_reason = (
+            "selected-pressure-target"
+            if is_pressure_target
+            else "not-pressure-target"
+            if pairs.get("boundedLivePressureDecision") is not None
+            else "pressure-decision-missing"
+        )
         alternatives.append(
             {
                 "targetId": alternative_id,
@@ -207,8 +237,13 @@ def target_alternatives(pairs: dict[str, Any]) -> tuple[list[dict[str, Any]], li
                 "scoreBasis": pairs.get("targetAlternativeScoreBasis"),
                 "scoreSpace": pairs.get("targetAlternativeScoreSpace"),
                 "pressure": pressure,
+                "pressureEvidenceState": pressure_state,
+                "pressureEvidenceReason": pressure_reason,
                 "pressureThreshold": threshold,
                 "underPressureThreshold": pressure < threshold if pressure is not None and threshold is not None else None,
+                "evidenceState": {
+                    "pressure": pressure_state,
+                },
                 "eligibilityReason": pairs.get("targetAlternativeEvidence", "unknown"),
             }
         )
@@ -308,19 +343,6 @@ def alternative_evidence_state(pairs: dict[str, Any], alternatives: list[dict[st
     if feature_evidence in {"unknown", "none"}:
         return "unknown"
     return "inferred"
-
-
-def pressure_evidence_state(pairs: dict[str, Any]) -> str:
-    """Classify pressure evidence quality."""
-    if pairs.get("boundedLivePressureDecision") is None:
-        return "not-applicable"
-    bound = str(pairs.get("selectedTargetPriorMissileInFlightEstimateBound", "unknown"))
-    quality = str(pairs.get("boundedLiveDecisionInFlightEvidenceQuality", "unknown"))
-    if bound == "exact" and quality in {"exact", "unknown"}:
-        return "exact"
-    if bound == "lowerBound" or quality == "lowerBound":
-        return "lower-bound"
-    return "unknown"
 
 
 def score_rank_evidence_state(pairs: dict[str, Any]) -> str:
@@ -622,6 +644,7 @@ def summarize_rows(
     command_results: Counter[str] = Counter()
     pressure_decisions: Counter[str] = Counter()
     evidence_states: dict[str, Counter[str]] = defaultdict(Counter)
+    alternative_pressure_states: Counter[str] = Counter()
     for row in rows:
         for record_type in row["source"]["sourceRecordTypes"]:
             record_types[record_type] += 1
@@ -629,6 +652,8 @@ def summarize_rows(
         pressure_decisions[str(row["pressure"].get("decision", "unknown"))] += 1
         for key, value in row.get("evidenceState", {}).items():
             evidence_states[key][str(value)] += 1
+        for alternative in row.get("targetAlternatives", []):
+            alternative_pressure_states[str(alternative.get("pressureEvidenceState", "unknown"))] += 1
     return {
         "schemaVersion": SCHEMA_VERSION,
         "datasetKind": "allocation-decision-context",
@@ -647,6 +672,7 @@ def summarize_rows(
         "evidenceStateCounts": {
             key: dict(sorted(counter.items())) for key, counter in sorted(evidence_states.items())
         },
+        "targetAlternativePressureEvidenceStateCounts": dict(sorted(alternative_pressure_states.items())),
         "warnings": warnings,
     }
 
@@ -701,6 +727,8 @@ def enforce_fixture_gate(summary: dict[str, Any]) -> None:
         failures.append("no rows preserve lower-bound pressure uncertainty")
     if summary["rowsWithCommandResult"] <= 0:
         failures.append("no rows preserve command results")
+    if not summary.get("targetAlternativePressureEvidenceStateCounts"):
+        failures.append("no per-target-alternative pressure evidence states emitted")
     if failures:
         raise SystemExit("Dataset fixture gate failed: " + "; ".join(failures))
 

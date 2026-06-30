@@ -101,11 +101,12 @@ def verdict_for_policy(policy: dict[str, Any], records: list[dict[str, Any]]) ->
         return "blocked", "no eligible rows remain after exclusions", downgrades
     if "fixture evidence only" in downgrades:
         return "inconclusive", "fixture evidence cannot justify live validation", downgrades
-    if int(policy.get("favorableRowCount", 0)) > 0:
-        if policy.get("policyMode") == "report-only":
-            return "needs-live-validation", "eligible favorable report-only rows need live validation", downgrades
+    if policy.get("policyMode") == "report-only":
+        if int(policy.get("candidateImprovementRowCount", 0)) > 0:
+            return "needs-live-validation", "eligible report-only candidate-improvement rows need live validation", downgrades
+    elif int(policy.get("diagnosticSignalRowCount", 0)) > 0:
         return "candidate-filtered", "eligible current-policy rows show avoidable over-pressure", downgrades
-    return "inconclusive", "no eligible favorable candidate signal is present", downgrades
+    return "inconclusive", "no eligible diagnostic or candidate-improvement signal is present", downgrades
 
 
 def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -129,7 +130,8 @@ def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> di
                 "badObservedRowCount": policy.get("badObservedRowCount", 0),
                 "badCandidateRowCount": policy.get("badCandidateRowCount", 0),
                 "evidenceBlockedRowCount": policy.get("evidenceBlockedRowCount", 0),
-                "favorableRowCount": policy.get("favorableRowCount", 0),
+                "diagnosticSignalRowCount": policy.get("diagnosticSignalRowCount", 0),
+                "candidateImprovementRowCount": policy.get("candidateImprovementRowCount", 0),
                 "targetChangeCount": policy.get("targetChangeCount", 0),
                 "scoreDeltaTotalEligible": policy.get("scoreDeltaTotalEligible"),
                 "scoreDeltaAverageEligible": policy.get("scoreDeltaAverageEligible"),
@@ -193,8 +195,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
         "Offline replay is a candidate filter only. It is not causal proof of live combat improvement.",
         "Any behavior-changing candidate still needs controlled-live or fleet-wide-controlled validation.",
         "",
-        "| Rank | Policy | Mode | Verdict | Rows | Eligible | Excluded | Favorable | Changes | Score delta | Downgrades |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Rank | Policy | Mode | Verdict | Rows | Eligible | Excluded | Diag signals | Candidate signals | Changes | Score delta | Downgrades |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for index, verdict in enumerate(verdicts["verdicts"], start=1):
         lines.append(
@@ -208,7 +210,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
                     markdown_cell(verdict["rowCount"]),
                     markdown_cell(verdict["eligibleRowCount"]),
                     markdown_cell(verdict["excludedRowCount"]),
-                    markdown_cell(verdict["favorableRowCount"]),
+                    markdown_cell(verdict["diagnosticSignalRowCount"]),
+                    markdown_cell(verdict["candidateImprovementRowCount"]),
                     markdown_cell(verdict["targetChangeCount"]),
                     markdown_cell(verdict["scoreDeltaTotalEligible"]),
                     markdown_cell("; ".join(verdict.get("downgradeReasons", []))),
@@ -222,6 +225,7 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
             "## Notes",
             "",
             "- `candidate-filtered` and `needs-live-validation` are not live behavior approval.",
+            "- Diagnostic signals describe current-policy evidence; candidate signals describe report-only target changes.",
             "- Bad observed rows, bad candidate rows, and evidence-blocked rows are counted separately.",
             "- `blocked` means candidate guardrail failures or total row exclusion prevent use.",
             "- `inconclusive` means evidence quality prevents a favorable candidate verdict.",

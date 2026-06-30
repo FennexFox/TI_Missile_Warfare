@@ -67,12 +67,14 @@ Minimum row groups:
 - selected target: id/name, pressure, threshold, score/rank evidence, and
   selected-target pressure decision;
 - candidate targets: per-target pressure, threshold, under-threshold status,
-  comparable feature evidence, score/rank evidence, and eligibility reason;
+  explicit pressure evidence state, comparable feature evidence, score/rank
+  evidence, and eligibility reason;
 - command result: applied/skipped/failed, direct command-spend correlation, caps,
   and safety guardrails;
 - evidence state: explicit `exact`, `lower-bound`, `unknown`, `inferred`, or
   `not-applicable` state for pressure, target alternatives, score/rank
-  comparison, command correlation, outcome context, and overall row quality;
+  comparison, command correlation, outcome context, per-target-alternative
+  pressure, and overall row quality;
 - uncertainty: exact vs lower-bound in-flight pressure, missing evidence, parser
   warnings, and spillover classification.
 
@@ -85,6 +87,7 @@ surrogate pressure objective over auditable allocation contexts:
 - penalize large pressure imbalance when comparable alternatives exist;
 - preserve high-threat or high-score target coverage when pressure evidence does
   not justify retargeting;
+- filter known friendly alternatives out of report-only candidate suggestions;
 - penalize churny or evidence-weak retargets;
 - apply hard failure penalties for friendly targets, scope violations, command
   cap violations, parser failures, or spillover misclassification.
@@ -123,7 +126,8 @@ The next offline-fitting implementation should therefore:
 - replay the current policy and at least one report-only candidate policy;
 - score surrogate pressure objectives and hard guardrails;
 - separate bad observed rows, bad candidate rows, evidence-blocked rows,
-  diagnostic warnings, and policy-level downgrade reasons;
+  diagnostic warnings, current-policy diagnostic signals, report-only
+  candidate-improvement signals, and policy-level downgrade reasons;
 - keep live command behavior unchanged until a ranked candidate receives small
   controlled-live or fleet-wide-controlled validation.
 

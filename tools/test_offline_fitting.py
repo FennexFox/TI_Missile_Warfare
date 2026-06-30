@@ -16,6 +16,10 @@ import replay_offline_fitting_candidates as replay
 import report_offline_fitting_candidates as report
 
 
+REPO_ROOT = TOOLS_DIR.parent
+FIXTURE_REGISTRY = REPO_ROOT / "tools" / "fixtures" / "offline_fitting" / "registry.jsonl"
+
+
 def exact_retained_row() -> dict:
     """Return a minimal exact retained above-threshold row."""
     return {
@@ -30,6 +34,8 @@ def exact_retained_row() -> dict:
                 "isPressureTarget": True,
                 "score": 3.0,
                 "targetValue": 10,
+                "pressureEvidenceState": "exact",
+                "evidenceState": {"pressure": "exact"},
             },
             {
                 "targetId": "blue",
@@ -38,6 +44,8 @@ def exact_retained_row() -> dict:
                 "isPressureTarget": False,
                 "score": 2.0,
                 "targetValue": 8,
+                "pressureEvidenceState": "not-applicable",
+                "evidenceState": {"pressure": "not-applicable"},
             },
         ],
         "pressure": {"retainedAboveThreshold": True, "atOrAboveThreshold": True},
@@ -85,6 +93,9 @@ class EvidenceStateTests(unittest.TestCase):
         self.assertEqual([], warnings)
         self.assertEqual(2, len(alternatives))
         self.assertEqual(2.0, alternatives[1]["score"])
+        self.assertEqual("exact", alternatives[0]["pressureEvidenceState"])
+        self.assertEqual("not-applicable", alternatives[1]["pressureEvidenceState"])
+        self.assertEqual({"pressure": "not-applicable"}, alternatives[1]["evidenceState"])
         self.assertEqual("exact", states["targetAlternatives"])
         self.assertEqual("exact", states["pressure"])
         self.assertEqual("exact", states["scoreRank"])
@@ -108,6 +119,17 @@ class EvidenceStateTests(unittest.TestCase):
         pairs["targetAlternativeCountTruncated"] = 1
         self.assertEqual("lower-bound", dataset.alternative_evidence_state(pairs, alternatives))
 
+    def test_pressure_exact_requires_exact_bound_and_quality(self) -> None:
+        pairs = {
+            "boundedLivePressureDecision": "retained",
+            "selectedTargetPriorMissileInFlightEstimateBound": "exact",
+            "boundedLiveDecisionInFlightEvidenceQuality": "unknown",
+        }
+
+        self.assertEqual("inferred", dataset.pressure_evidence_state(pairs))
+        pairs["boundedLiveDecisionInFlightEvidenceQuality"] = "exact"
+        self.assertEqual("exact", dataset.pressure_evidence_state(pairs))
+
 
 class ReplayClassificationTests(unittest.TestCase):
     def test_retained_above_threshold_classification_uses_exact_evidence(self) -> None:
@@ -128,7 +150,7 @@ class ReplayClassificationTests(unittest.TestCase):
         unknown_alternatives["evidenceState"]["targetAlternatives"] = "unknown"
         self.assertEqual("inconclusive", replay.retained_above_threshold_classification(unknown_alternatives))
 
-    def test_row_evaluation_separates_observed_and_candidate_failures(self) -> None:
+    def test_report_only_policy_skips_known_friendly_alternatives(self) -> None:
         row = exact_retained_row()
         row["targetAlternatives"][1]["targetTeam"] = "player"
         row["targetAlternatives"][1]["score"] = 4.0
@@ -139,9 +161,13 @@ class ReplayClassificationTests(unittest.TestCase):
         policies = {policy["policyId"]: policy for policy in summary["policies"]}
 
         self.assertEqual([], current["rowEvaluation"]["candidateGuardrailFailures"])
-        self.assertEqual(["candidate-friendly-target"], candidate["rowEvaluation"]["candidateGuardrailFailures"])
+        self.assertEqual([], candidate["rowEvaluation"]["candidateGuardrailFailures"])
+        self.assertEqual("red", candidate["chosenTargetId"])
         self.assertEqual(0, policies[replay.CURRENT_POLICY_ID]["badCandidateRowCount"])
-        self.assertEqual(1, policies[replay.REPORT_ONLY_POLICY_ID]["badCandidateRowCount"])
+        self.assertEqual(0, policies[replay.REPORT_ONLY_POLICY_ID]["badCandidateRowCount"])
+
+        unsafe_choice = row["targetAlternatives"][1]
+        self.assertEqual(["candidate-friendly-target"], replay.candidate_guardrail_failures(row, unsafe_choice))
 
         bad_observed = exact_retained_row()
         bad_observed["command"]["result"] = "wouldFail"
@@ -152,8 +178,6 @@ class ReplayClassificationTests(unittest.TestCase):
 class ReportVerdictTests(unittest.TestCase):
     def test_report_verdicts_preserve_row_counts_and_downgrades(self) -> None:
         row = exact_retained_row()
-        row["targetAlternatives"][1]["targetTeam"] = "player"
-        row["targetAlternatives"][1]["score"] = 4.0
         records = [
             replay.replay_policy(row, replay.CURRENT_POLICY_ID),
             replay.replay_policy(row, replay.REPORT_ONLY_POLICY_ID),
@@ -164,12 +188,32 @@ class ReportVerdictTests(unittest.TestCase):
         by_policy = {item["policyId"]: item for item in verdicts["verdicts"]}
         report_only = by_policy[replay.REPORT_ONLY_POLICY_ID]
 
-        self.assertEqual("blocked", report_only["verdict"])
-        self.assertEqual(1, report_only["badCandidateRowCount"])
-        self.assertIn("bad candidate rows are present", report_only["downgradeReasons"])
+        self.assertEqual("inconclusive", report_only["verdict"])
+        self.assertEqual(0, report_only["badCandidateRowCount"])
+        self.assertEqual(1, report_only["candidateImprovementRowCount"])
         self.assertIn("fixture evidence only", report_only["downgradeReasons"])
         self.assertIn("Eligible", report.ranked_candidates_markdown(verdicts))
         self.assertIn("Bad observed rows", report.guardrail_markdown(verdicts))
+
+    def test_fixture_pipeline_summaries_keep_expected_quality_counts(self) -> None:
+        rows, warnings, run_modes, source_counts = dataset.build_dataset(FIXTURE_REGISTRY)
+        dataset_summary = dataset.summarize_rows(rows, warnings, run_modes, source_counts)
+        records = replay.replay(rows)
+        replay_summary = replay.summarize(records)
+        verdicts = report.build_verdicts(replay_summary, records)
+        policies = {policy["policyId"]: policy for policy in replay_summary["policies"]}
+        verdict_by_policy = {item["policyId"]: item for item in verdicts["verdicts"]}
+
+        self.assertEqual(10, dataset_summary["rowCount"])
+        self.assertEqual({"exact": 5, "lower-bound": 2, "not-applicable": 2, "unknown": 1}, dataset_summary["evidenceStateCounts"]["pressure"])
+        self.assertEqual({"exact": 5, "lower-bound": 2, "not-applicable": 8, "unknown": 2}, dataset_summary["targetAlternativePressureEvidenceStateCounts"])
+        self.assertEqual(20, replay_summary["recordCount"])
+        self.assertEqual(0, policies[replay.REPORT_ONLY_POLICY_ID]["badCandidateRowCount"])
+        self.assertEqual(1, policies[replay.REPORT_ONLY_POLICY_ID]["candidateImprovementRowCount"])
+        self.assertEqual(0, policies[replay.REPORT_ONLY_POLICY_ID]["diagnosticSignalRowCount"])
+        self.assertEqual(1, policies[replay.CURRENT_POLICY_ID]["diagnosticSignalRowCount"])
+        self.assertEqual("inconclusive", verdict_by_policy[replay.CURRENT_POLICY_ID]["verdict"])
+        self.assertEqual("inconclusive", verdict_by_policy[replay.REPORT_ONLY_POLICY_ID]["verdict"])
 
 
 if __name__ == "__main__":
