@@ -28,10 +28,10 @@
 
 ## Affected files
 
-- Likely `tools/fit_shadow_allocation.py`
-- Likely new report templates under `tools/` or `docs/`
-- Relevant durable docs under `docs/planning/` and `docs/diagnostics/`
-- This issue plan's phase progress and retrospective notes
+- `tools/report_offline_fitting_candidates.py`
+- `docs/diagnostics/experiment-corpus.md`
+- `dev-docs/plan/issue_60/00-master-plan.md`
+- `dev-docs/plan/issue_60/04-reporting.md`
 
 ## Implementation steps
 
@@ -58,8 +58,9 @@
 
 - `python tools/check_layout.py`
 - `python -m compileall tools`
-- Add the final report command over committed fixtures once its filename is
-  known.
+- `python tools/build_offline_fitting_dataset.py --registry tools/fixtures/offline_fitting/registry.jsonl --output artifacts/offline-fitting/fixture-dataset --require-row-evidence --force`
+- `python tools/replay_offline_fitting_candidates.py --dataset artifacts/offline-fitting/fixture-dataset/decision-contexts.jsonl --output artifacts/offline-fitting/fixture-replay --require-replay-evidence --force`
+- `python tools/report_offline_fitting_candidates.py --replay artifacts/offline-fitting/fixture-replay/replay-results.jsonl --summary artifacts/offline-fitting/fixture-replay/candidate-summary.json --output artifacts/offline-fitting/fixture-report --require-report-evidence --force`
 - `dotnet build TI_Missile_Fire_Control.sln` only if the final change touches
   C# source or project files.
 
@@ -76,13 +77,25 @@
 
 ## Progress
 
-- Not started.
+- Implemented report closure over replay artifacts.
+- Generates `ranked-candidates.md`, `candidate-verdicts.json`, and
+  `guardrail-report.md` under ignored `artifacts/` paths.
+- Fixture report emits two machine-readable candidate verdicts using the #60
+  vocabulary.
+- The generated report explicitly states that offline replay is a candidate
+  filter only and not live combat proof.
 
 ## Decision log
 
 - The report is the issue closure artifact. Later live validation belongs to a
   follow-up issue unless #60 explicitly grows new acceptance criteria.
+- Verdict rules are conservative: hard guardrail failures become `blocked`, and
+  parser warnings, lower-bound pressure, missing alternatives, or spillover
+  ambiguity prevent favorable verdicts.
+- `ranked-candidates.md` is generated under `artifacts/` and should be inspected
+  before any content is copied into durable docs or PR text.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Phase 4 is complete for fixture-backed report closure. No live combat
+  behavior changes are included.

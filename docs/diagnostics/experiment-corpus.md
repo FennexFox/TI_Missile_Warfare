@@ -307,3 +307,29 @@ current behavior, not as a validated improvement. The first report-only policy,
 pressure evidence is exact and at or above threshold. Lower-bound pressure,
 missing alternatives, and command-safety failures block favorable conclusions.
 Replay output separates soft surrogate penalties from hard guardrail failures.
+
+## Offline-fitting report closure
+
+Use `tools/report_offline_fitting_candidates.py` to turn replay artifacts into
+the report artifacts that close the offline fitting loop.
+
+Fixture validation uses:
+
+```powershell
+python tools\report_offline_fitting_candidates.py --replay artifacts\offline-fitting\fixture-replay\replay-results.jsonl --summary artifacts\offline-fitting\fixture-replay\candidate-summary.json --output artifacts\offline-fitting\fixture-report --require-report-evidence --force
+```
+
+The command writes:
+
+- `ranked-candidates.md`: ranked policy table with verdicts and evidence
+  blockers.
+- `candidate-verdicts.json`: machine-readable verdicts using
+  `candidate-filtered`, `needs-live-validation`, `inconclusive`, or `blocked`.
+- `guardrail-report.md`: hard guardrail failures and evidence blockers
+  separated from soft objective scores.
+
+Verdict rules are intentionally conservative. Hard guardrail failures produce
+`blocked`. Parser warnings, lower-bound pressure, missing alternatives, and
+spillover ambiguity prevent favorable verdicts. Any future `candidate-filtered`
+or `needs-live-validation` result remains a live-validation candidate only, not
+a behavior-changing implementation approval.
