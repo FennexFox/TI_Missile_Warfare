@@ -16,6 +16,7 @@ links before changing behavior.
   facts, blockers, and `Needs verification:` gaps.
 - [Architecture](guide/architecture.md): high-level mod/Core boundary and design principle.
 - [MVP roadmap](planning/mvp-roadmap.md): current issue-sized roadmap, completed diagnostics, blockers, and next work.
+- [Offline fitting loop](planning/offline-fitting-loop.md): measurement-first loop for archived logs, candidate replay, and pre-live fitting.
 - [Reverse-engineering plan](research/reverse-engineering-plan.md): diagnostic-first plan for finding runtime combat entry points.
 - [Confirmed combat launch hooks](diagnostics/hooks.md): runtime hooks confirmed by deployed diagnostics and parser output.
 - [Battle snapshot and allocation diagnostics](diagnostics/snapshot-and-allocation.md): current snapshot fields, shadow allocation logs, parser behavior, and validation commands.
@@ -44,6 +45,7 @@ links before changing behavior.
 ## Documentation rules
 
 - Separate confirmed runtime evidence from hypotheses.
+- Treat archived-log offline fitting as a candidate filter, not proof of live combat improvement.
 - Use `ammoGateBudgetShots` for the validated module-keyed ammo plus vanilla gate budget; do not introduce `readyShots` terminology.
 - Keep controlled command/application work gated behind dry-run evidence and command-application safety, using the verified selected-player command scope.
 - Keep temporary implementation plans in `dev-docs/plan/**`, not in durable `docs/` pages.

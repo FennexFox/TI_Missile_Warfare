@@ -9,6 +9,10 @@ Keep changes small and reviewable. Do not introduce behavior-changing combat
 logic unless the user explicitly asks for that phase and the local docs support
 it.
 
+The current project direction is measurement-first offline fitting over archived
+logs. Treat offline candidate replay as a filter for live validation, not as
+proof of live combat improvement.
+
 ## Local Instructions To Read
 
 Before planning, coding, committing, or opening/updating a PR, read the relevant

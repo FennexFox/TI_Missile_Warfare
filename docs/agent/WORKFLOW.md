@@ -33,6 +33,9 @@ Use this workflow when updating durable docs.
 - Do not make completion claims for issues unless the repo has evidence.
 - Preserve diagnostics-first boundaries: docs may describe future behavior, but
   must not imply that live combat behavior changed unless it did.
+- When documenting tuning work, distinguish offline candidate fitting from live
+  controlled validation. Offline fitting can rank candidates, but it is not proof
+  of live combat improvement.
 
 ## ADR practice
 

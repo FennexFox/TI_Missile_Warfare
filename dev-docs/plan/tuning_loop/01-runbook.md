@@ -1,142 +1,141 @@
-# Tuning loop runbook
+# Offline fitting runbook
 
 ## Goal
 
-- Make each bounded-live pressure-aware tuning attempt repeatable and
-  comparable.
-- Keep baseline capture, heuristic changes, follow-up capture, and verdicts in
-  separate reviewable steps.
+Make archived-log pressure analysis repeatable enough that future agents do not
+have to re-interpret individual `Player.log` files by hand. The desired loop is:
+
+```text
+log corpus -> dataset -> candidate replay -> scoring -> report -> live validation shortlist
+```
+
+This runbook supersedes the earlier baseline/follow-up live tuning framing for
+this folder. Live runs still matter, but only after offline fitting has produced
+a short, auditable candidate list.
 
 ## Preconditions
 
-- Tuning-loop context is current in `00-context.md`.
-- The working tree baseline commit is recorded.
+- `00-context.md` describes the current pre-tuning measurement posture.
+- The working tree commit is recorded for any generated artifact.
 - Private raw logs remain under ignored `artifacts/` paths.
-- Runtime settings and UMM toggles are recorded before each live run.
-- No heuristic change is made until a baseline corpus summary exists.
+- Runtime settings and UMM toggles are recorded when a log was generated.
+- No behavior-changing heuristic is made until offline fitting identifies a
+  repeated, avoidable problem.
 
-## Baseline capture
+## Dataset capture
 
-1. Record the baseline commit:
+1. Record the source commit and working tree state:
 
    ```powershell
    git rev-parse HEAD
    git status --short
    ```
 
-2. Record settings and toggles for the live run:
-
-   ```text
-   EnableDiagnostics
-   EnableSnapshotDiagnostics
-   EnableShadowAllocationDiagnostics
-   AllowCommandApply
-   EnableRecommendationOnlyMode
-   bounded fleet-wide trigger used
-   command caps
-   selected/fleet scope visible at runtime
-   ```
-
-3. Import the bounded-live `Player.log` into ignored local artifacts:
+2. Import bounded-live `Player.log` files into ignored local artifacts:
 
    ```powershell
    python tools\import_player_log_experiments.py `
      --log <private Player.log> `
-     --output artifacts\experiments\tuning-loop-baseline `
+     --output artifacts\experiments\offline-fitting-input `
      --parameters tools\fixtures\experiment_corpus\baseline-fleet-wide-bounded-live-v1.parameters.json `
-     --heuristic-candidate-id baseline-fleet-wide-bounded-live-v1 `
+     --heuristic-candidate-id current-pressure-aware-bounded-live-v1 `
      --run-mode fleet-wide-controlled `
      --scenario-tag bounded-live `
-     --scenario-tag pressure-aware `
+     --scenario-tag offline-fitting-input `
      --mod-commit <commit-sha> `
      --force
    ```
 
-4. Summarize the imported baseline:
+3. Summarize the corpus:
 
    ```powershell
    python tools\summarize_experiment_corpus.py `
-     --registry artifacts\experiments\tuning-loop-baseline\registry.jsonl `
-     --output artifacts\fitting\tuning-loop-baseline-summary
+     --registry artifacts\experiments\offline-fitting-input\registry.jsonl `
+     --output artifacts\fitting\offline-fitting-input-summary
    ```
 
-5. Record which raw logs are private and not committed.
+4. Build or refresh a decision-context dataset when that tool exists. Until then,
+   use corpus summaries and raw imported experiment rows as the intermediate
+   artifact.
 
-## Tuning change
+## Candidate replay target
 
-Apply exactly one narrow pressure-aware tuning change per loop.
+The replay tool should eventually evaluate candidate policies without changing
+combat behavior. At minimum it should replay:
 
-Allowed first-loop change family:
+- current Candidate A behavior;
+- a report-only policy that records what would happen if least-over-threshold
+  fallback were allowed;
+- any future candidate generated from the search space.
 
-- threshold behavior around `max(killSize, saturationSize)`;
-- retarget preference once exact controlled pressure is at or above threshold;
-- viable-alternative filtering using target denominator and comparable feature
-  evidence.
+The replay result must record hard guardrail failures separately from soft
+objective scores.
 
-Do not mix in broad allocator-weight changes, point-defense retunes,
-outcome-aware scoring, vanilla salvo suppression, or command-scope changes.
+## Objective and guardrail scoring
 
-## Follow-up capture
+First-loop surrogate objective:
 
-1. Record the follow-up commit or local diff identifier.
-2. Run a comparable bounded-live combat scenario with the same documented
-   toggles and caps unless the change explicitly requires a different value.
-3. Import the follow-up log to a separate ignored artifact directory:
+- selected-target over-pressure when comparable alternatives exist;
+- pressure imbalance between selected and alternative targets;
+- undercoverage or churn penalties where pressure evidence is weak;
+- uncertainty penalties for lower-bound or missing in-flight evidence.
 
-   ```powershell
-   python tools\import_player_log_experiments.py `
-     --log <private Player.log> `
-     --output artifacts\experiments\tuning-loop-followup `
-     --parameters <new parameter snapshot> `
-     --heuristic-candidate-id <candidate-id> `
-     --run-mode fleet-wide-controlled `
-     --scenario-tag bounded-live `
-     --scenario-tag pressure-aware `
-     --mod-commit <commit-sha> `
-     --force
-   ```
+Hard guardrails:
 
-4. Summarize the follow-up corpus:
+- parser verdict must remain OK;
+- same-team target markers must remain zero;
+- scope-violation markers must remain zero;
+- failed commands must be zero or explained;
+- vanilla / none-correlated spillover must not be counted as controlled spend;
+- lower-bound pressure must not be treated as exact pressure;
+- no outcome-aware scoring is introduced.
 
-   ```powershell
-   python tools\summarize_experiment_corpus.py `
-     --registry artifacts\experiments\tuning-loop-followup\registry.jsonl `
-     --output artifacts\fitting\tuning-loop-followup-summary
-   ```
+## Current missing dataset feature
 
-## Comparison
+When a row says `noUnderThresholdAlternative`, the dataset must expose the
+per-alternative pressure and threshold evidence used to reach that conclusion.
+Without that table, the result is `inconclusive`, not proof that over-pressure was
+unavoidable.
 
-Compare baseline and follow-up summaries using the metrics from `00-context.md`.
-Record the comparison in the plan folder or in the issue notes before deciding
-the next action.
+Required next report-only fields:
 
-Required comparison checks:
+```text
+alternativeTargetId / name
+alternativePressure
+alternativeThreshold
+alternativeUnderThreshold
+alternativeScoreRank
+alternativeEligibilityReason
+bestUnderThresholdAlternative
+leastOverThresholdAlternative
+```
 
-- retained selected-target decisions above threshold moved down, or a clear
-  reason explains why not;
-- retargeted decisions above threshold moved up only when viable alternatives
-  existed;
-- lower-bound pressure rows remain diagnostic-only;
-- direct controlled command-spend evidence remains separate from vanilla or
-  none-correlated spillover;
-- same-team target and scope-violation markers remain zero;
-- applied/skipped/failed command counts remain explainable;
-- parser verdict remains OK;
-- `MissileWarfare` warnings and errors remain zero;
-- outcome-hook rows, when present, are used only as validation context.
+## Comparison and reports
 
-## Verdict
+For summary-to-summary comparisons, use `tools\compare_experiment_summaries.py`
+when available. For candidate replay results, the future report should produce:
 
-Use one of these verdicts for each before/after comparison:
+```text
+artifacts/fitting/<run-id>/ranked-candidates.md
+artifacts/fitting/<run-id>/candidate-results.jsonl
+artifacts/fitting/<run-id>/guardrail-report.md
+```
 
-- `supportive`: metrics moved in the intended direction and guardrails held.
-- `contradictory`: metrics moved against the objective or guardrails failed.
-- `no material change`: metrics did not meaningfully move.
-- `invalid comparison`: scenario, settings, caps, or evidence quality changed
-  enough that the comparison is not valid.
+A report may recommend live validation only when the candidate passes hard
+guardrails and improves the surrogate objective on enough auditable rows.
+
+## Verdict vocabulary
+
+Use one of these verdicts for each offline replay or comparison:
+
+- `candidate-filtered`: passes offline guardrails and merits live validation.
+- `blocked`: hard guardrail failed or required evidence is missing.
+- `no material change`: comparable evidence exists, but the candidate does not
+  improve the surrogate objective enough to justify live validation.
 - `inconclusive`: evidence is too sparse or too ambiguous to classify.
+- `needs-live-validation`: offline evidence is supportive but not causal proof.
 
-## Regression checks
+## Validation commands
 
 For docs-only planning changes:
 
@@ -144,12 +143,12 @@ For docs-only planning changes:
 python tools\check_layout.py
 ```
 
-For parser/importer/corpus changes:
+For parser/importer/corpus/comparison tooling changes:
 
 ```powershell
 python tools\check_layout.py
 python -m compileall tools
-python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py tools\import_player_log_experiments.py tools\summarize_experiment_corpus.py
+python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py tools\import_player_log_experiments.py tools\summarize_experiment_corpus.py tools\compare_experiment_summaries.py
 python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment_corpus\registry.jsonl --output artifacts\fitting\corpus-summary-fixture
 ```
 

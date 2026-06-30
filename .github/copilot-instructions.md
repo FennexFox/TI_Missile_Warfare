@@ -1,19 +1,21 @@
 # Repository instructions for GitHub Copilot
 
-This repository is an early scaffold for a Terra Invicta missile fire-control mod.
+This repository is a conservative Terra Invicta missile fire-control mod project in a diagnostics and archived-log fitting phase.
 
 ## Project intent
 
 The project should evolve as a conservative, diagnostics-first mod. Prefer small, reviewable changes that keep the game behavior unchanged until the relevant combat methods are identified and logged.
 
-The initial feature direction is:
+The current feature direction is:
 
 1. Observe and log missile launch decisions.
 2. Build a pure, testable fire-control core outside the game integration layer.
-3. Add recommendation-only salvo allocation.
-4. Add manual auto-allocation.
-5. Add launch-discipline filters only after diagnostics are reliable.
-6. Treat missile guidance, burn-model, and projectile-physics rewrites as experimental and out of scope for early milestones.
+3. Turn archived logs into decision-context datasets for offline candidate replay.
+4. Rank candidate policies with surrogate objectives and hard guardrails before live validation.
+5. Add recommendation-only salvo allocation.
+6. Add manual or bounded auto-allocation only when local docs and evidence support that behavior-changing phase.
+7. Add launch-discipline filters only after diagnostics and scoring inputs are reliable.
+8. Treat missile guidance, burn-model, and projectile-physics rewrites as experimental and out of scope for early milestones.
 
 ## Architecture conventions
 

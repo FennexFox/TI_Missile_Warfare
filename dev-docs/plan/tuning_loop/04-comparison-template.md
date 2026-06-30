@@ -1,34 +1,35 @@
-# Phase 04: Baseline/follow-up comparison template
+# Phase 04: Offline fitting comparison template
 
 ## Purpose
 
-Use this template to compare a baseline bounded-live pressure-aware run with a
-follow-up run after one narrow tuning change. The template is deliberately
-conservative: it should make regression and evidence-quality problems visible
-before claiming that a heuristic improved.
+Use this template to review archived-log candidate replay or corpus-summary
+comparisons. It is deliberately conservative: it should make evidence-quality
+problems visible before claiming that a heuristic is worth live validation.
+
+This template does not prove live combat improvement. It filters candidates for
+later controlled-live or fleet-wide-controlled validation.
 
 ## Required inputs
 
-- Baseline commit SHA.
-- Follow-up commit SHA or local diff identifier.
-- Baseline corpus summary path.
-- Follow-up corpus summary path.
-- Baseline parameter snapshot.
-- Follow-up parameter snapshot.
-- Runtime settings/toggles for both runs.
-- Notes on scenario comparability.
+- Dataset or corpus summary path.
+- Candidate policy id and parameter snapshot.
+- Baseline/current policy id and parameter snapshot.
+- Mod commit or local diff identifier for generated artifacts.
+- Evidence-mode mix: `shadow-replay`, `controlled-live`,
+  `fleet-wide-controlled`, `fixture`.
+- Notes on scenario/fleet/log comparability.
+- Raw-log privacy note.
 
 ## Run identity
 
 ```text
 comparisonId:
-baselineCommit:
-followupCommitOrDiff:
-baselineSummary:
-followupSummary:
+datasetOrSummary:
 baselineCandidateId:
-followupCandidateId:
-runMode:
+followupOrReplayCandidateId:
+parameterSnapshotHash:
+modCommitOrDiff:
+evidenceModes:
 scenarioTags:
 rawLogsPrivate: yes
 ```
@@ -41,10 +42,11 @@ Mark each item `same`, `different`, `unknown`, or `not applicable`.
 | --- | --- | --- |
 | Terra Invicta version |  |  |
 | Mod branch/commit recorded |  |  |
-| Same run mode |  |  |
+| Evidence modes separated |  |  |
+| Same run mode where before/after comparison is claimed |  |  |
 | Same command caps unless intentionally changed |  |  |
 | Same diagnostics toggles |  |  |
-| Same scenario/fleet family |  |  |
+| Same scenario/fleet family or grouped separately |  |  |
 | Same missile family or comparable weapon family |  |  |
 | Raw logs private and not committed |  |  |
 | Parser verdict OK |  |  |
@@ -52,31 +54,32 @@ Mark each item `same`, `different`, `unknown`, or `not applicable`.
 
 If a core comparability item is `different` or `unknown`, the likely verdict is
 `invalid comparison` or `inconclusive` unless the difference is explicitly part
-of the candidate.
+of the candidate or the report groups the rows separately.
 
 ## Objective metrics
 
 Compare these counters first.
 
-| Metric | Baseline | Follow-up | Direction desired | Interpretation |
+| Metric | Baseline/current | Candidate/replay | Direction desired | Interpretation |
 | --- | ---: | ---: | --- | --- |
 | boundedLiveAppliedResults |  |  | explainable | More is not automatically better. |
 | boundedLiveAppliedWithTargetAlternativeDenominatorGtOne |  |  | enough evidence | Needed for retarget review. |
 | boundedLiveAppliedWithComparableAlternativeFeatures |  |  | enough evidence | Needed for fair alternative comparison. |
 | boundedLiveAppliedWithFullyComparableScoreRankEvidence |  |  | enough evidence | Needed for rank/score interpretation. |
 | boundedLiveAppliedWithKnownPriorInFlightPressure |  |  | up or stable | Exact/known pressure improves interpretability. |
-| boundedLiveAppliedWithLowerBoundPriorInFlightPressure |  |  | down or isolated | Lower-bound rows stay diagnostic-only. |
-| boundedLiveRetainedSelectedTargetDecisionsAboveThreshold |  |  | down | Primary over-pressure reduction signal. |
-| boundedLiveRetargetedDecisionsAboveThreshold |  |  | up if alternatives exist | Primary pressure-aware retarget signal. |
-| boundedLiveLowerBoundPressureDiagnosticOnlyRows |  |  | not used as success | Must remain diagnostic-only. |
+| boundedLiveAppliedWithLowerBoundPriorInFlightPressure |  |  | isolated | Lower-bound rows stay diagnostic-only. |
+| retainedAboveThresholdWithAuditableAlternatives |  |  | down | Primary avoidable over-pressure signal. |
+| retargetedAboveThresholdWithAuditableAlternatives |  |  | up only if justified | Primary pressure-aware retarget signal. |
+| noUnderThresholdAlternativeAudited |  |  | up | Needed to classify unavoidable over-pressure. |
+| leastOverThresholdFallbackOpportunities |  |  | classified | Candidate-generation signal, not success proof. |
 | potentialOverConcentrationCandidates |  |  | down | Candidate-level overconcentration signal. |
 | potentialCapMisallocationCandidates |  |  | down or zero | Cap interaction signal. |
 
 ## Guardrail checks
 
-Any hard guardrail failure blocks a supportive verdict.
+Any hard guardrail failure blocks a candidate-filtered verdict.
 
-| Guardrail | Baseline | Follow-up | Pass/Fail | Notes |
+| Guardrail | Baseline/current | Candidate/replay | Pass/Fail | Notes |
 | --- | --- | --- | --- | --- |
 | Parser verdict OK |  |  |  |  |
 | MissileWarfare warnings/errors zero |  |  |  |  |
@@ -86,16 +89,18 @@ Any hard guardrail failure blocks a supportive verdict.
 | skipped commands explainable |  |  |  |  |
 | direct command-spend evidence preserved |  |  |  |  |
 | vanilla / none-correlated spillover not counted as controlled spend |  |  |  |  |
-| lower-bound pressure not used as retarget success |  |  |  |  |
+| lower-bound pressure not used as exact pressure |  |  |  |  |
 | no outcome-aware scoring introduced |  |  |  |  |
 | no command-authority or scope expansion |  |  |  |  |
+| offline replay not claimed as live proof |  |  |  |  |
 
 ## Blocker deltas
 
 Track hard measurement blockers separately from external outcome blockers.
 
-| Blocker | Baseline | Follow-up | Interpretation |
+| Blocker | Baseline/current | Candidate/replay | Interpretation |
 | --- | ---: | ---: | --- |
+| per-alternative pressure unavailable |  |  | Hard offline fitting blocker. |
 | prior in-flight target attribution unavailable for observed live missiles |  |  | Hard measurement blocker. |
 | exact outcome attribution pending OutcomeLog correlation |  |  | External outcome blocker; not a pressure-loop blocker. |
 | missing comparable target-alternative features |  |  | Hard comparison blocker. |
@@ -105,15 +110,15 @@ Track hard measurement blockers separately from external outcome blockers.
 
 Use exactly one verdict.
 
-- `supportive`: objective metrics moved in the intended direction and guardrails
-  held.
-- `contradictory`: objective metrics moved against the intended direction or a
-  hard guardrail failed.
-- `no material change`: comparable run, but objective metrics did not move enough
-  to justify the change.
+- `candidate-filtered`: offline metrics moved in the intended direction, hard
+  guardrails held, and the candidate merits live validation.
+- `blocked`: hard guardrail failed or required evidence is missing.
+- `no material change`: comparable evidence exists, but metrics did not move
+  enough to justify live validation.
 - `invalid comparison`: scenario, settings, caps, evidence quality, or parser
   health changed enough that the comparison cannot be used.
 - `inconclusive`: evidence is too sparse or ambiguous to classify.
+- `needs-live-validation`: offline evidence is supportive but not causal proof.
 
 ## Verdict recommendation
 
@@ -128,7 +133,7 @@ nextAction:
 
 ## Human review notes
 
-Use this section for causal caveats that the counters cannot capture.
+Use this section for causal caveats that counters cannot capture.
 
 Examples:
 
@@ -137,6 +142,7 @@ Examples:
 - target alternatives existed but were not tactically comparable;
 - applied commands were too sparse;
 - cap blocks dominate the result;
+- `noUnderThresholdAlternative` is not auditable without per-alternative pressure;
 - outcome rows show hook health but are not joined to allocation rows.
 
 ## Output location

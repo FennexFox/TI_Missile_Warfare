@@ -8,12 +8,13 @@ TI MissileWarfare.
 1. [Current state](CURRENT_STATE.md)
 2. [Architecture](../guide/architecture.md)
 3. [MVP roadmap](../planning/mvp-roadmap.md)
-4. [Confirmed combat launch hooks](../diagnostics/hooks.md)
-5. [Battle snapshot and allocation diagnostics](../diagnostics/snapshot-and-allocation.md)
-6. [Readiness semantics](../research/readiness-semantics.md)
-7. [Selected command scope](../research/selected-command-scope.md)
-8. [Agent workflow](WORKFLOW.md)
-9. [ADR index](../adr/README.md)
+4. [Offline fitting loop](../planning/offline-fitting-loop.md)
+5. [Confirmed combat launch hooks](../diagnostics/hooks.md)
+6. [Battle snapshot and allocation diagnostics](../diagnostics/snapshot-and-allocation.md)
+7. [Readiness semantics](../research/readiness-semantics.md)
+8. [Selected command scope](../research/selected-command-scope.md)
+9. [Agent workflow](WORKFLOW.md)
+10. [ADR index](../adr/README.md)
 
 Read issue-specific files under `dev-docs/plan/**` only when the current task
 is for that issue or PR. Those files are working notes, not durable project

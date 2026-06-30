@@ -716,6 +716,13 @@ visible-hostile alternatives, `targetAlternativeFeatureEvidence` is
 same ordering as `targetAlternativeIds`. Partial or missing feature extraction
 is reported explicitly and remains a hard #43.4 measurement blocker.
 
+For offline fitting, target alternatives must eventually include auditable
+pressure evidence in the same ordering as `targetAlternativeIds`: per-alternative
+pressure, threshold, under-threshold status, and eligibility reason. Without that
+table, a retained above-threshold selected target with
+`boundedLivePressureDecisionReason="noUnderThresholdAlternative"` is
+`inconclusive`; it is not proof that over-pressure was unavoidable.
+
 Bounded-live candidate/result rows also preserve allocator decision and
 measurement-readiness fields when they are available:
 

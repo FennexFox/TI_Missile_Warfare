@@ -1,19 +1,18 @@
-# Phase 03: Pressure-aware tuning harness prep
+# Phase 03: Offline fitting harness prep
 
 ## Goal
 
-Finish the remaining large-preparation work before the first heuristic tuning
-change. This phase should make the tuning loop cheap to repeat: baseline and
-follow-up runs must be comparable, parameter choices must be recorded, validation
-noise must be classified, and verdicts must be reviewable.
+Finish the remaining large-preparation work needed to make archived-log fitting
+cheap to repeat. This phase should reduce manual agent-loop fatigue by closing a
+single e2e path from logs to a reviewable candidate report.
 
 ## Scope
 
-- Define the baseline/follow-up comparison artifact.
-- Define the pressure-aware parameter snapshot format.
-- Define the first small sweep boundary.
-- Decide how compact bounded-live fixtures should be interpreted when they lack
-  modern required hook labels.
+- Define the decision-context dataset expected from imported logs.
+- Define the comparison/replay artifacts needed for offline candidate filtering.
+- Keep Candidate A as current behavior under measurement, not a behavior change.
+- Keep Candidate B as report-only infrastructure unless offline fitting later
+  selects a behavior-changing candidate.
 - Add docs or lightweight tooling only if it reduces repeated manual review.
 
 ## Non-goals
@@ -28,72 +27,54 @@ noise must be classified, and verdicts must be reviewable.
 
 ## Inputs
 
+- `docs/planning/offline-fitting-loop.md`
 - `dev-docs/plan/tuning_loop/00-context.md`
 - `dev-docs/plan/tuning_loop/01-runbook.md`
 - `dev-docs/plan/tuning_loop/02-baseline-corpus.md`
-- `artifacts/experiments/tuning-loop-baseline/` local ignored baseline import
-- `artifacts/fitting/tuning-loop-baseline-summary/` local ignored baseline
-  summary
+- local ignored bounded-live experiment imports under `artifacts/experiments/`
 - existing #43.4/#56 bounded-live fixture and runtime corpus summaries
 
 ## Required deliverables
 
-### 1. Comparison artifact definition
+### 1. Dataset feature gap statement
 
-Create or update a comparison template that takes a baseline corpus summary and a
-follow-up corpus summary and produces a reviewable before/after record.
+Document the remaining field gap that blocks reliable offline pressure fitting:
+per-alternative pressure and threshold evidence. In particular, retained
+above-threshold rows with `noUnderThresholdAlternative` must become auditable.
 
-Minimum output sections:
+Minimum future row fields:
 
-- run identity and comparability;
+- selected target pressure, threshold, and pressure source;
+- alternative target pressure, threshold, under-threshold status, score/rank, and
+  eligibility reason;
+- best under-threshold alternative, if one exists;
+- least-over-threshold alternative, if no under-threshold alternative exists;
+- uncertainty class for exact, lower-bound, or missing pressure evidence.
+
+### 2. Report artifact definition
+
+The existing summary comparison helper is useful, but it is not the final fitting
+loop. A complete offline fitting report should include:
+
+- dataset identity and evidence-mode mix;
+- candidate policy identity and parameter snapshot;
 - objective metrics;
-- guardrail checks;
-- blocker deltas;
-- verdict recommendation;
-- human review notes.
+- hard guardrail checks;
+- blocker and missing-feature counts;
+- candidate ranking;
+- live-validation shortlist.
 
-The template may be documentation-only for the first pass. If implemented as a
-script later, it should preserve the same section names and verdict vocabulary.
+### 3. First replay boundary
 
-### 2. Parameter snapshot format
+The first replay boundary should compare policies on archived rows without
+changing live behavior:
 
-Define the first pressure-aware parameter snapshot schema. It should be small and
-explicit enough to include in import metadata or a sidecar fixture.
+- current Candidate A behavior;
+- report-only least-over-threshold diagnostic policy;
+- later parameterized variants only after the dataset exposes the required
+  alternative pressure evidence.
 
-Minimum fields:
-
-- `heuristicCandidateId`;
-- `family`;
-- `pressureReference`;
-- `thresholdMultiplier`;
-- `pressureSourcePolicy`;
-- `lowerBoundPressurePolicy`;
-- `retargetPolicy`;
-- `viableAlternativePolicy`;
-- `deferredKnobs`;
-- `notes`.
-
-The first baseline candidate should continue to be
-`baseline-fleet-wide-bounded-live-v1` unless a later change explicitly renames
-it.
-
-### 3. First sweep boundary
-
-Document the first allowed sweep before writing additional heuristic code. Code
-inspection shows the originally proposed Candidate A behavior is already present
-in the current #56 implementation, so the first sweep boundary should treat
-Candidate A as the current behavior to validate rather than a new code change.
-
-Recommended first sweep shape:
-
-- baseline / Candidate A: `thresholdMultiplier = 1.0`, current #56 behavior;
-- validate Candidate A with a comparable follow-up run and the comparison
-  template;
-- optional Candidate B only if Candidate A produces `no material change`,
-  `inconclusive`, or sparse evidence while guardrails hold, and only if Candidate
-  B remains in the same pressure-aware family.
-
-The first sweep should not include more than one behavioral code change family.
+The first replay should not include more than one new behavior family.
 
 ### 4. Compact fixture verdict policy
 
@@ -112,9 +93,10 @@ reports stop repeating the same caveat.
 
 This phase is complete when:
 
-- a comparison template exists and names the metrics to compare;
-- pressure-aware parameter snapshots have a documented schema;
-- the first sweep boundary is documented with explicit non-goals;
+- the offline fitting posture is documented in durable docs;
+- the old live tuning framing is replaced with pre-tuning measurement language;
+- per-alternative pressure diagnostics are named as the next report-only blocker;
+- comparison/report artifacts are defined;
 - compact fixture verdict failures are classified as schema-fixture expected or
   upgraded away;
 - validation commands for docs/tooling changes are listed;
@@ -128,7 +110,7 @@ For documentation-only changes:
 python tools\check_layout.py
 ```
 
-If a comparison helper or parameter-file loader is added:
+If comparison, importer, dataset, or replay tooling is added:
 
 ```powershell
 python tools\check_layout.py
@@ -139,7 +121,7 @@ python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment
 
 ## Decision rules
 
-- If this phase remains docs-only, commit it separately from heuristic changes.
+- If this phase remains docs-only, commit it separately from behavior changes.
 - If small tooling is added, keep it report-only and deterministic.
 - If a proposed change requires reading outcome rows as allocation success, move
   it to a separate outcome-correlation issue.
@@ -148,8 +130,7 @@ python tools\summarize_experiment_corpus.py --registry tools\fixtures\experiment
 
 ## Next phase
 
-After this phase, enter the first pressure-aware tuning sweep by validating the
-current Candidate A behavior with a comparable follow-up run and the
-baseline/follow-up comparison template. Do not implement a duplicate Candidate A
-change. The next code change, if any, should be Candidate B or a report-only
-comparison helper after Candidate A has been classified.
+Add report-only per-alternative pressure diagnostics, then build the smallest
+possible dataset/replay command that turns archived logs into a candidate report.
+Do not implement a behavior-changing Candidate B until the offline report shows a
+repeated, avoidable pressure problem.

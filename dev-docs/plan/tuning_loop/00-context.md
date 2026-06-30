@@ -1,64 +1,89 @@
-# Tuning loop context
+# Pre-tuning offline fitting context
 
 ## Goal
 
-- Establish the first bounded-live tuning loop as pressure-aware tuning.
-- Define the objective, guardrails, corpus baseline requirements, and first
-  narrow parameter family before changing heuristics.
+Rebaseline the former pressure-aware tuning loop as a pre-tuning measurement and
+offline fitting loop. The immediate objective is not to prove Candidate A or to
+implement a behavior-changing Candidate B. It is to make archived logs usable as
+a fixed dataset for candidate replay and problem characterization.
+
+## Current framing
+
+The project should answer this question before tuning behavior:
+
+```text
+Does avoidable over-pressure repeatedly occur in bounded-live controlled allocation?
+```
+
+A row is not enough simply because one selected target has high pressure. It must
+also be possible to show that comparable alternatives existed and that at least
+one alternative had lower or under-threshold pressure according to auditable row
+features.
 
 ## Scope
 
-- Planning and review criteria for bounded fleet-wide controlled runs.
-- Metrics that can already be summarized from `AllocationLog` and imported
-  experiment corpus artifacts.
-- Use `[OutcomeLog]` rows only as runtime validation context for outcome-hook
-  coverage.
+- Build or document the archived-log dataset path for allocation decision
+  contexts.
+- Preserve evidence needed to replay candidate policies outside the game.
+- Keep pressure-aware bounded-live rows auditable, especially retained
+  above-threshold decisions.
+- Use comparison/reporting helpers to classify candidates and measurement gaps.
+- Keep raw private logs under ignored `artifacts/` paths.
 
 ## Non-goals
 
-- Outcome-aware scoring or allocator reward/punishment.
-- Broad target-value, launch-window, or point-defense weight retuning.
-- Vanilla salvo suppression.
-- Command-authority expansion or selected/fleet scope policy changes.
-- Projectile guidance, burn-model, or physics changes.
+- No behavior-changing allocator heuristic in this phase.
+- No outcome-aware scoring or allocator reward/punishment.
+- No broad target-value, launch-window, or point-defense weight retuning.
+- No vanilla salvo suppression.
+- No command-authority expansion or selected/fleet scope policy changes.
+- No projectile guidance, burn-model, or physics changes.
 
-## First loop mode
+## Offline fitting mode
 
-The first tuning loop is pressure-aware bounded-live tuning.
+The intended e2e loop is:
 
-The objective function must come from controlled allocation pressure evidence:
+```text
+archived Player.log / combat logs
+  -> import / parse
+  -> decision-context dataset
+  -> candidate policy shadow replay
+  -> objective and guardrail scoring
+  -> ranked candidate report
+  -> selected live validation only after offline filtering
+```
 
-- controlled prior pressure on the selected target;
-- recovered exact in-flight target pressure;
-- `killSize` and `saturationSize`;
-- same-cycle target alternatives and comparable target feature evidence;
-- retarget/retain counters from bounded-live pressure decision rows.
+This is a candidate-filtering loop. It does not replace controlled-live or
+fleet-wide-controlled validation for behavior-changing claims.
 
-`[OutcomeLog]` rows are validation context for the separate outcome hook layer.
-They confirm that outcome diagnostics are installed and firing, but they are not
-the primary objective function for this loop. Do not join outcome rows back to
-allocation rows or use them to reward/punish candidate choices until a separate
-outcome-to-allocation correlation design exists.
+## First dataset objective
 
-## Objective
+The first dataset should support pressure-aware candidate replay with these
+features:
 
-Reduce repeated same-target over-pressure in bounded-live controlled allocation
-without widening command authority or changing combat behavior outside the
-existing bounded controlled command path.
-
-Minimum signals:
-
-- reduce retained selected-target decisions where controlled pressure plus
-  exact recovered in-flight pressure is at or above the pressure reference;
-- reduce repeated same-target commands when viable same-cycle alternatives
-  exist;
-- keep lower-bound in-flight pressure rows diagnostic-only for v1;
-- preserve direct controlled command-spend evidence separately from vanilla or
+- selected target pressure from prior controlled shots and exact recovered
+  in-flight target pressure;
+- selected target pressure reference, initially `max(killSize, saturationSize)`;
+- lower-bound pressure recorded separately and kept diagnostic-only;
+- same-cycle target alternatives with comparable feature evidence;
+- per-alternative pressure, threshold, under-threshold status, score/rank
+  evidence, and eligibility reason;
+- applied/skipped/failed command result and cap reasons;
+- direct controlled command-spend evidence separated from vanilla or
   none-correlated spillover.
+
+## First measurement blocker
+
+Current logs can say that alternatives existed and that an above-threshold target
+was retained because of `noUnderThresholdAlternative`. They do not always expose
+the per-alternative pressure table needed to audit that reason.
+
+The next behavior-preserving diagnostics work should therefore add or preserve
+per-alternative pressure evidence before any new live heuristic is implemented.
 
 ## Guardrails
 
-The tuning loop must preserve these constraints:
+The offline fitting loop must preserve these constraints:
 
 - no command-authority expansion;
 - no selected-scope or fleet-scope policy changes;
@@ -70,80 +95,17 @@ The tuning loop must preserve these constraints:
 - do not treat `DestroyShip` text or `shipDestroyed` rows as unique projectile
   attribution;
 - do not treat vanilla or none-correlated launch rows as direct controlled
-  command spend.
+  command spend;
+- do not treat offline replay as causal proof of live combat improvement.
 
-## First parameter family
+## Candidate terminology
 
-Start with a narrow pressure threshold and retarget-preference family:
-
-- pressure reference: `max(killSize, saturationSize)`;
-- initial threshold multiplier: `1.0`;
-- pressure source for decisions: prior controlled shots plus exact recovered
-  in-flight shots only;
-- lower-bound in-flight pressure: logged and summarized, but diagnostic-only;
-- retarget preference: when selected-target pressure is at or above threshold,
-  prefer the best viable same-cycle under-threshold alternative;
-- viable alternative: target denominator is greater than one, runtime target
-  evidence is available, and target-alternative feature evidence is comparable.
-
-Defer these knobs until a later loop:
-
-- broad target-value weight changes;
-- broad launch-window score changes;
-- point-defense scoring retune;
-- outcome-based reward or punishment;
-- vanilla salvo suppression;
-- command-scope broadening.
-
-## Corpus baseline requirement
-
-Before changing heuristics, import and summarize enough bounded-live evidence to
-avoid tuning from one anecdotal combat run.
-
-Evidence buckets:
-
-- post-#56 bounded-live pressure-aware runs;
-- the #47 runtime-confirmed log as outcome-hook validation context only;
-- existing #43.3/#43.4 bounded-live corpus entries;
-- private raw logs remain local under ignored `artifacts/` paths unless a
-  redacted fixture policy is explicitly chosen.
-
-Expected local artifact pattern:
-
-```text
-artifacts/
-  experiments/
-    tuning-loop-baseline/
-      registry.jsonl
-      EXP-.../
-  fitting/
-    tuning-loop-baseline-summary/
-```
-
-Use `tools/import_player_log_experiments.py` for local `Player.log` imports and
-`tools/summarize_experiment_corpus.py` for corpus summaries. Omit
-`sourceLogPath` from committed artifacts unless the log is synthetic or safely
-redacted.
-
-## Baseline metrics
-
-Record at least these counters before and after each tuning change:
-
-- bounded-live applied results;
-- applied rows with target alternative denominator greater than one;
-- applied rows with comparable target-alternative features;
-- applied rows with fully comparable score/rank evidence;
-- applied rows with exact prior in-flight pressure;
-- applied rows with lower-bound prior in-flight pressure;
-- retained selected-target decisions above threshold;
-- retargeted decisions above threshold;
-- lower-bound pressure diagnostic-only rows;
-- applied/skipped/failed command counts;
-- direct controlled command correlation counts;
-- vanilla or none-correlated spillover counts;
-- same-team target markers;
-- scope-violation markers;
-- parser warnings and errors.
+- Candidate A is current `pressure-aware-bounded-live-v1` behavior under
+  measurement. It is not a validated tuning improvement.
+- The current Candidate B comparison helper is measurement infrastructure. It is
+  not a behavior-changing candidate.
+- Future behavior-changing candidates should be generated or selected from the
+  offline fitting report.
 
 ## Follow-up boundary
 
@@ -153,5 +115,5 @@ handling, multiple controlled launches into the same target window, and the rule
 that `shipDestroyed` killer/weapon evidence without a unique projectile id is
 not exact projectile attribution.
 
-The current pressure-aware loop may reference outcome-hook runtime health, but
-it must not perform outcome-to-allocation joins.
+The current offline fitting loop may reference outcome-hook runtime health, but
+it must not perform outcome-to-allocation joins or use outcome rows as reward.
