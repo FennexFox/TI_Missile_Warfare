@@ -1,8 +1,8 @@
 # TI MissileWarfare
 
-Experimental Terra Invicta MissileWarfare mod scaffold for missile salvo allocation and launch-discipline research.
+Experimental Terra Invicta MissileWarfare mod scaffold for missile salvo allocation, launch-discipline research, and diagnostics-first offline fitting.
 
-This repository is intentionally an **initial scaffold**, not a working gameplay mod yet. The first milestone is to build a safe logging/prototyping layer before touching live launch decisions.
+This repository is still conservative and experimental. It has moved beyond the initial scaffold into a diagnostics and archived-log fitting phase, but behavior-changing launch logic should remain gated behind evidence and explicit review.
 
 ## Scope
 
@@ -10,7 +10,8 @@ Planned core features:
 
 - **Auto Salvo Allocation**: assign ammo/gate-budgeted missile shots to enemy ships in package-sized salvos instead of scattering shots too thinly.
 - **Launch Discipline**: avoid firing when range, relative velocity, or salvo size makes the launch likely to waste missiles.
-- **Diagnostics First**: log battle snapshots and launch decisions so the heuristics can be tuned against real combat outcomes.
+- **Diagnostics First**: log battle snapshots and launch decisions so heuristics can be replayed, scored, and validated before live behavior changes.
+- **Offline Fitting First**: use archived logs as a fixed dataset for candidate-policy replay before spending live combat validation time.
 
 Explicit non-goals for the first version:
 
@@ -87,8 +88,9 @@ If the mod project is too brittle at first, build only `MissileFireControl.Core`
 ## Development strategy
 
 1. **Log only**: identify battle, weapon, and launch-method entry points; record launch events without changing behavior.
-2. **Offline tuning**: compare logged range/velocity/PD estimates against actual missile outcomes.
-3. **Manual recommendation**: expose a debug panel or log output that recommends salvo packages.
-4. **Controlled command helper**: add a player-triggered Auto Allocate command.
-5. **Launch discipline**: optionally suppress or delay poor launches.
-6. **Experimental patches**: only after the fire-control layer is reliable, consider deeper launch-method replacement.
+2. **Offline fitting**: turn archived logs into allocation decision-context datasets and replay candidate policies outside the game.
+3. **Candidate filtering**: rank pressure, allocation, and launch-discipline candidates with surrogate objectives and hard guardrails.
+4. **Manual recommendation**: expose a debug panel or log output that recommends salvo packages.
+5. **Controlled command helper**: add or expand player-triggered Auto Allocate behavior only after offline evidence and live safety gates support it.
+6. **Launch discipline**: optionally suppress or delay poor launches after scoring inputs and validation are reliable.
+7. **Experimental patches**: only after the fire-control layer is reliable, consider deeper launch-method replacement.

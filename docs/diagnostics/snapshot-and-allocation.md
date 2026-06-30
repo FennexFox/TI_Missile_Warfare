@@ -716,6 +716,13 @@ visible-hostile alternatives, `targetAlternativeFeatureEvidence` is
 same ordering as `targetAlternativeIds`. Partial or missing feature extraction
 is reported explicitly and remains a hard #43.4 measurement blocker.
 
+For offline fitting, target alternatives must eventually include auditable
+pressure evidence in the same ordering as `targetAlternativeIds`: per-alternative
+pressure, threshold, under-threshold status, and eligibility reason. Without that
+table, a retained above-threshold selected target with
+`boundedLivePressureDecisionReason="noUnderThresholdAlternative"` is
+`inconclusive`; it is not proof that over-pressure was unavoidable.
+
 Bounded-live candidate/result rows also preserve allocator decision and
 measurement-readiness fields when they are available:
 
@@ -731,7 +738,7 @@ selectedTargetPriorMissileInFlightEstimateConfidence="..."
 selectedTargetPriorMissileInFlightEstimateBound="exact|lowerBound|unknown"
 selectedTargetPriorMissileInFlightTargetAttribution="..."
 selectedTargetOverSaturationRatio="..." selectedTargetKillOvercommitRatio="..."
-targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeHooksPending"
+targetOutcomeAttribution="evidenceLimited" attributionConfidence="outcomeCorrelationPending"
 ```
 
 ## Issue #56 bounded-live saturation-aware target distribution adds v1 pressure-decision
@@ -789,14 +796,17 @@ missiles are observed but one or more target ids cannot be recovered, the
 estimate is a lower-bound target count, even when the selected-target estimate
 value is `0`.
 
+`outcomeCorrelationPending` means outcome hooks exist, but allocation rows are
+not yet joined to `[OutcomeLog]` rows under a conservative attribution policy.
+
 The corpus importer separates hard #43.4 measurement blockers from external
 handoff blockers. Hard blockers include missing selected/alternative comparable
 score features, ambiguous selected-target rank, prior target pressure, and cap
 blocked-vs-applied comparison when comparison evidence is absent.
-External blockers include exact hit/damage/kill attribution pending #47 and
-vanilla salvo suppression / selected-ship distribution pending #48. Outcome
-fields should not be read as hit, damage, kill, or vanilla-salvo suppression
-evidence.
+External blockers include exact hit/damage/kill correlation pending later
+OutcomeLog correlation work and vanilla salvo suppression / selected-ship
+distribution pending #48. Outcome fields should not be read as hit, damage,
+kill, or vanilla-salvo suppression evidence.
 
 A bounded run is not fit-worthy for command-correlation tuning unless later
 `LaunchLog` rows preserve command-result correlation such as:

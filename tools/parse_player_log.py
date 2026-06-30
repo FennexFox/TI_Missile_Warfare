@@ -28,7 +28,19 @@ BOOTSTRAP_RE = re.compile(
 LAUNCH_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[LaunchLog\] (?P<pairs>.*)$")
 SNAPSHOT_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[SnapshotLog\] (?P<pairs>.*)$")
 ALLOCATION_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[AllocationLog\] (?P<pairs>.*)$")
+OUTCOME_RE = re.compile(r"^\[MissileWarfare\] \[MFC\] \[OutcomeLog\] (?P<pairs>.*)$")
 PAIR_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=\"(?P<value>[^\"]*)\"")
+REQUIRED_PATCH_DESCRIPTIONS = {
+    "primary ship fire hook",
+    "secondary missile try-fire hook",
+    "secondary missile projectile fire hook",
+}
+OUTCOME_PATCH_DESCRIPTIONS = {
+    "outcome missile damage hook",
+    "outcome missile lifecycle hook",
+    "outcome ship damage hook",
+    "outcome ship destruction hook",
+}
 
 APPLIED_ALLOCATION_RECORD_TYPES = {"applied", "appliedDecision", "applied-decision", "commandApplied"}
 SKIPPED_ALLOCATION_RECORD_TYPES = {"skipped", "skippedDecision", "skipped-decision"}
@@ -350,6 +362,14 @@ class LogSummary:
     snapshot_same_team_target_count: int = 0
     first_snapshot_line: int | None = None
     last_snapshot_line: int | None = None
+    outcome_log_count: int = 0
+    outcome_record_type_counts: dict[str, int] = field(default_factory=dict)
+    outcome_event_level_counts: dict[str, int] = field(default_factory=dict)
+    outcome_attribution_level_counts: dict[str, int] = field(default_factory=dict)
+    outcome_identity_bridge_counts: dict[str, int] = field(default_factory=dict)
+    outcome_source_hook_counts: dict[str, int] = field(default_factory=dict)
+    first_outcome_line: int | None = None
+    last_outcome_line: int | None = None
     allocation_log_count: int = 0
     allocation_record_type_counts: dict[str, int] = field(default_factory=dict)
     allocation_status_counts: dict[str, int] = field(default_factory=dict)
@@ -756,6 +776,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     snapshot_target_counts: Counter[str] = Counter()
     snapshot_target_team_counts: Counter[str] = Counter()
     snapshot_same_team_target_count = 0
+    outcome_record_type_counts: Counter[str] = Counter()
+    outcome_event_level_counts: Counter[str] = Counter()
+    outcome_attribution_level_counts: Counter[str] = Counter()
+    outcome_identity_bridge_counts: Counter[str] = Counter()
+    outcome_source_hook_counts: Counter[str] = Counter()
     allocation_record_type_counts: Counter[str] = Counter()
     allocation_status_counts: Counter[str] = Counter()
     allocation_missing_input_counts: Counter[str] = Counter()
@@ -1101,6 +1126,20 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
                 if summary.first_snapshot_line is None:
                     summary.first_snapshot_line = line_number
                 summary.last_snapshot_line = line_number
+                continue
+
+            outcome = OUTCOME_RE.match(line)
+            if outcome:
+                pairs = parse_pairs(outcome.group("pairs"))
+                summary.outcome_log_count += 1
+                outcome_record_type_counts[pairs.get("recordType", "unknown")] += 1
+                outcome_event_level_counts[pairs.get("eventLevel", "unknown")] += 1
+                outcome_attribution_level_counts[pairs.get("attributionLevel", "unknown")] += 1
+                outcome_identity_bridge_counts[pairs.get("identityBridge", "unknown")] += 1
+                outcome_source_hook_counts[pairs.get("sourceHook", "unknown")] += 1
+                if summary.first_outcome_line is None:
+                    summary.first_outcome_line = line_number
+                summary.last_outcome_line = line_number
                 continue
 
             allocation = ALLOCATION_RE.match(line)
@@ -1668,6 +1707,11 @@ def parse_log(path: Path, max_issues: int) -> LogSummary:
     summary.snapshot_target_counts = dict(snapshot_target_counts.most_common(12))
     summary.snapshot_target_team_counts = dict(sorted(snapshot_target_team_counts.items()))
     summary.snapshot_same_team_target_count = snapshot_same_team_target_count
+    summary.outcome_record_type_counts = dict(sorted(outcome_record_type_counts.items()))
+    summary.outcome_event_level_counts = dict(sorted(outcome_event_level_counts.items()))
+    summary.outcome_attribution_level_counts = dict(sorted(outcome_attribution_level_counts.items()))
+    summary.outcome_identity_bridge_counts = dict(sorted(outcome_identity_bridge_counts.items()))
+    summary.outcome_source_hook_counts = dict(sorted(outcome_source_hook_counts.items()))
     summary.allocation_record_type_counts = dict(sorted(allocation_record_type_counts.items()))
     summary.allocation_status_counts = dict(sorted(allocation_status_counts.items()))
     summary.allocation_missing_input_counts = dict(sorted(allocation_missing_input_counts.items()))
@@ -2124,13 +2168,32 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
         reasons.append("MFC enabled marker was not found.")
     if summary.active_line is None:
         reasons.append("Unity Mod Manager Active marker was not found.")
-    if summary.bootstrap_patched != 3 or summary.bootstrap_skipped != 0:
+    patched_descriptions = {hook.description for hook in summary.patched_hooks}
+    outcome_patch_descriptions = patched_descriptions & OUTCOME_PATCH_DESCRIPTIONS
+    outcome_validation_visible = (
+        summary.outcome_log_count > 0
+        or bool(outcome_patch_descriptions)
+        or (
+            summary.bootstrap_patched is not None
+            and summary.bootstrap_patched > len(REQUIRED_PATCH_DESCRIPTIONS)
+        )
+    )
+    required_patch_count = len(REQUIRED_PATCH_DESCRIPTIONS) + (
+        len(OUTCOME_PATCH_DESCRIPTIONS) if outcome_validation_visible else 0
+    )
+
+    if summary.bootstrap_skipped != 0 or summary.bootstrap_patched is None or summary.bootstrap_patched < required_patch_count:
         reasons.append(
-            "Expected diagnostics bootstrap patched=3 and skipped=0; "
+            f"Expected diagnostics bootstrap patched>={required_patch_count} and skipped=0; "
             f"got patched={summary.bootstrap_patched}, skipped={summary.bootstrap_skipped}."
         )
-    if len(summary.patched_hooks) != 3:
-        reasons.append(f"Expected 3 patched hook lines; found {len(summary.patched_hooks)}.")
+    missing_required_hooks = sorted(REQUIRED_PATCH_DESCRIPTIONS - patched_descriptions)
+    if missing_required_hooks:
+        reasons.append("Missing required launch hook patches: " + ", ".join(missing_required_hooks))
+    if outcome_validation_visible:
+        missing_outcome_hooks = sorted(OUTCOME_PATCH_DESCRIPTIONS - patched_descriptions)
+        if missing_outcome_hooks:
+            reasons.append("Missing required outcome hook patches: " + ", ".join(missing_outcome_hooks))
     if require_launchlogs and startup_markers_present and summary.launch_log_count == 0:
         reasons.append("No LaunchLog entries were found.")
     if require_snapshots and startup_markers_present and summary.snapshot_log_count == 0:
@@ -2909,6 +2972,31 @@ def print_summary(summary: LogSummary, require_launchlogs: bool, require_snapsho
             print("  target teams:")
             for team, count in summary.snapshot_target_team_counts.items():
                 print(f"    {team}: {count}")
+
+    print(f"OutcomeLog entries: {summary.outcome_log_count}")
+    if summary.outcome_log_count:
+        print(f"  first: line {summary.first_outcome_line}")
+        print(f"  last:  line {summary.last_outcome_line}")
+        if summary.outcome_record_type_counts:
+            print("  record types:")
+            for record_type, count in summary.outcome_record_type_counts.items():
+                print(f"    {record_type}: {count}")
+        if summary.outcome_event_level_counts:
+            print("  event levels:")
+            for event_level, count in summary.outcome_event_level_counts.items():
+                print(f"    {event_level}: {count}")
+        if summary.outcome_attribution_level_counts:
+            print("  attribution levels:")
+            for attribution_level, count in summary.outcome_attribution_level_counts.items():
+                print(f"    {attribution_level}: {count}")
+        if summary.outcome_identity_bridge_counts:
+            print("  identity bridges:")
+            for identity_bridge, count in summary.outcome_identity_bridge_counts.items():
+                print(f"    {identity_bridge}: {count}")
+        if summary.outcome_source_hook_counts:
+            print("  source hooks:")
+            for source_hook, count in summary.outcome_source_hook_counts.items():
+                print(f"    {source_hook}: {count}")
 
     print(f"AllocationLog entries: {summary.allocation_log_count}")
     if summary.allocation_log_count:

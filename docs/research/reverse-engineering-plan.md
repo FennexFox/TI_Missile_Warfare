@@ -140,13 +140,12 @@ Add a conservative filter for bad launches:
 
 Start with player-controlled launches. Patch AI behavior later, if at all.
 
-## Future combat outcome hook issue
+## Issue #47 combat outcome hook issue
 
-A separate follow-up issue should investigate combat outcome hooks for missile
-hit, intercept, damage, and kill attribution. This is not a prerequisite for the
-immediate #39 same-target controlled-command cap work: #39 already has direct
-command-spend evidence and conservative post-direct-launch `DestroyShip` outcome
-hints. The outcome-hook work is a deeper measurement layer for later
+Issue #47 investigates combat outcome hooks for missile hit, intercept, damage,
+and kill attribution. It is not an allocator tuning issue: #39 already has
+direct command-spend evidence and conservative post-direct-launch `DestroyShip`
+outcome hints. The outcome-hook work is a deeper measurement layer for later
 outcome-aware fitting and fleet-wide evaluation.
 
 The research question is whether Terra Invicta exposes stable managed-code hooks
@@ -165,3 +164,24 @@ Any hook added under that issue must be diagnostics-only first and must not
 change allocator heuristics, live command behavior, or command scope. Until a
 stable hook is found, vanilla `DestroyShip` text remains a conservative outcome
 hint only, not exact kill attribution.
+
+Current source-reviewed and runtime-confirmed #47 implementation adds
+default-off `[OutcomeLog]` diagnostics for:
+
+- `MissileController.ApplyDamage(DamageSource)`;
+- `MissileController.Destruct(bool)`;
+- `CombatShipController.ApplyDamage(DamageSource)`;
+- `CombatShipController.TriggerShipDestruction(TIGameState, TIShipWeaponTemplate)`.
+
+These hooks are deliberately concrete-class postfixes rather than broad
+`IDamageable` interface patches. They can provide projectile lifecycle,
+point-defense / missile-damage, ship-damage, and ship-destruction evidence, but
+the current ship damage/destruction surfaces expose attacker and weapon fields
+rather than a unique projectile id.
+
+Fresh runtime validation on the active 2026-06-29 `Player.log` confirmed the
+deployed build patched all seven launch/outcome hooks with `skipped=0` and
+emitted 221 `[OutcomeLog]` rows across all four outcome source hooks. This
+closes the hook-installation and row-emission question for #47, while leaving
+AllocationLog-to-OutcomeLog correlation terminology and exact projectile kill
+attribution to later focused work.

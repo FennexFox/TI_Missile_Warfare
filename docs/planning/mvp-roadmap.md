@@ -1,6 +1,6 @@
 # MVP roadmap
 
-This roadmap records durable issue-sized work. Temporary per-PR plans belong under `dev-docs/plan/**` and may be deleted after the PR is merged, closed, or abandoned.
+This roadmap records durable issue-sized work. Temporary per-PR plans belong under `dev-docs/plan/**` and may be deleted after the PR is merged, closed, or abandoned. Remote issue and milestone wording should also follow [`github-issue-alignment.md`](github-issue-alignment.md).
 
 ## Current milestone state
 
@@ -14,8 +14,9 @@ that path to a small explicitly selected player missile group with one attempt
 per selected ship and three attempts per trigger. The path remains default-off
 and is still not fleet-wide allocation. Issue #39 now has selected-group direct
 command-spend attribution for the diagnostic path, plus conservative
-post-direct-launch destruction hints. The remaining blocker for heuristic tuning
-is outcome quality and follow-up design, not command-spend attribution.
+post-direct-launch destruction hints. The next blocker for heuristic work is an
+offline fitting loop that can characterize repeated, avoidable allocator-quality
+problems before any behavior-changing tuning candidate is selected.
 
 Current blocker:
 
@@ -47,9 +48,15 @@ Current missing or provisional inputs:
   violations, zero same-team missile target snapshots, and no MissileWarfare
   issues;
 - Issue #39 direct command-result launch/spend correlation is available for the
-  selected-group diagnostic path, but heuristic tuning still needs a focused
-  rule/design slice and better outcome-quality evidence. Exact hit, intercept,
-  damage, and kill attribution remain unverified;
+  selected-group diagnostic path, but heuristic tuning now needs archived-log
+  decision-context extraction, candidate replay, and problem characterization
+  before a focused rule/design slice is chosen;
+- Issue #43.4 adds bounded-live tuning-readiness fields for target alternatives,
+  target-level score/rank evidence, and best-effort pre-command in-flight
+  pressure. These fields are measurement inputs, not tuning proof;
+- Issue #47 adds runtime-confirmed `[OutcomeLog]` hooks as event-level outcome
+  evidence, but exact AllocationLog-to-OutcomeLog correlation and unique
+  command/projectile kill attribution remain unresolved;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -59,8 +66,7 @@ Current missing or provisional inputs:
   readiness, live ammo, geometry, and arc coverage remain unproven;
 - vanilla salvo target command granularity is ship-level across all
   salvo-capable weapons on the ship, so per-visible-module command assumptions
-  remain unsafe;
-- in-flight projectile/controller guidance target identity.
+  remain unsafe.
 
 ## Completed diagnostic foundation
 
@@ -174,12 +180,12 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending fleet-wide scope expansion and stronger controlled
-outcome evidence. #37 supplies selected-single-ship live smoke evidence, #38
-supplies selected-group safety evidence, and #39 supplies direct
-command-result-to-launch/spend diagnostics for the selected-group path. Stronger
-outcome-quality evidence and follow-up design are still required before any
-heuristic tuning decision.
+Status: blocked pending offline-fitting evidence and stronger safety evidence.
+#37 supplies selected-single-ship live smoke evidence, #38 supplies
+selected-group safety evidence, and #39 supplies direct command-result-to-launch
+and spend diagnostics for the selected-group path. Before any new heuristic
+tuning decision, archived logs should be converted into an offline fitting
+dataset and used to identify a repeated, avoidable allocator-quality problem.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates
@@ -228,22 +234,23 @@ Acceptance criteria once unblocked:
 
 ## Recommended next work
 
-1. Use the #39 direct command-spend evidence and conservative outcome hints to
-   design one focused heuristic/rule slice around same-target duplicate
-   kill-package control or target-level aggregate salvo caps, without treating
-   it as fleet-wide readiness.
-2. Implement #44's experiment corpus and parameter ledger so future fitting
-   loops preserve controlled-live and shadow-replay provenance without treating
-   shadow replay as causal combat proof.
-3. Re-run selected-log fitting after the Issue #29 PD capability schema is
-   present in fresh real combat logs and
-   record whether multiple real logs remain free of defaulted or evidence-limited
-   classifications.
-4. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
+1. Close the archived-log offline fitting loop described in
+   [`offline-fitting-loop.md`](offline-fitting-loop.md): import logs, emit
+   decision-context rows, replay candidate policies, score guardrails, and
+   produce a ranked candidate report.
+2. Audit retained above-threshold rows with
+   `noUnderThresholdAlternative` using the #43.4 target-alternative,
+   score/rank, and pressure evidence now available in bounded-live diagnostics.
+3. Use #39 direct command-spend evidence and #43.4 measurement-readiness fields
+   as inputs to the offline fitting dataset, without treating either as proof of
+   a successful heuristic tuning change or fleet-wide readiness.
+4. Use #47 `[OutcomeLog]` rows only as outcome-hook health context until a
+   separate AllocationLog-to-OutcomeLog correlation issue defines conservative
+   join keys and confidence levels.
+5. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
-5. Expand controlled apply only through #43's fleet-wide rung after preserving
-   the #37/#38 safety constraints, and do not treat #39 attribution evidence as
-   proof of a successful heuristic tuning change or fleet-wide readiness.
+6. Expand controlled apply only through #43's fleet-wide rung after preserving
+   the #37/#38 safety constraints and offline fitting evidence gates.
 
 ### Issue #39 controlled-correlation investigation
 

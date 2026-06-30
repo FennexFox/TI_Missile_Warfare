@@ -1,22 +1,24 @@
-# Confirmed combat launch hooks
+# Combat diagnostics hooks
 
-This note records the Terra Invicta runtime hooks confirmed by the
-MissileWarfare diagnostics build. These are confirmed from a local deployed run
-and `Player.log` parser output, not from committed decompiled source.
+This note records Terra Invicta runtime hooks used by the MissileWarfare
+diagnostics build. Launch hooks below are confirmed from local deployed runs and
+`Player.log` parser output. Issue #47 outcome hooks are source-reviewed,
+implemented diagnostics-only, and runtime-confirmed in a fresh deployed combat
+log.
 
-## Confirmation snapshot
+## Launch hook confirmation snapshot
 
 - Mod version: `0.1.0`.
 - Validation command: `python tools\parse_player_log.py --require-launchlogs`.
 - Parser verdict: `OK`.
-- Diagnostics bootstrap: `patched=3`, `skipped=0`.
+- Diagnostics bootstrap for the deployed log: `patched=3`, `skipped=0`.
 - LaunchLog entries: `4393`.
 - Sequence range: `1-4393`.
 - Sequence gaps: none.
 - Duplicate sequences: none.
 - MissileWarfare issues in the current log: none.
 
-## Hook table
+## Confirmed launch hook table
 
 | Role | Target method | Parameter signature used by bootstrap | Patch method(s) | LaunchLog hook label | Confirmed count |
 | --- | --- | --- | --- | --- | --- |
@@ -26,13 +28,17 @@ and `Player.log` parser output, not from committed decompiled source.
 
 ## Evidence markers
 
-The parser considers the hook set healthy when it finds:
+The parser considers the launch hook set healthy when it finds:
 
 - the MissileWarfare load, enable, and UMM active markers;
-- three `Patched ... hook` lines;
-- the bootstrap completion line with `patched=3`, `skipped=0`;
+- all three required launch `Patched ... hook` lines;
+- the bootstrap completion line with at least those three hooks patched and
+  `skipped=0`;
 - at least one `[LaunchLog]` entry when `--require-launchlogs` is used;
 - contiguous `seq` values with no duplicates.
+
+Additional diagnostics hooks, such as Issue #47 outcome hooks, are additive and
+should not make older launch-hook health checks fail when they patch cleanly.
 
 The latest confirmed run found all three patch lines:
 
@@ -55,6 +61,50 @@ and salvo evidence, capacity evidence, and battle context.
 `TISpaceCombatProjectileState.Fire(missile)` currently logs projectile,
 launcher, missile template, launch time, origin position, expected target
 position, origin velocity, and battle context.
+
+## Issue #47 outcome hooks
+
+Outcome diagnostics are gated by `EnableDiagnostics` plus the default-off
+`EnableOutcomeDiagnostics` setting. They emit `[OutcomeLog]` rows, not
+`[LaunchLog]`, `[SnapshotLog]`, or `[AllocationLog]` rows. Parser output keeps
+them in a separate summary by record type, event level, attribution level,
+identity bridge, and source hook.
+
+These hooks are source-reviewed against the local decompiled Terra Invicta
+workspace, build cleanly, and were runtime-confirmed on the active
+`Player.log` written on 2026-06-29. The parser reported `patched=7`,
+`skipped=0`, `OutcomeLog entries: 221`, contiguous outcome `seq` values, and
+all four source hooks below.
+
+| Role | Target method | Parameter signature used by bootstrap | Patch method(s) | OutcomeLog record type | Evidence level |
+| --- | --- | --- | --- | --- | --- |
+| Missile damage / PD interaction | `PavonisInteractive.TerraInvicta.SpaceCombat.MissileController.ApplyDamage` | `PavonisInteractive.TerraInvicta.Ship.DamageSource` | `OutcomeDiagnostics.OnMissileApplyDamagePostfix` | `missileDamage` | projectile damage / point-defense interaction evidence |
+| Missile lifecycle end | `PavonisInteractive.TerraInvicta.SpaceCombat.MissileController.Destruct` | `System.Boolean` | `OutcomeDiagnostics.OnMissileDestructPostfix` | `missileLifecycle` | projectile lifecycle state only |
+| Ship damage application | `PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController.ApplyDamage` | `PavonisInteractive.TerraInvicta.Ship.DamageSource` | `OutcomeDiagnostics.OnShipApplyDamagePostfix` | `shipDamage` | concrete damage application evidence |
+| Ship destruction state | `PavonisInteractive.TerraInvicta.SpaceCombat.CombatShipController.TriggerShipDestruction` | `TIGameState`, `TIShipWeaponTemplate` | `OutcomeDiagnostics.OnShipDestructionPostfix` | `shipDestroyed` | destroyed state with killer/weapon fields |
+
+Outcome rows include fields such as `eventLevel`, `attributionLevel`,
+`identityBridge`, target identity/team, attacker identity/team, damage source
+type, weapon identity/class, damage amount/type, hit position, and battle
+context where visible. `shipDamage` rows also include the
+`shipDamageTargetDestructionTriggered` field from the concrete
+`CombatShipController` instance; the generic target snapshot keeps its own
+`targetDestroyed` field.
+
+Important attribution limits:
+
+- `missileDamage` can show a missile was damaged or destroyed by a damage
+  source. It is the best current point-defense / projectile-destruction surface,
+  but it is not target kill evidence.
+- `missileLifecycle` can show a missile lifecycle ended with state such as
+  `hasHit` or `beenDestroyed`, but `projectileStateOnly` rows do not identify
+  the unique cause of target damage.
+- `shipDamage` is stronger than a later vanilla destruction text hint when the
+  damage source is a missile or burst damage source. The source exposes attacker
+  and weapon fields, but not a unique projectile id.
+- `shipDestroyed` records final destruction plus killer combatant and weapon
+  fields. It remains `destroyedStateWithKillerWeapon`, not proof that a specific
+  controlled projectile caused the kill.
 
 Battle snapshot launcher-selected target identity is not a direct argument of
 the projectile-state fire hook. The current candidate source is the visible
@@ -160,9 +210,19 @@ only promoted to `ammoGateBudgetShots` when paired with those gates.
 - The hooks are diagnostics only. The missile try-fire hook now has an
   observation-only prefix paired with the existing successful postfix; these
   patches should not alter launch, targeting, projectile, or AI behavior.
+- Issue #47 outcome hooks are diagnostics-only postfixes and should not alter
+  damage, destruction, targeting, projectile physics, command behavior, or
+  allocator behavior.
+- `AllocationLog` rows may report
+  `attributionConfidence="outcomeCorrelationPending"` because #47 only
+  establishes the separate `[OutcomeLog]` evidence stream. Allocation-to-outcome
+  joining remains a separate follow-up.
 - `TISpaceShipState.FireWeapon` also observes non-missile weapon fire. Missile
   analysis should filter by hook label and missile/template fields rather than
   treating every `FireWeapon` row as a missile launch.
+- `[OutcomeLog]` rows are a separate evidence class. Do not collapse them with
+  controlled command-spend rows, vanilla/none-correlated spillover, conservative
+  post-command `DestroyShip` hints, or bounded-live pressure diagnostics.
 - `battle` context can still report `unavailable`; future snapshot work should
   identify a stable combat manager/state access path.
 - The current runtime build resolved short parameter type names such as

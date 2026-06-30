@@ -1116,9 +1116,9 @@ attribution. `SpaceCombatManager.liveMissiles` is count-only, but active
 prefer those controller sources and use `liveMissiles` only as count-only
 lower-bound fallback when controller targets are unavailable.
 
-Exact outcome attribution remains an external #47 handoff. These diagnostics do
-not change allocator scoring, command caps, vanilla salvo behavior, or outcome
-hooks.
+Exact outcome attribution remains outside #43.4 and requires later OutcomeLog
+correlation work. These diagnostics do not change allocator scoring, command
+caps, vanilla salvo behavior, or outcome hooks.
 
 ### Issue #43.4 hook-timing boundary for first-row lower-bound pressure
 
@@ -1126,4 +1126,53 @@ A later `fleetwide-bounded-live-20260628T102413012Z-1` validation confirmed Path
 
 The lower-bound first row is a diagnostic sampling boundary, not evidence that the first missile was outside controlled command influence. It means the sample observed live missile count before controller-target attribution was recoverable at that hook point. The current hook should not be moved merely to erase that case, because moving it later would risk contaminating pre-command pressure with missiles launched by the current command, and moving it earlier may reduce controller availability.
 
-If more precision is ever required, add a separate post-command or next-frame reconciliation field instead of changing the meaning of `selectedTargetPriorMissileInFlightEstimate`. For the next tuning slice, preserve row-level evidence quality and limit scope to controlled-shot / recovered-in-flight-pressure-aware overcommit retargeting. Exact hit/damage/kill attribution remains a #47 external handoff.
+If more precision is ever required, add a separate post-command or next-frame
+reconciliation field instead of changing the meaning of
+`selectedTargetPriorMissileInFlightEstimate`. For the next tuning slice,
+preserve row-level evidence quality and limit scope to controlled-shot /
+recovered-in-flight-pressure-aware overcommit retargeting. Exact
+hit/damage/kill attribution remains later OutcomeLog correlation work.
+
+## Issue #47 outcome hook runtime validation
+
+Fresh runtime validation on the active Terra Invicta `Player.log` written on
+2026-06-29 confirmed the diagnostics-only outcome hook slice after rebuilding
+and deploying the mod.
+
+Validation command:
+
+```powershell
+python tools\parse_player_log.py --require-launchlogs
+```
+
+Parser result:
+
+- parser verdict: `OK`
+- diagnostics bootstrap: `patched=7`, `skipped=0`
+- `LaunchLog` entries: 894, with contiguous sequence range `1-894`
+- `MissileWeapon.TryFire` rows: 120
+- `SnapshotLog` entries: 120
+- `OutcomeLog` entries: 221, with contiguous sequence range `1-221`
+- `AllocationLog` entries: 260
+- MissileWarfare issues: none
+
+Outcome hook coverage:
+
+- `MissileController.Destruct`: 120 `missileLifecycle` rows
+- `MissileController.ApplyDamage`: 52 `missileDamage` rows
+- `CombatShipController.ApplyDamage`: 44 `shipDamage` rows
+- `CombatShipController.TriggerShipDestruction`: 5 `shipDestroyed` rows
+
+Outcome attribution levels remained intentionally conservative:
+
+- `projectileStateOnly`: 120
+- `projectileDamageSource`: 55
+- `missileDamageSource`: 41
+- `destroyedStateWithKillerWeapon`: 5
+
+The run confirms that #47 hooks patch and emit useful event-level evidence in a
+real deployed combat log. It does not claim unique projectile kill attribution:
+ship damage/destruction surfaces expose attacker and weapon fields, but not a
+unique projectile id. `AllocationLog` rows now report
+`attributionConfidence="outcomeCorrelationPending"` to show that outcome hooks
+exist, but allocation-to-outcome joining remains separate.

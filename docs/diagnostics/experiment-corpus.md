@@ -15,6 +15,24 @@ The evidence rule is strict:
 Summaries may show these modes side by side, but they must not collapse them
 into one proof score.
 
+## Offline fitting boundary
+
+The corpus is also the input layer for the archived-log offline fitting loop. In
+that loop, committed or local summaries may be converted into allocation
+decision-context datasets and replayed through candidate policies outside the
+game.
+
+Offline fitting is a candidate filter, not live proof. It may rank candidates,
+find repeated allocator-quality patterns, and identify which candidates deserve
+controlled-live or fleet-wide-controlled validation. It must not collapse
+`shadow-replay`, `controlled-live`, `fleet-wide-controlled`, and `fixture` rows
+into one causal score.
+
+A fitting-ready decision context should preserve per-candidate target evidence,
+not only aggregate run counters. For pressure-aware fitting, retained
+above-threshold rows must expose enough per-alternative pressure and threshold
+evidence to audit reasons such as `noUnderThresholdAlternative`.
+
 As of #43.2, `fleet-wide-controlled` is no longer only a future placeholder. A valid entry should still separate direct controlled command spend from vanilla / none-correlated spillover and should state whether command-result correlation such as `controlledCommandCorrelation="directRuntimeContext"` was observed.
 
 ## Local layout
@@ -103,7 +121,7 @@ blocker. For #43.4+, active missile controller sources
 (`GameControl.spaceCombat._projectiles` / `_reverseProjectiles`) are the
 target-attribution source; `liveMissiles` is count-only fallback evidence.
 
-For #56 bounded-live pressure-aware tuning, corpus summaries also preserve
+For #56 bounded-live pressure-aware measurement, corpus summaries also preserve
 pressure-decision counters. `boundedLiveRetargetedDecisionsAboveThreshold`
 counts applied commands where prior controlled pressure plus exact recovered
 in-flight pressure reached `max(killSize, saturationSize)` and the command was
@@ -112,7 +130,9 @@ retargeted to a same-cycle alternative.
 stayed on an above-threshold selected target. Lower-bound pressure is counted
 separately by `boundedLivePressureDecisionLowerBoundInFlightRows` and
 `boundedLiveLowerBoundPressureDiagnosticOnlyRows`; those rows should not be
-treated as pressure-triggered retargets in v1.
+treated as pressure-triggered retargets in v1. These counters are measurement
+signals for offline fitting, not proof that the current behavior is a validated
+tuning improvement.
 
 ## Scenario metadata
 

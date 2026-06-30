@@ -11,8 +11,10 @@ path: fresh controlled smokes produced directly stamped
 `MissileWeapon.TryFire` rows for applied command results, while skipped command
 rows did not receive direct launch attribution.
 
-The remaining blocker for heuristic tuning is outcome quality, not command-spend
-attribution.
+Command-spend attribution is no longer the blocker for the #39 diagnostic path.
+The next blocker for heuristic tuning is offline problem characterization:
+archived logs must be turned into auditable decision-context rows before a
+behavior-changing rule slice is selected.
 
 Needs verification: exact missile hit, intercept, damage, and kill attribution
 still requires a stable combat outcome hook.
@@ -35,28 +37,30 @@ instead of relying on same-launcher/same-target line-window evidence.
 The selected-group command-spend blocker is now resolved for the #39 diagnostic
 path: a fresh controlled smoke produced directly stamped `MissileWeapon.TryFire`
 rows for applied command results, while the skipped command had no direct launch
-attribution. The remaining blocker for heuristic tuning is outcome quality, not
-command-spend attribution. Parser/report tooling now records conservative
-post-command target destruction hints from vanilla `DestroyShip` log text, but
-exact hit/kill attribution remains out of scope until a stable combat outcome
-hook is identified.
+attribution. Command-spend attribution is therefore no longer the blocker for
+that path. Parser/report tooling now records conservative post-command target
+destruction hints from vanilla `DestroyShip` log text, but exact hit/kill
+attribution remains out of scope until a stable combat outcome hook is
+identified. Heuristic work should next flow through the archived-log offline
+fitting loop, not directly from this single investigation.
 
 ## Follow-up boundary
 
 The latest selected-group smokes show stable direct command-spend correlation and
 post-direct-launch target destruction hints. The current diagnostics PR does not
-need more instrumentation code. The next implementation candidate should be a
-separate focused heuristic/rule slice around same-target duplicate kill packages
-or target-level aggregate salvo caps, using the Ghost double kill-sized salvo as
-supporting evidence.
+need more command-spend instrumentation code. The next implementation candidate
+should not be a direct behavior-changing rule yet; first, the evidence should be
+fed into an offline fitting dataset that can show whether same-target pressure or
+cap problems repeat across archived logs and are actually avoidable.
 
 ## Pre-tuning diagnostic closeout
 
-Before the next heuristic/rule PR, #39 now exposes same-target duplicate
-kill-package candidates directly in the fitting report. The report-only section
-uses direct command-spend rows and available kill-size/outcome hints to identify
-candidate target-level aggregate salvo caps. The actual allocator behavior change
-remains a separate focused follow-up.
+Before the next heuristic/rule PR, #39 evidence should be treated as report-only
+input to offline fitting. Direct command-spend rows and available kill-size /
+outcome hints can suggest candidate target-level aggregate salvo caps, but they
+should not by themselves justify a behavior change. The actual allocator behavior
+change remains a separate follow-up after archived-log replay identifies a
+repeated, avoidable problem.
 
 ## Same-target controlled-command cap follow-up
 
