@@ -41,6 +41,15 @@ See [Architecture](../guide/architecture.md).
   attribution for that diagnostic path, but it does not by itself identify a
   repeated allocator-quality problem or validate a tuning improvement. See
   [Issue #39 controlled correlation investigation](../investigations/issue-39-controlled-correlation.md).
+- Issue #43.4 added bounded-live tuning-readiness diagnostics for target
+  alternatives, target-level score/rank evidence, and best-effort pre-command
+  in-flight pressure. Those fields improve the measurement surface, but they do
+  not by themselves close the offline fitting loop. See
+  [Battle snapshot and allocation diagnostics](../diagnostics/snapshot-and-allocation.md).
+- Issue #47 outcome hooks are diagnostics-only, source-reviewed, and
+  runtime-confirmed as a separate `[OutcomeLog]` evidence stream. They are not
+  allocation rewards or unique command/projectile kill attribution. See
+  [Confirmed combat launch hooks](../diagnostics/hooks.md).
 - Experiment corpus docs separate `shadow-replay`, `controlled-live`,
   `fleet-wide-controlled`, and `fixture` evidence modes. These modes must not be
   collapsed into one proof score. See
@@ -53,23 +62,26 @@ See [Architecture](../guide/architecture.md).
 - Behavior-changing heuristic tuning is blocked until archived logs can be turned
   into an allocation decision-context dataset and replayed through candidate
   policies.
-- The immediate evidence gap is per-target/per-alternative pressure: when a row
-  says `noUnderThresholdAlternative`, the dataset must expose enough alternative
-  pressure and threshold evidence to audit whether the retained over-pressure was
-  avoidable.
+- The immediate blocker is corpus-level offline loop closure: the dataset must
+  expose enough selected-target, alternative-target, pressure, threshold,
+  score/rank, and eligibility evidence to classify retained over-pressure as
+  avoidable, unavoidable, or inconclusive.
 - Issue #6 controlled auto-allocation remains blocked on wider scope and stronger
   evidence. Existing selected-single, selected-group, and bounded fleet-wide live
   paths are narrow, default-off controlled experiments, not general fleet-wide
   readiness.
 - Issue #7 launch discipline remains blocked on validated runtime scoring inputs.
-- Needs verification: exact missile hit, intercept, damage, and kill attribution
-  still requires a stable combat outcome hook. Outcome rows are not yet an
-  offline fitting reward.
+- Needs verification: AllocationLog-to-OutcomeLog correlation, exact
+  hit/intercept/damage joining, and unique command/projectile kill attribution
+  still require a separate conservative correlation design. Outcome rows are not
+  yet an offline fitting reward.
 - Needs verification: any behavior-changing tuning claim must be tied to offline
   replay evidence and then fresh controlled-live or fleet-wide-controlled
   validation, not to one anecdotal live log.
 
-See [MVP roadmap](../planning/mvp-roadmap.md) for the detailed issue sequence.
+See [MVP roadmap](../planning/mvp-roadmap.md) for the detailed issue sequence,
+and [GitHub issue alignment](../planning/github-issue-alignment.md) when updating
+remote issue bodies, labels, or milestones.
 
 ## Documentation state
 

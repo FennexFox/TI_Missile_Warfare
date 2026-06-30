@@ -103,19 +103,21 @@ The offline loop is ready for real candidate fitting when one command can:
 
 ## Current blocker
 
-The main blocker is per-target/per-alternative pressure evidence. Current logs
-can report that alternatives existed and that an above-threshold selected target
-was retained because of `noUnderThresholdAlternative`, but they do not always
-expose the per-alternative pressure table needed to audit that conclusion.
+Issue #43.4 improves the measurement surface with target-alternative feature
+lists, score/rank evidence, and best-effort pre-command in-flight pressure. The
+remaining blocker is corpus-level loop closure, not immediate live tuning.
 
-The next diagnostics-oriented implementation should therefore be report-only:
+The next offline-fitting implementation should therefore:
 
-- preserve per-alternative pressure and threshold evidence;
-- identify the best under-threshold alternative, if any;
-- identify the least-over-threshold alternative when no under-threshold target
-  exists;
-- record why each alternative was or was not eligible;
-- keep live command behavior unchanged.
+- import a fixed archived-log corpus into allocation decision-context rows;
+- preserve per-alternative pressure, threshold, score/rank, and eligibility
+  evidence where present;
+- classify retained above-threshold rows with `noUnderThresholdAlternative` as
+  `avoidable`, `unavoidable`, or `inconclusive`;
+- replay the current policy and at least one report-only candidate policy;
+- score surrogate pressure objectives and hard guardrails;
+- keep live command behavior unchanged until a ranked candidate receives small
+  controlled-live or fleet-wide-controlled validation.
 
 ## Relationship to Candidate A and Candidate B
 

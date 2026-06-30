@@ -1,6 +1,6 @@
 # MVP roadmap
 
-This roadmap records durable issue-sized work. Temporary per-PR plans belong under `dev-docs/plan/**` and may be deleted after the PR is merged, closed, or abandoned.
+This roadmap records durable issue-sized work. Temporary per-PR plans belong under `dev-docs/plan/**` and may be deleted after the PR is merged, closed, or abandoned. Remote issue and milestone wording should also follow [`github-issue-alignment.md`](github-issue-alignment.md).
 
 ## Current milestone state
 
@@ -50,8 +50,13 @@ Current missing or provisional inputs:
 - Issue #39 direct command-result launch/spend correlation is available for the
   selected-group diagnostic path, but heuristic tuning now needs archived-log
   decision-context extraction, candidate replay, and problem characterization
-  before a focused rule/design slice is chosen. Exact hit, intercept, damage,
-  and kill attribution remain unverified;
+  before a focused rule/design slice is chosen;
+- Issue #43.4 adds bounded-live tuning-readiness fields for target alternatives,
+  target-level score/rank evidence, and best-effort pre-command in-flight
+  pressure. These fields are measurement inputs, not tuning proof;
+- Issue #47 adds runtime-confirmed `[OutcomeLog]` hooks as event-level outcome
+  evidence, but exact AllocationLog-to-OutcomeLog correlation and unique
+  command/projectile kill attribution remain unresolved;
 - the current selected four-log fitting snapshot is baseline-ready with named
   limitations, not controlled-command ready;
 - Issue #29 upgrades observed target point-defense evidence from
@@ -61,8 +66,7 @@ Current missing or provisional inputs:
   readiness, live ammo, geometry, and arc coverage remain unproven;
 - vanilla salvo target command granularity is ship-level across all
   salvo-capable weapons on the ship, so per-visible-module command assumptions
-  remain unsafe;
-- in-flight projectile/controller guidance target identity.
+  remain unsafe.
 
 ## Completed diagnostic foundation
 
@@ -234,18 +238,19 @@ Acceptance criteria once unblocked:
    [`offline-fitting-loop.md`](offline-fitting-loop.md): import logs, emit
    decision-context rows, replay candidate policies, score guardrails, and
    produce a ranked candidate report.
-2. Add report-only per-alternative pressure diagnostics so retained
-   above-threshold rows with `noUnderThresholdAlternative` can be audited.
-3. Use the #39 direct command-spend evidence as one input to the offline fitting
-   dataset, without treating it as proof of a successful heuristic tuning change
-   or fleet-wide readiness.
-4. Re-run selected-log fitting after the Issue #29 PD capability schema is
-   present in fresh real combat logs and record whether multiple real logs remain
-   free of defaulted or evidence-limited classifications.
+2. Audit retained above-threshold rows with
+   `noUnderThresholdAlternative` using the #43.4 target-alternative,
+   score/rank, and pressure evidence now available in bounded-live diagnostics.
+3. Use #39 direct command-spend evidence and #43.4 measurement-readiness fields
+   as inputs to the offline fitting dataset, without treating either as proof of
+   a successful heuristic tuning change or fleet-wide readiness.
+4. Use #47 `[OutcomeLog]` rows only as outcome-hook health context until a
+   separate AllocationLog-to-OutcomeLog correlation issue defines conservative
+   join keys and confidence levels.
 5. Design Issue #6 around explicit `ammoGateBudgetShots` diagnostics and the
    documented vanilla salvo command granularity.
 6. Expand controlled apply only through #43's fleet-wide rung after preserving
-   the #37/#38 safety constraints.
+   the #37/#38 safety constraints and offline fitting evidence gates.
 
 ### Issue #39 controlled-correlation investigation
 

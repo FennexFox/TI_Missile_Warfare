@@ -1,5 +1,8 @@
 # Phase 05: First offline fitting boundary
 
+Status: absorbed into `dev-docs/plan/issue_60/`. This file is retained as
+historical input and is not the active implementation plan.
+
 ## Goal
 
 Replace the first pressure-aware live sweep framing with a measurement-first

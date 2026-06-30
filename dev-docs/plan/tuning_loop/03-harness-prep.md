@@ -1,5 +1,8 @@
 # Phase 03: Offline fitting harness prep
 
+Status: absorbed into `dev-docs/plan/issue_60/`. This file is retained as
+historical input and is not the active implementation plan.
+
 ## Goal
 
 Finish the remaining large-preparation work needed to make archived-log fitting

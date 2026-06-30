@@ -1,5 +1,8 @@
 # Baseline corpus snapshot
 
+Status: absorbed into `dev-docs/plan/issue_60/`. This file is retained as
+historical input and is not the active implementation plan.
+
 ## Goal
 
 - Record the first local pressure-aware bounded-live corpus refresh before any

@@ -1,5 +1,8 @@
 # Phase 04: Offline fitting comparison template
 
+Status: absorbed into `dev-docs/plan/issue_60/`. This file is retained as
+historical input and is not the active implementation plan.
+
 ## Purpose
 
 Use this template to review archived-log candidate replay or corpus-summary

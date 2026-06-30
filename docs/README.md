@@ -16,6 +16,7 @@ links before changing behavior.
   facts, blockers, and `Needs verification:` gaps.
 - [Architecture](guide/architecture.md): high-level mod/Core boundary and design principle.
 - [MVP roadmap](planning/mvp-roadmap.md): current issue-sized roadmap, completed diagnostics, blockers, and next work.
+- [GitHub issue alignment](planning/github-issue-alignment.md): how remote issues and milestones should track the current diagnostics-first / offline-fitting direction.
 - [Offline fitting loop](planning/offline-fitting-loop.md): measurement-first loop for archived logs, candidate replay, and pre-live fitting.
 - [Reverse-engineering plan](research/reverse-engineering-plan.md): diagnostic-first plan for finding runtime combat entry points.
 - [Confirmed combat launch hooks](diagnostics/hooks.md): runtime hooks confirmed by deployed diagnostics and parser output.

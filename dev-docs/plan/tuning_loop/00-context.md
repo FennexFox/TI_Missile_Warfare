@@ -1,5 +1,8 @@
 # Pre-tuning offline fitting context
 
+Status: absorbed into `dev-docs/plan/issue_60/`. This file is retained as
+historical input and is not the active implementation plan.
+
 ## Goal
 
 Rebaseline the former pressure-aware tuning loop as a pre-tuning measurement and
