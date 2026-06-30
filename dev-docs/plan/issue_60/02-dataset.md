@@ -34,11 +34,11 @@
 
 ## Affected files
 
-- Likely `tools/parse_player_log.py`
-- Likely `tools/import_player_log_experiments.py`
-- Likely `tools/fit_shadow_allocation.py` or a new offline-fitting dataset tool
-- Likely `tools/fixtures/experiment_corpus/**`
-- Relevant docs under `docs/diagnostics/` and `docs/planning/`
+- `tools/build_offline_fitting_dataset.py`
+- `tools/fixtures/offline_fitting/**`
+- `docs/diagnostics/experiment-corpus.md`
+- `dev-docs/plan/issue_60/00-master-plan.md`
+- `dev-docs/plan/issue_60/02-dataset.md`
 
 ## Implementation steps
 
@@ -70,9 +70,7 @@
 
 - `python tools/check_layout.py`
 - `python -m compileall tools`
-- Add the final fixture-backed dataset command once its filename and committed
-  fixture inputs are known. This command is the phase gate and must not depend
-  on the default private `Player.log` path.
+- `python tools/build_offline_fitting_dataset.py --registry tools/fixtures/offline_fitting/registry.jsonl --output artifacts/offline-fitting/fixture-dataset --require-row-evidence --force`
 - Optional parser smoke, separate from dataset validation:
   `python tools/parse_player_log.py tools/fixtures/outcome_hooks.txt --require-launchlogs`
 
@@ -89,13 +87,27 @@
 
 ## Progress
 
-- Not started.
+- Implemented the Phase 2 dataset command and committed fixture registry.
+- The command emits `decision-contexts.jsonl`, `decision-contexts.json`, and
+  `dataset-summary.json` under ignored `artifacts/` output paths.
+- Fixture validation currently emits five rows: four bounded-live rows with
+  target alternatives and one selected-scope `wouldFail` command candidate.
 
 ## Decision log
 
 - Dataset rows are the #60 unit of analysis; whole-battle summaries are useful
   context but not sufficient for candidate replay.
+- `tools/build_offline_fitting_dataset.py` reads row-level `AllocationLog`
+  records from `sourceLogPath` when present. Summary-only registry entries are
+  warned as evidence-limited instead of being expanded from aggregate counters.
+- Rows include normalized replay groups plus `rawFields` so later replay/scoring
+  phases do not need private raw logs to recover diagnostic fields.
+- Bounded-live pressure is attached to `boundedLiveOriginalTargetId` when
+  present, while `isSelectedTarget` remains the actual command target after any
+  retarget.
+- `targetAlternative*` fields are parsed as pipe-delimited lists, not CSV.
 
 ## Outcomes / Retrospective
 
-- Not completed yet.
+- Phase 2 is complete for fixture-backed corpus input. It does not score
+  candidates, join outcome logs, or change live combat behavior.

@@ -62,10 +62,9 @@
 - `python tools/check_layout.py`
 - `python -m compileall tools`
 - `python tools/parse_player_log.py --require-launchlogs`
+- `python tools/build_offline_fitting_dataset.py --registry tools/fixtures/offline_fitting/registry.jsonl --output artifacts/offline-fitting/fixture-dataset --require-row-evidence --force`
 - `dotnet build TI_Missile_Fire_Control.sln` when source or integration changes
   make the solution build relevant.
-- The new offline-fitting command, once named, must be added to this list and to
-  phase-local validation.
 
 ## Known Risks And Assumptions
 

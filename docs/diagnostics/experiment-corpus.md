@@ -250,3 +250,34 @@ points to them. When fields are present, it aggregates missing evidence,
 skipped and failed commands, overkill risk, under-saturation risk, target
 mismatch, regression markers, and vanilla spillover diagnostics. Missing private
 raw logs are allowed when `sourceLogPath` is omitted.
+
+## Offline-fitting decision contexts
+
+Use `tools/build_offline_fitting_dataset.py` to turn a fixed experiment-corpus
+registry into allocation decision-context rows for offline replay. This is the
+row-level input to the archived-log fitting loop; it is not a scoring or live
+behavior command.
+
+Fixture validation uses:
+
+```powershell
+python tools\build_offline_fitting_dataset.py --registry tools\fixtures\offline_fitting\registry.jsonl --output artifacts\offline-fitting\fixture-dataset --require-row-evidence --force
+```
+
+The command writes:
+
+- `decision-contexts.jsonl`: one allocation decision-context row per replayable
+  command candidate/result.
+- `decision-contexts.json`: the same rows wrapped in a JSON object.
+- `dataset-summary.json`: row counts, source record types, pressure evidence
+  counts, command-result counts, and non-fatal warnings.
+
+Rows preserve normalized replay fields and a `rawFields` copy of the diagnostic
+pairs. Target alternatives remain a list derived from the pipe-delimited
+`targetAlternative*` diagnostics. Score/rank fields keep their original
+comparison-space names. Exact and lower-bound pressure remain separate through
+the `pressure`, `uncertainty`, and `replayReadiness` groups.
+
+Registry entries without `sourceLogPath` are treated as summary-only evidence:
+the command records a warning and does not invent row-level contexts from
+aggregate counters. Keep generated datasets under ignored `artifacts/` paths.
