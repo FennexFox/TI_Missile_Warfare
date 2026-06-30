@@ -216,12 +216,54 @@ def diagnostic_warnings(row: dict[str, Any]) -> list[str]:
     return list(row.get("uncertainty", {}).get("parserWarnings", []))
 
 
-def target_score(row: dict[str, Any], target_id: Any) -> float | None:
-    """Return comparable target-level score when available."""
+def score_value_and_space(row: dict[str, Any], target_id: Any) -> tuple[float | None, str | None]:
+    """Return a score value with its comparison space."""
     alternative = alternative_by_id(row, target_id)
     if alternative:
-        return numeric(alternative.get("score"))
-    return numeric(row.get("selectedTarget", {}).get("score"))
+        return numeric(alternative.get("score")), alternative.get("scoreSpace")
+    selected = row.get("selectedTarget", {})
+    if target_id == selected.get("targetId"):
+        return numeric(selected.get("score")), selected.get("scoreSpace")
+    return None, None
+
+
+def score_delta_evaluation(row: dict[str, Any], chosen: dict[str, Any]) -> dict[str, Any]:
+    """Return a score delta only when selected and chosen scores are comparable."""
+    selected = row.get("selectedTarget", {})
+    selected_id = selected.get("targetId")
+    chosen_id = chosen.get("targetId")
+    target_changed = bool(chosen_id and chosen_id != selected_id)
+    if not target_changed:
+        score, space = score_value_and_space(row, selected_id)
+        return {
+            "scoreDelta": 0.0 if score is not None else None,
+            "scoreDeltaKind": "no-target-change",
+            "scoreDeltaScoreSpace": space,
+            "scoreDeltaReason": "selected-target-retained",
+        }
+
+    selected_score, selected_space = score_value_and_space(row, selected_id)
+    chosen_score, chosen_space = score_value_and_space(row, chosen_id)
+    if selected_score is None or chosen_score is None:
+        return {
+            "scoreDelta": None,
+            "scoreDeltaKind": "not-comparable",
+            "scoreDeltaScoreSpace": None,
+            "scoreDeltaReason": "missing-score",
+        }
+    if selected_space != chosen_space:
+        return {
+            "scoreDelta": None,
+            "scoreDeltaKind": "not-comparable",
+            "scoreDeltaScoreSpace": None,
+            "scoreDeltaReason": f"score-space-mismatch:{selected_space}->{chosen_space}",
+        }
+    return {
+        "scoreDelta": round(chosen_score - selected_score, 6),
+        "scoreDeltaKind": "changed-target-comparable",
+        "scoreDeltaScoreSpace": selected_space,
+        "scoreDeltaReason": "target-alternative-score-space",
+    }
 
 
 def objective_metrics(row: dict[str, Any], chosen: dict[str, Any]) -> dict[str, Any]:
@@ -232,11 +274,12 @@ def objective_metrics(row: dict[str, Any], chosen: dict[str, Any]) -> dict[str, 
     chosen_alternative = alternative_by_id(row, chosen_id) or chosen
     chose_pressure_target = chosen_alternative.get("isPressureTarget") is True
     exact_at_or_above = pressure.get("atOrAboveThreshold") is True and exact_pressure_ready(row)
-    selected_score = numeric(selected.get("score"))
-    chosen_score = target_score(row, chosen_id)
+    target_changed = bool(chosen_id and chosen_id != selected.get("targetId"))
+    score_delta = score_delta_evaluation(row, chosen)
+    comparable_delta = numeric(score_delta.get("scoreDelta"))
     score_drop = (
-        max(0.0, selected_score - chosen_score)
-        if selected_score is not None and chosen_score is not None
+        max(0.0, -comparable_delta)
+        if target_changed and comparable_delta is not None
         else 0.0
     )
     parser_warning_count = len(row.get("uncertainty", {}).get("parserWarnings", []))
@@ -269,14 +312,8 @@ def row_evaluation(row: dict[str, Any], chosen: dict[str, Any], policy_id: str) 
     blockers = evidence_blockers(row)
     warnings = diagnostic_warnings(row)
     selected = row.get("selectedTarget", {})
-    chosen_score = target_score(row, chosen.get("targetId"))
-    selected_score = numeric(selected.get("score"))
-    score_delta = (
-        round(chosen_score - selected_score, 6)
-        if chosen_score is not None and selected_score is not None
-        else None
-    )
     target_changed = bool(chosen.get("targetId") and chosen.get("targetId") != selected.get("targetId"))
+    score_delta = score_delta_evaluation(row, chosen)
     classification = retained_above_threshold_classification(row)
     exclusion_reasons = observed_failures + candidate_failures + blockers
     is_diagnostic_signal = (
@@ -299,7 +336,7 @@ def row_evaluation(row: dict[str, Any], chosen: dict[str, Any], policy_id: str) 
         "diagnosticWarnings": warnings,
         "diagnosticWarningCount": len(warnings),
         "targetChanged": target_changed,
-        "scoreDelta": score_delta,
+        **score_delta,
         "isDiagnosticSignal": is_diagnostic_signal,
         "isCandidateImprovementSignal": is_candidate_improvement,
     }
@@ -373,6 +410,18 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             for evaluation in row_evaluations
             if evaluation.get("rowEligibility") == "eligible" and evaluation.get("scoreDelta") is not None
         ]
+        eligible_changed_score_deltas = [
+            evaluation.get("scoreDelta")
+            for evaluation in row_evaluations
+            if evaluation.get("rowEligibility") == "eligible"
+            and evaluation.get("targetChanged") is True
+            and evaluation.get("scoreDelta") is not None
+        ]
+        score_delta_kinds = Counter(
+            str(evaluation.get("scoreDeltaKind", "unknown"))
+            for evaluation in row_evaluations
+            if evaluation.get("rowEligibility") == "eligible"
+        )
         changed_eligible = sum(
             1
             for evaluation in row_evaluations
@@ -401,6 +450,13 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "scoreDeltaAverageEligible": round(sum(eligible_score_deltas) / len(eligible_score_deltas), 6)
                 if eligible_score_deltas
                 else None,
+                "changedScoreDeltaTotalEligible": round(sum(eligible_changed_score_deltas), 6),
+                "changedScoreDeltaAverageEligible": round(
+                    sum(eligible_changed_score_deltas) / len(eligible_changed_score_deltas), 6
+                )
+                if eligible_changed_score_deltas
+                else None,
+                "scoreDeltaKindCounts": dict(sorted(score_delta_kinds.items())),
                 "rowEligibilityCounts": dict(sorted(eligibility.items())),
                 "observedRowFailures": dict(sorted(observed_failures.items())),
                 "candidateGuardrailFailures": dict(sorted(candidate_failures.items())),

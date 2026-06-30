@@ -93,6 +93,9 @@ surrogate pressure objective over auditable allocation contexts:
   cap violations, parser failures, or spillover misclassification.
 - preserve row eligibility separately from policy verdicts so excluded evidence
   remains auditable instead of disappearing into one policy score.
+- treat score deltas as comparable target-alternative diagnostics only: retained
+  no-change rows contribute zero delta, and changed-target rows report a numeric
+  delta only when selected and chosen scores share one score space.
 
 Outcome rows may be used as hook-health context until a separate
 outcome-to-allocation correlation design exists.

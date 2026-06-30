@@ -135,6 +135,9 @@ def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> di
                 "targetChangeCount": policy.get("targetChangeCount", 0),
                 "scoreDeltaTotalEligible": policy.get("scoreDeltaTotalEligible"),
                 "scoreDeltaAverageEligible": policy.get("scoreDeltaAverageEligible"),
+                "changedScoreDeltaTotalEligible": policy.get("changedScoreDeltaTotalEligible"),
+                "changedScoreDeltaAverageEligible": policy.get("changedScoreDeltaAverageEligible"),
+                "scoreDeltaKindCounts": policy.get("scoreDeltaKindCounts", {}),
                 "softPenaltyTotal": policy.get("softPenaltyTotal", 0),
                 "hardGuardrailFailureCount": policy.get("hardGuardrailFailureCount", 0),
                 "hardGuardrailFailures": policy.get("hardGuardrailFailures", {}),
@@ -195,8 +198,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
         "Offline replay is a candidate filter only. It is not causal proof of live combat improvement.",
         "Any behavior-changing candidate still needs controlled-live or fleet-wide-controlled validation.",
         "",
-        "| Rank | Policy | Mode | Verdict | Rows | Eligible | Excluded | Diag signals | Candidate signals | Changes | Score delta | Downgrades |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Rank | Policy | Mode | Verdict | Rows | Eligible | Excluded | Diag signals | Candidate signals | Changes | Eligible score delta | Changed score delta | Delta kinds | Downgrades |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for index, verdict in enumerate(verdicts["verdicts"], start=1):
         lines.append(
@@ -214,6 +217,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
                     markdown_cell(verdict["candidateImprovementRowCount"]),
                     markdown_cell(verdict["targetChangeCount"]),
                     markdown_cell(verdict["scoreDeltaTotalEligible"]),
+                    markdown_cell(verdict.get("changedScoreDeltaTotalEligible")),
+                    markdown_cell(format_counts(verdict.get("scoreDeltaKindCounts", {}))),
                     markdown_cell("; ".join(verdict.get("downgradeReasons", []))),
                 ]
             )
@@ -226,6 +231,7 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
             "",
             "- `candidate-filtered` and `needs-live-validation` are not live behavior approval.",
             "- Diagnostic signals describe current-policy evidence; candidate signals describe report-only target changes.",
+            "- Score deltas are computed only within a single score space. No-change rows contribute `0`; changed-score deltas summarize changed eligible rows only.",
             "- Bad observed rows, bad candidate rows, and evidence-blocked rows are counted separately.",
             "- `blocked` means candidate guardrail failures or total row exclusion prevent use.",
             "- `inconclusive` means evidence quality prevents a favorable candidate verdict.",

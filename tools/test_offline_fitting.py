@@ -174,6 +174,52 @@ class ReplayClassificationTests(unittest.TestCase):
         observed = replay.replay_policy(bad_observed, replay.CURRENT_POLICY_ID)
         self.assertEqual(["observed-command-result-wouldFail"], observed["rowEvaluation"]["observedRowFailures"])
 
+    def test_current_policy_no_change_score_delta_is_zero_across_score_spaces(self) -> None:
+        row = exact_retained_row()
+        row["selectedTarget"]["score"] = 3.0
+        row["selectedTarget"]["scoreSpace"] = "launcherCandidateAllocation"
+        row["targetAlternatives"][0]["score"] = 1.0
+        row["targetAlternatives"][0]["scoreSpace"] = "diagnosticTargetAlternativeRecomputed"
+        row["targetAlternatives"][1]["score"] = 2.0
+        row["targetAlternatives"][1]["scoreSpace"] = "diagnosticTargetAlternativeRecomputed"
+
+        current = replay.replay_policy(row, replay.CURRENT_POLICY_ID)
+        report_only = replay.replay_policy(row, replay.REPORT_ONLY_POLICY_ID)
+        summary = replay.summarize([current, report_only])
+        policies = {policy["policyId"]: policy for policy in summary["policies"]}
+
+        self.assertFalse(current["rowEvaluation"]["targetChanged"])
+        self.assertEqual(0.0, current["rowEvaluation"]["scoreDelta"])
+        self.assertEqual("no-target-change", current["rowEvaluation"]["scoreDeltaKind"])
+        self.assertEqual(0.0, current["objectiveMetrics"]["highScoreCoveragePenalty"])
+        self.assertEqual(0.0, policies[replay.CURRENT_POLICY_ID]["scoreDeltaTotalEligible"])
+        self.assertIsNone(policies[replay.CURRENT_POLICY_ID]["changedScoreDeltaAverageEligible"])
+
+        self.assertTrue(report_only["rowEvaluation"]["targetChanged"])
+        self.assertEqual(1.0, report_only["rowEvaluation"]["scoreDelta"])
+        self.assertEqual("changed-target-comparable", report_only["rowEvaluation"]["scoreDeltaKind"])
+        self.assertEqual(
+            "diagnosticTargetAlternativeRecomputed",
+            report_only["rowEvaluation"]["scoreDeltaScoreSpace"],
+        )
+        self.assertEqual(1.0, policies[replay.REPORT_ONLY_POLICY_ID]["changedScoreDeltaTotalEligible"])
+
+    def test_report_only_changed_target_mismatched_score_space_is_not_comparable(self) -> None:
+        row = exact_retained_row()
+        row["targetAlternatives"][0]["score"] = 1.0
+        row["targetAlternatives"][0]["scoreSpace"] = "diagnosticTargetAlternativeRecomputed"
+        row["targetAlternatives"][1]["score"] = 2.0
+        row["targetAlternatives"][1]["scoreSpace"] = "someOtherSpace"
+
+        report_only = replay.replay_policy(row, replay.REPORT_ONLY_POLICY_ID)
+        evaluation = report_only["rowEvaluation"]
+
+        self.assertTrue(evaluation["targetChanged"])
+        self.assertIsNone(evaluation["scoreDelta"])
+        self.assertEqual("not-comparable", evaluation["scoreDeltaKind"])
+        self.assertTrue(evaluation["scoreDeltaReason"].startswith("score-space-mismatch"))
+        self.assertEqual(0.0, report_only["objectiveMetrics"]["highScoreCoveragePenalty"])
+
 
 class ReportVerdictTests(unittest.TestCase):
     def test_report_verdicts_preserve_row_counts_and_downgrades(self) -> None:

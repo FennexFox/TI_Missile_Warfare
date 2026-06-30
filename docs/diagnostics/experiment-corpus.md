@@ -319,7 +319,8 @@ The command writes:
   retained-above-threshold classification counts, row eligibility counts, bad
   observed-row counts, bad candidate-row counts, evidence-blocked row counts,
   diagnostic signal counts, candidate-improvement signal counts, target-change
-  counts, and eligible score deltas.
+  counts, eligible score deltas, changed-target score deltas, and score-delta
+  kind counts.
 
 The current policy id `pressure-aware-bounded-live-v1` is replayed as measured
 current behavior, not as a validated improvement. The first report-only policy,
@@ -332,6 +333,13 @@ failures block favorable conclusions. Replay output separates soft surrogate
 penalties from observed row failures, candidate guardrail failures, evidence
 blockers, diagnostic warnings, current-policy diagnostic signals, and
 report-only candidate-improvement signals in each row's `rowEvaluation`.
+
+Score deltas are target-alternative comparison diagnostics, not raw allocator
+score proof. A row that retains the same target has `scoreDelta=0` even when
+the selected target's launcher-candidate score differs from its recomputed
+target-alternative score. A changed-target row reports `scoreDelta` only when
+the selected and chosen targets have scores in the same `scoreSpace`; otherwise
+the row marks the delta as `not-comparable` and omits the numeric value.
 
 Committed fixture rows may still include known friendly alternatives as
 guardrail stress cases. Those fixtures test that unsafe candidate choices would
@@ -353,7 +361,8 @@ The command writes:
 
 - `ranked-candidates.md`: ranked policy table with verdicts, row eligibility
   counts, diagnostic signal counts, candidate-improvement signal counts,
-  target-change counts, eligible score deltas, and downgrade reasons.
+  target-change counts, eligible and changed-target score deltas, score-delta
+  kind counts, and downgrade reasons.
 - `candidate-verdicts.json`: machine-readable verdicts using
   `candidate-filtered`, `needs-live-validation`, `inconclusive`, or `blocked`.
 - `guardrail-report.md`: bad observed rows, bad candidate rows,
