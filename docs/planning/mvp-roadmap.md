@@ -180,12 +180,12 @@ Implementation notes:
 
 Goal: apply target assignments for selected friendly missile ships.
 
-Status: blocked pending fleet-wide scope expansion and stronger evidence. #37
-supplies selected-single-ship live smoke evidence, #38 supplies selected-group
-safety evidence, and #39 supplies direct command-result-to-launch/spend
-diagnostics for the selected-group path. Before any new heuristic tuning
-decision, archived logs should be converted into an offline fitting dataset and
-used to identify a repeated, avoidable allocator-quality problem.
+Status: blocked pending offline-fitting evidence and stronger safety evidence.
+#37 supplies selected-single-ship live smoke evidence, #38 supplies
+selected-group safety evidence, and #39 supplies direct command-result-to-launch
+and spend diagnostics for the selected-group path. Before any new heuristic
+tuning decision, archived logs should be converted into an offline fitting
+dataset and used to identify a repeated, avoidable allocator-quality problem.
 
 Do not implement Issue 6 around a fictitious `readyShots` source. Issue #17
 validated the per-weapon `ammoGateBudgetShots` semantics. Issue #21 validates

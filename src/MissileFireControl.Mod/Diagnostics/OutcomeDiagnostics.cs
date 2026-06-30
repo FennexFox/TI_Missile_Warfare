@@ -23,7 +23,7 @@ namespace MissileFireControl.Mod.Diagnostics
             {
                 AppendPair(builder, "sourceHook", "MissileController.ApplyDamage");
                 AppendProjectileFields(builder, "projectile", __instance);
-                AppendTargetFields(builder, "target", __instance);
+                AppendTargetFields(builder, "target", ReadMember(__instance, "target"));
                 AppendDamageSourceFields(builder, source);
                 AppendPair(builder, "appliedDamage", FormatNumber(__result));
                 AppendPair(builder, "identityBridge", "projectileController+damageSource");
@@ -84,14 +84,14 @@ namespace MissileFireControl.Mod.Diagnostics
                 AppendPair(builder, "sourceHook", "CombatShipController.TriggerShipDestruction");
                 object shipState = ReadMember(__instance, "ShipState");
                 AppendTargetFields(builder, "target", shipState ?? __instance);
-                object killer = GetArg(__args, 0);
+                object gameState = GetArg(__args, 0);
                 object killerWeapon = GetArg(__args, 1);
-                AppendTargetFields(builder, "killer", killer);
+                AppendPair(builder, "gameState", Describe(gameState));
                 AppendPair(builder, "killerWeapon", Describe(killerWeapon));
                 AppendPair(builder, "killerWeaponId", StableIdOrUnknown(killerWeapon, "killerWeapon"));
                 AppendPair(builder, "killerWeaponIsMissile", Describe(ReadMember(killerWeapon, "isMissileWeapon")));
                 AppendPair(builder, "killerWeaponClass", Describe(ReadMember(killerWeapon, "weaponClass")));
-                AppendPair(builder, "identityBridge", "killerCombatantAndWeaponNoProjectileId");
+                AppendPair(builder, "identityBridge", "killerWeaponNoProjectileId");
                 AppendPair(builder, "battle", BattleContext());
             });
         }

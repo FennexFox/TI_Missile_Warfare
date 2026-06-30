@@ -67,7 +67,7 @@
 - `python tools\check_layout.py`: passed.
 - `python -m compileall tools`: passed.
 - `python -m ruff check tools\check_layout.py tools\package_local.py tools\parse_player_log.py tools\fit_shadow_allocation.py tools\import_player_log_experiments.py tools\summarize_experiment_corpus.py`: passed.
-- `python tools\parse_player_log.py tools\fixtures\outcome_hooks.txt --require-launchlogs`: passed with `patched=7`, `skipped=0`, and two outcome rows.
+- `python tools\parse_player_log.py tools\fixtures\outcome_hooks.txt --require-launchlogs`: passed with `patched=7`, `skipped=0`, and four outcome rows.
 - Initial `python tools\parse_player_log.py --require-launchlogs`: passed
   against the older pre-deploy runtime log with `patched=3`, `skipped=0`, and
   `OutcomeLog entries: 0`.

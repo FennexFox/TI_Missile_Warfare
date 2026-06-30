@@ -81,7 +81,10 @@ def mode_bucket(summary: dict[str, Any], mode: str) -> dict[str, Any]:
 def load_corpus_view(path: Path, mode: str) -> CorpusView:
     """Load a corpus summary and keep only the counters needed for comparison."""
     summary = load_json(path)
-    bucket = mode_bucket(summary, mode)
+    buckets = summary.get("evidenceCountsByRunMode")
+    if not isinstance(buckets, dict) or not isinstance(buckets.get(mode), dict):
+        raise SystemExit(f"Run mode '{mode}' not found in summary: {path}")
+    bucket = buckets[mode]
     mode_counts: dict[str, dict[str, int]] = {}
     for key in (
         "direct_command_spend_counts",
@@ -149,11 +152,49 @@ def guardrail_failures(baseline: CorpusView, followup: CorpusView) -> list[str]:
     return failures
 
 
+def blocker_regressions(baseline: CorpusView, followup: CorpusView) -> list[str]:
+    """Return blocker groups that got worse in the follow-up summary."""
+    regressions: list[str] = []
+    for group in BLOCKER_FIELDS:
+        before = sum_group(baseline, group)
+        after = sum_group(followup, group)
+        if after > before:
+            regressions.append(f"{group} increased from {before} to {after}")
+    return regressions
+
+
 def choose_verdict(baseline: CorpusView, followup: CorpusView) -> tuple[str, str, str]:
     """Choose a conservative verdict from summary counters."""
     failures = guardrail_failures(baseline, followup)
     if failures:
         return "contradictory", "high", "; ".join(failures)
+
+    if baseline.experiment_count != followup.experiment_count:
+        return (
+            "inconclusive",
+            "medium",
+            f"experiment counts differ: baseline={baseline.experiment_count}, follow-up={followup.experiment_count}",
+        )
+    if baseline.run_mode_counts != followup.run_mode_counts:
+        return (
+            "inconclusive",
+            "medium",
+            "run mode distributions differ: "
+            f"baseline={format_counts(baseline.run_mode_counts)}, "
+            f"follow-up={format_counts(followup.run_mode_counts)}",
+        )
+    if baseline.scenario_tag_counts != followup.scenario_tag_counts:
+        return (
+            "inconclusive",
+            "medium",
+            "scenario tag distributions differ: "
+            f"baseline={format_counts(baseline.scenario_tag_counts)}, "
+            f"follow-up={format_counts(followup.scenario_tag_counts)}",
+        )
+
+    blocker_regression_reasons = blocker_regressions(baseline, followup)
+    if blocker_regression_reasons:
+        return "inconclusive", "medium", "; ".join(blocker_regression_reasons)
 
     applied_before, applied_after, _ = metric_delta(baseline, followup, "boundedLiveAppliedResults")
     retained_before, retained_after, retained_delta = metric_delta(
@@ -162,14 +203,10 @@ def choose_verdict(baseline: CorpusView, followup: CorpusView) -> tuple[str, str
     retargeted_before, retargeted_after, retargeted_delta = metric_delta(
         baseline, followup, "boundedLiveRetargetedDecisionsAboveThreshold"
     )
-    hard_blocker_delta = sum_group(followup, "bounded_live_hard_measurement_blocker_counts") - sum_group(
-        baseline, "bounded_live_hard_measurement_blocker_counts"
-    )
 
     sparse = applied_before < 5 or applied_after < 5
     retained_clean = retained_after == 0 or retained_delta < 0
     retarget_preserved = retargeted_after > 0 and retargeted_delta >= 0
-    hard_blockers_improved = hard_blocker_delta <= 0
 
     if sparse:
         return (
@@ -177,7 +214,7 @@ def choose_verdict(baseline: CorpusView, followup: CorpusView) -> tuple[str, str
             "medium",
             "guardrails held, but bounded-live applied evidence is sparse",
         )
-    if retained_clean and retarget_preserved and hard_blockers_improved:
+    if retained_clean and retarget_preserved:
         return (
             "supportive",
             "medium",

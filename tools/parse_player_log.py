@@ -35,6 +35,12 @@ REQUIRED_PATCH_DESCRIPTIONS = {
     "secondary missile try-fire hook",
     "secondary missile projectile fire hook",
 }
+OUTCOME_PATCH_DESCRIPTIONS = {
+    "outcome missile damage hook",
+    "outcome missile lifecycle hook",
+    "outcome ship damage hook",
+    "outcome ship destruction hook",
+}
 
 APPLIED_ALLOCATION_RECORD_TYPES = {"applied", "appliedDecision", "applied-decision", "commandApplied"}
 SKIPPED_ALLOCATION_RECORD_TYPES = {"skipped", "skippedDecision", "skipped-decision"}
@@ -2162,15 +2168,32 @@ def logger_verdict(summary: LogSummary, require_launchlogs: bool, require_snapsh
         reasons.append("MFC enabled marker was not found.")
     if summary.active_line is None:
         reasons.append("Unity Mod Manager Active marker was not found.")
-    if summary.bootstrap_skipped != 0 or summary.bootstrap_patched is None or summary.bootstrap_patched < len(REQUIRED_PATCH_DESCRIPTIONS):
+    patched_descriptions = {hook.description for hook in summary.patched_hooks}
+    outcome_patch_descriptions = patched_descriptions & OUTCOME_PATCH_DESCRIPTIONS
+    outcome_validation_visible = (
+        summary.outcome_log_count > 0
+        or bool(outcome_patch_descriptions)
+        or (
+            summary.bootstrap_patched is not None
+            and summary.bootstrap_patched > len(REQUIRED_PATCH_DESCRIPTIONS)
+        )
+    )
+    required_patch_count = len(REQUIRED_PATCH_DESCRIPTIONS) + (
+        len(OUTCOME_PATCH_DESCRIPTIONS) if outcome_validation_visible else 0
+    )
+
+    if summary.bootstrap_skipped != 0 or summary.bootstrap_patched is None or summary.bootstrap_patched < required_patch_count:
         reasons.append(
-            f"Expected diagnostics bootstrap patched>={len(REQUIRED_PATCH_DESCRIPTIONS)} and skipped=0; "
+            f"Expected diagnostics bootstrap patched>={required_patch_count} and skipped=0; "
             f"got patched={summary.bootstrap_patched}, skipped={summary.bootstrap_skipped}."
         )
-    patched_descriptions = {hook.description for hook in summary.patched_hooks}
     missing_required_hooks = sorted(REQUIRED_PATCH_DESCRIPTIONS - patched_descriptions)
     if missing_required_hooks:
         reasons.append("Missing required launch hook patches: " + ", ".join(missing_required_hooks))
+    if outcome_validation_visible:
+        missing_outcome_hooks = sorted(OUTCOME_PATCH_DESCRIPTIONS - patched_descriptions)
+        if missing_outcome_hooks:
+            reasons.append("Missing required outcome hook patches: " + ", ".join(missing_outcome_hooks))
     if require_launchlogs and startup_markers_present and summary.launch_log_count == 0:
         reasons.append("No LaunchLog entries were found.")
     if require_snapshots and startup_markers_present and summary.snapshot_log_count == 0:
