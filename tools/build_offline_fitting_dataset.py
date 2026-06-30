@@ -290,6 +290,109 @@ def pressure_audit(pairs: dict[str, Any], alternatives: list[dict[str, Any]]) ->
     }
 
 
+def alternative_evidence_state(pairs: dict[str, Any], alternatives: list[dict[str, Any]]) -> str:
+    """Classify target-alternative evidence quality."""
+    denominator = optional_int(pairs.get("targetAlternativeDenominator"))
+    if denominator is None:
+        return "unknown"
+    if denominator == 0:
+        return "not-applicable"
+    if optional_int(pairs.get("targetAlternativeCountTruncated")) not in (None, 0):
+        return "lower-bound"
+    if not alternatives or len(alternatives) != denominator:
+        return "unknown"
+    feature_evidence = str(pairs.get("targetAlternativeFeatureEvidence", "unknown"))
+    missing_count = optional_int(pairs.get("targetAlternativeFeatureMissingCount")) or 0
+    if feature_evidence == "allocatorComparableFeatures" and missing_count == 0:
+        return "exact"
+    if feature_evidence in {"unknown", "none"}:
+        return "unknown"
+    return "inferred"
+
+
+def pressure_evidence_state(pairs: dict[str, Any]) -> str:
+    """Classify pressure evidence quality."""
+    if pairs.get("boundedLivePressureDecision") is None:
+        return "not-applicable"
+    bound = str(pairs.get("selectedTargetPriorMissileInFlightEstimateBound", "unknown"))
+    quality = str(pairs.get("boundedLiveDecisionInFlightEvidenceQuality", "unknown"))
+    if bound == "exact" and quality in {"exact", "unknown"}:
+        return "exact"
+    if bound == "lowerBound" or quality == "lowerBound":
+        return "lower-bound"
+    return "unknown"
+
+
+def score_rank_evidence_state(pairs: dict[str, Any]) -> str:
+    """Classify score/rank comparison evidence quality."""
+    if pairs.get("selectedTargetScore") is None and pairs.get("selectedTargetRank") is None:
+        return "not-applicable"
+    rank_confidence = str(pairs.get("selectedTargetRankConfidence", "unknown"))
+    rank_space = str(pairs.get("selectedTargetRankComparisonSpace", "unknown"))
+    rank_level = str(pairs.get("selectedTargetRankLevel", "unknown"))
+    score_space = str(pairs.get("targetAlternativeScoreSpace", "unknown"))
+    has_scores = pairs.get("targetAlternativeScores") not in (None, "unknown", "none", "")
+    if (
+        rank_confidence in {"exact", "tied"}
+        and rank_space == "targetAlternativeScores"
+        and rank_level == "target-level"
+        and score_space != "unknown"
+        and has_scores
+    ):
+        return "exact"
+    if rank_confidence in {"partialAlternativeFeatures", "ambiguous"}:
+        return "inferred"
+    return "unknown"
+
+
+def command_correlation_evidence_state(pairs: dict[str, Any], direct_launch_rows: int) -> str:
+    """Classify direct command-result-to-launch evidence quality."""
+    if direct_launch_rows > 0 or pairs.get("controlledCommandCorrelation") == "directRuntimeContext":
+        return "exact"
+    if pairs.get("controlledCommandCorrelation") in {"pendingRuntimeContext", "none"}:
+        return "unknown"
+    return "not-applicable"
+
+
+def outcome_evidence_state(pairs: dict[str, Any]) -> str:
+    """Classify outcome evidence quality for offline fitting."""
+    attribution = str(pairs.get("targetOutcomeAttribution", "unknown"))
+    confidence = str(pairs.get("attributionConfidence", "unknown"))
+    if attribution == "evidenceLimited" or confidence == "outcomeCorrelationPending":
+        return "inferred"
+    if attribution in {"unknown", "none"}:
+        return "not-applicable"
+    return "inferred"
+
+
+def overall_evidence_state(states: dict[str, str]) -> str:
+    """Return the strongest conservative evidence-state label for a row."""
+    relevant = [value for value in states.values() if value != "not-applicable"]
+    if not relevant:
+        return "not-applicable"
+    for state in ("unknown", "lower-bound", "inferred"):
+        if state in relevant:
+            return state
+    return "exact"
+
+
+def evidence_state(
+    pairs: dict[str, Any],
+    alternatives: list[dict[str, Any]],
+    direct_launch_rows: int,
+) -> dict[str, str]:
+    """Return explicit evidence states for replay and reporting."""
+    states = {
+        "targetAlternatives": alternative_evidence_state(pairs, alternatives),
+        "pressure": pressure_evidence_state(pairs),
+        "scoreRank": score_rank_evidence_state(pairs),
+        "commandCorrelation": command_correlation_evidence_state(pairs, direct_launch_rows),
+        "outcome": outcome_evidence_state(pairs),
+    }
+    states["overall"] = overall_evidence_state(states)
+    return states
+
+
 def build_decision_context(
     *,
     entry: dict[str, Any],
@@ -305,6 +408,7 @@ def build_decision_context(
     alternatives, alternative_warnings = target_alternatives(raw_fields)
     warnings = parser_warning_fields(raw_fields, alternative_warnings)
     missing = known_missing_evidence(metadata)
+    states = evidence_state(raw_fields, alternatives, direct_launch_rows)
     command_result_id = raw_fields.get("commandResultId") or f"line-{source_line}"
     row_id = f"{entry.get('experimentId', 'unknown')}:{command_result_id}"
     return {
@@ -363,6 +467,7 @@ def build_decision_context(
         },
         "targetAlternatives": alternatives,
         "pressure": pressure_audit(raw_fields, alternatives),
+        "evidenceState": states,
         "command": {
             "commandResultId": raw_fields.get("commandResultId"),
             "candidateId": raw_fields.get("candidateId"),
@@ -401,9 +506,11 @@ def build_decision_context(
             "hasSelectedTargetScoreRank": raw_fields.get("selectedTargetRank") is not None
             and raw_fields.get("selectedTargetScore") is not None,
             "hasPressureDecision": raw_fields.get("boundedLivePressureDecision") is not None,
-            "hasExactPressure": raw_fields.get("selectedTargetPriorMissileInFlightEstimateBound") == "exact",
+            "hasExactPressure": states["pressure"] == "exact",
             "hasLowerBoundPressure": raw_fields.get("selectedTargetPriorMissileInFlightEstimateBound")
             == "lowerBound",
+            "hasExactTargetAlternatives": states["targetAlternatives"] == "exact",
+            "hasExactScoreRank": states["scoreRank"] == "exact",
             "hasCommandResult": raw_fields.get("result") is not None
             or raw_fields.get("classification") is not None,
         },
@@ -514,11 +621,14 @@ def summarize_rows(
     record_types: Counter[str] = Counter()
     command_results: Counter[str] = Counter()
     pressure_decisions: Counter[str] = Counter()
+    evidence_states: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
         for record_type in row["source"]["sourceRecordTypes"]:
             record_types[record_type] += 1
         command_results[str(row["command"].get("result", "unknown"))] += 1
         pressure_decisions[str(row["pressure"].get("decision", "unknown"))] += 1
+        for key, value in row.get("evidenceState", {}).items():
+            evidence_states[key][str(value)] += 1
     return {
         "schemaVersion": SCHEMA_VERSION,
         "datasetKind": "allocation-decision-context",
@@ -534,6 +644,9 @@ def summarize_rows(
         "rowsWithLowerBoundPressure": sum(1 for row in rows if row["replayReadiness"]["hasLowerBoundPressure"]),
         "rowsWithCommandResult": sum(1 for row in rows if row["replayReadiness"]["hasCommandResult"]),
         "rowsWithParserWarnings": sum(1 for row in rows if row["uncertainty"]["parserWarnings"]),
+        "evidenceStateCounts": {
+            key: dict(sorted(counter.items())) for key, counter in sorted(evidence_states.items())
+        },
         "warnings": warnings,
     }
 

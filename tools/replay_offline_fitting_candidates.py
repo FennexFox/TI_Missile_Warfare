@@ -76,13 +76,24 @@ def exact_pressure_ready(row: dict[str, Any]) -> bool:
     return (
         row.get("replayReadiness", {}).get("hasExactPressure") is True
         and row.get("uncertainty", {}).get("lowerBoundPressure") is False
+        and row.get("evidenceState", {}).get("pressure") == "exact"
     )
+
+
+def auditable_alternatives_ready(row: dict[str, Any]) -> bool:
+    """Return whether target-alternative and score/rank evidence is auditable."""
+    evidence = row.get("evidenceState", {})
+    return evidence.get("targetAlternatives") == "exact" and evidence.get("scoreRank") == "exact"
 
 
 def best_report_only_alternative(row: dict[str, Any]) -> dict[str, Any] | None:
     """Pick the highest-score non-pressure target when exact over-pressure exists."""
     pressure = row.get("pressure", {})
-    if pressure.get("atOrAboveThreshold") is not True or not exact_pressure_ready(row):
+    if (
+        pressure.get("atOrAboveThreshold") is not True
+        or not exact_pressure_ready(row)
+        or not auditable_alternatives_ready(row)
+    ):
         return None
     alternatives = [
         alternative
@@ -118,39 +129,83 @@ def retained_above_threshold_classification(row: dict[str, Any]) -> str:
     pressure = row.get("pressure", {})
     if pressure.get("retainedAboveThreshold") is not True:
         return "not-applicable"
-    if row.get("uncertainty", {}).get("lowerBoundPressure") or row.get("uncertainty", {}).get(
-        "missingAlternatives"
-    ):
-        return "inconclusive"
-    if not exact_pressure_ready(row):
+    if not exact_pressure_ready(row) or not auditable_alternatives_ready(row):
         return "inconclusive"
     alternatives = row.get("targetAlternatives", [])
+    non_pressure = [alternative for alternative in alternatives if alternative.get("isPressureTarget") is not True]
+    if not non_pressure:
+        return "unavoidable"
     if any(
-        alternative.get("isPressureTarget") is not True
-        and numeric(alternative.get("score")) is not None
-        for alternative in alternatives
+        numeric(alternative.get("score")) is not None
+        and alternative.get("targetTeam") != row.get("launcher", {}).get("launcherTeam")
+        for alternative in non_pressure
     ):
         return "avoidable"
-    return "unavoidable"
+    return "inconclusive"
 
 
-def guardrail_failures(row: dict[str, Any], chosen: dict[str, Any]) -> list[str]:
-    """Return hard guardrail failures separately from objective penalties."""
+def observed_row_failures(row: dict[str, Any]) -> list[str]:
+    """Return hard failures in the observed source row."""
     failures: list[str] = []
     command = row.get("command", {})
     launcher = row.get("launcher", {})
-    chosen_team = chosen.get("targetTeam")
-    if chosen_team and launcher.get("launcherTeam") and chosen_team == launcher.get("launcherTeam"):
-        failures.append("friendly-target")
+    selected = row.get("selectedTarget", {})
+    selected_team = selected.get("targetTeam")
+    if selected_team and launcher.get("launcherTeam") and selected_team == launcher.get("launcherTeam"):
+        failures.append("observed-friendly-target")
     if row.get("rawFields", {}).get("scopeViolation") is True:
-        failures.append("scope-violation")
+        failures.append("observed-scope-violation")
     if command.get("result") in {"wouldFail", "failed"}:
-        failures.append(f"command-result-{command.get('result')}")
+        failures.append(f"observed-command-result-{command.get('result')}")
     if command.get("capReason") not in (None, "none", "unknown"):
-        failures.append(f"command-cap-{command.get('capReason')}")
+        failures.append(f"observed-command-cap-{command.get('capReason')}")
     if row.get("uncertainty", {}).get("spilloverClassification") not in (None, "notJoined"):
-        failures.append("spillover-ambiguous")
+        failures.append("observed-spillover-ambiguous")
     return failures
+
+
+def candidate_guardrail_failures(row: dict[str, Any], chosen: dict[str, Any]) -> list[str]:
+    """Return hard failures introduced by a replayed candidate choice."""
+    failures: list[str] = []
+    launcher = row.get("launcher", {})
+    chosen_team = chosen.get("targetTeam")
+    selected_id = row.get("selectedTarget", {}).get("targetId")
+    if (
+        chosen.get("targetId") != selected_id
+        and chosen_team
+        and launcher.get("launcherTeam")
+        and chosen_team == launcher.get("launcherTeam")
+    ):
+        failures.append("candidate-friendly-target")
+    return failures
+
+
+def guardrail_failures(row: dict[str, Any], chosen: dict[str, Any]) -> list[str]:
+    """Return all hard guardrail failures for backward-compatible output."""
+    return observed_row_failures(row) + candidate_guardrail_failures(row, chosen)
+
+
+def evidence_blockers(row: dict[str, Any]) -> list[str]:
+    """Return row-level evidence blockers for favorable classification."""
+    blockers: list[str] = []
+    pressure = row.get("pressure", {})
+    evidence = row.get("evidenceState", {})
+    pressure_relevant = pressure.get("retainedAboveThreshold") is True or pressure.get("atOrAboveThreshold") is True
+    if pressure_relevant and evidence.get("pressure") != "exact":
+        blockers.append(f"pressure-{evidence.get('pressure', 'unknown')}")
+    if pressure.get("retainedAboveThreshold") is True:
+        if evidence.get("targetAlternatives") != "exact":
+            blockers.append(f"target-alternatives-{evidence.get('targetAlternatives', 'unknown')}")
+        if evidence.get("scoreRank") != "exact":
+            blockers.append(f"score-rank-{evidence.get('scoreRank', 'unknown')}")
+    if row.get("uncertainty", {}).get("missingAlternatives") is True and pressure_relevant:
+        blockers.append("missing-alternatives")
+    return sorted(set(blockers))
+
+
+def diagnostic_warnings(row: dict[str, Any]) -> list[str]:
+    """Return non-blocking diagnostic warnings preserved for reporting."""
+    return list(row.get("uncertainty", {}).get("parserWarnings", []))
 
 
 def target_score(row: dict[str, Any], target_id: Any) -> float | None:
@@ -199,9 +254,48 @@ def objective_metrics(row: dict[str, Any], chosen: dict[str, Any]) -> dict[str, 
     return metrics
 
 
+def row_evaluation(row: dict[str, Any], chosen: dict[str, Any], policy_id: str) -> dict[str, Any]:
+    """Separate row-level exclusion, blocker, and favorable-signal state."""
+    observed_failures = observed_row_failures(row)
+    candidate_failures = candidate_guardrail_failures(row, chosen)
+    blockers = evidence_blockers(row)
+    warnings = diagnostic_warnings(row)
+    selected = row.get("selectedTarget", {})
+    chosen_score = target_score(row, chosen.get("targetId"))
+    selected_score = numeric(selected.get("score"))
+    score_delta = (
+        round(chosen_score - selected_score, 6)
+        if chosen_score is not None and selected_score is not None
+        else None
+    )
+    target_changed = bool(chosen.get("targetId") and chosen.get("targetId") != selected.get("targetId"))
+    classification = retained_above_threshold_classification(row)
+    exclusion_reasons = observed_failures + candidate_failures + blockers
+    is_favorable = (
+        not exclusion_reasons
+        and (
+            classification == "avoidable"
+            or (policy_id == REPORT_ONLY_POLICY_ID and target_changed and chosen.get("isPressureTarget") is not True)
+        )
+    )
+    return {
+        "rowEligibility": "excluded" if exclusion_reasons else "eligible",
+        "rowExclusionReasons": exclusion_reasons,
+        "observedRowFailures": observed_failures,
+        "candidateGuardrailFailures": candidate_failures,
+        "evidenceBlockers": blockers,
+        "diagnosticWarnings": warnings,
+        "diagnosticWarningCount": len(warnings),
+        "targetChanged": target_changed,
+        "scoreDelta": score_delta,
+        "isFavorableSignal": is_favorable,
+    }
+
+
 def replay_policy(row: dict[str, Any], policy_id: str) -> dict[str, Any]:
     """Replay one policy against one decision context."""
     chosen, reason = choose_target(row, policy_id)
+    evaluation = row_evaluation(row, chosen, policy_id)
     guardrails = guardrail_failures(row, chosen)
     metrics = objective_metrics(row, chosen)
     return {
@@ -216,6 +310,8 @@ def replay_policy(row: dict[str, Any], policy_id: str) -> dict[str, Any]:
         "chosenTarget": chosen.get("target"),
         "decisionReason": reason,
         "retainedAboveThresholdClassification": retained_above_threshold_classification(row),
+        "rowEvaluation": evaluation,
+        "evidenceState": row.get("evidenceState", {}),
         "objectiveMetrics": metrics,
         "hardGuardrailFailures": guardrails,
         "hardGuardrailFailureCount": len(guardrails),
@@ -248,11 +344,50 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             for record in policy_records
             for failure in record.get("hardGuardrailFailures", [])
         )
+        row_evaluations = [record.get("rowEvaluation", {}) for record in policy_records]
+        eligibility = Counter(str(evaluation.get("rowEligibility", "unknown")) for evaluation in row_evaluations)
+        observed_failures = Counter(
+            failure for evaluation in row_evaluations for failure in evaluation.get("observedRowFailures", [])
+        )
+        candidate_failures = Counter(
+            failure for evaluation in row_evaluations for failure in evaluation.get("candidateGuardrailFailures", [])
+        )
+        blockers = Counter(
+            blocker for evaluation in row_evaluations for blocker in evaluation.get("evidenceBlockers", [])
+        )
+        eligible_score_deltas = [
+            evaluation.get("scoreDelta")
+            for evaluation in row_evaluations
+            if evaluation.get("rowEligibility") == "eligible" and evaluation.get("scoreDelta") is not None
+        ]
+        changed_eligible = sum(
+            1
+            for evaluation in row_evaluations
+            if evaluation.get("rowEligibility") == "eligible" and evaluation.get("targetChanged") is True
+        )
         policies.append(
             {
                 "policyId": policy_id,
                 "policyMode": policy_records[0]["policyMode"],
                 "rowCount": len(policy_records),
+                "eligibleRowCount": eligibility.get("eligible", 0),
+                "excludedRowCount": eligibility.get("excluded", 0),
+                "badObservedRowCount": sum(observed_failures.values()),
+                "badCandidateRowCount": sum(candidate_failures.values()),
+                "evidenceBlockedRowCount": sum(1 for evaluation in row_evaluations if evaluation.get("evidenceBlockers")),
+                "favorableRowCount": sum(1 for evaluation in row_evaluations if evaluation.get("isFavorableSignal") is True),
+                "targetChangeCount": changed_eligible,
+                "scoreDeltaTotalEligible": round(sum(eligible_score_deltas), 6),
+                "scoreDeltaAverageEligible": round(sum(eligible_score_deltas) / len(eligible_score_deltas), 6)
+                if eligible_score_deltas
+                else None,
+                "rowEligibilityCounts": dict(sorted(eligibility.items())),
+                "observedRowFailures": dict(sorted(observed_failures.items())),
+                "candidateGuardrailFailures": dict(sorted(candidate_failures.items())),
+                "evidenceBlockers": dict(sorted(blockers.items())),
+                "diagnosticWarningCount": sum(
+                    int(evaluation.get("diagnosticWarningCount", 0)) for evaluation in row_evaluations
+                ),
                 "softPenaltyTotal": round(
                     sum(record["objectiveMetrics"]["softPenaltyTotal"] for record in policy_records),
                     6,

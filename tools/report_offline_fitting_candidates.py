@@ -55,33 +55,57 @@ def evidence_blocker_counts(records: list[dict[str, Any]]) -> Counter[str]:
     """Count uncertainty blockers that should downgrade candidate verdicts."""
     counts: Counter[str] = Counter()
     for record in records:
-        uncertainty = record.get("uncertainty", {})
-        if uncertainty.get("lowerBoundPressure") is True:
-            counts["lower-bound-pressure"] += 1
-        if uncertainty.get("missingAlternatives") is True:
-            counts["missing-alternatives"] += 1
-        if uncertainty.get("spilloverClassification") not in (None, "notJoined"):
-            counts["spillover-ambiguity"] += 1
-        parser_warnings = uncertainty.get("parserWarnings", [])
-        if parser_warnings:
-            counts["parser-warnings"] += len(parser_warnings)
+        for blocker in record.get("rowEvaluation", {}).get("evidenceBlockers", []):
+            counts[str(blocker)] += 1
     return counts
 
 
-def verdict_for_policy(policy: dict[str, Any], records: list[dict[str, Any]]) -> tuple[str, str]:
-    """Return a conservative machine-readable verdict and reason."""
-    hard_failures = int(policy.get("hardGuardrailFailureCount", 0))
-    classifications = policy.get("classificationCounts", {})
-    blockers = evidence_blocker_counts(records)
-    if hard_failures:
-        return "blocked", "hard guardrail failures are present"
-    if blockers:
-        return "inconclusive", "evidence blockers or parser warnings are present"
-    if int(classifications.get("avoidable", 0)) > 0:
+def diagnostic_warning_count(records: list[dict[str, Any]]) -> int:
+    """Count preserved non-blocking diagnostics warnings."""
+    return sum(
+        int(record.get("rowEvaluation", {}).get("diagnosticWarningCount", 0))
+        for record in records
+    )
+
+
+def evidence_mode_counts(records: list[dict[str, Any]]) -> Counter[str]:
+    """Count replay evidence modes."""
+    return Counter(str(record.get("runMode", "unknown")) for record in records)
+
+
+def downgrade_reasons(policy: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
+    """Return policy-level downgrade reasons without hiding row-level signal."""
+    reasons: list[str] = []
+    if int(policy.get("badCandidateRowCount", 0)):
+        reasons.append("bad candidate rows are present")
+    if int(policy.get("badObservedRowCount", 0)):
+        reasons.append("bad observed rows were excluded")
+    if int(policy.get("evidenceBlockedRowCount", 0)):
+        reasons.append("evidence-blocked rows were excluded")
+    if diagnostic_warning_count(records):
+        reasons.append("diagnostic warnings are present")
+    modes = evidence_mode_counts(records)
+    if modes and set(modes) == {"fixture"}:
+        reasons.append("fixture evidence only")
+    if not reasons:
+        reasons.append("none")
+    return reasons
+
+
+def verdict_for_policy(policy: dict[str, Any], records: list[dict[str, Any]]) -> tuple[str, str, list[str]]:
+    """Return a conservative machine-readable verdict, reason, and downgrades."""
+    downgrades = downgrade_reasons(policy, records)
+    if int(policy.get("badCandidateRowCount", 0)):
+        return "blocked", "candidate guardrail failures are present", downgrades
+    if int(policy.get("eligibleRowCount", 0)) == 0:
+        return "blocked", "no eligible rows remain after exclusions", downgrades
+    if "fixture evidence only" in downgrades:
+        return "inconclusive", "fixture evidence cannot justify live validation", downgrades
+    if int(policy.get("favorableRowCount", 0)) > 0:
         if policy.get("policyMode") == "report-only":
-            return "needs-live-validation", "report-only candidate found avoidable retained over-pressure"
-        return "candidate-filtered", "current policy measurement has avoidable retained over-pressure evidence"
-    return "inconclusive", "no retained above-threshold candidate shortlist is justified"
+            return "needs-live-validation", "eligible favorable report-only rows need live validation", downgrades
+        return "candidate-filtered", "eligible current-policy rows show avoidable over-pressure", downgrades
+    return "inconclusive", "no eligible favorable candidate signal is present", downgrades
 
 
 def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -91,19 +115,34 @@ def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> di
     for policy in summary.get("policies", []):
         policy_id = str(policy.get("policyId", "unknown"))
         policy_rows = grouped.get(policy_id, [])
-        verdict, reason = verdict_for_policy(policy, policy_rows)
+        verdict, reason, downgrades = verdict_for_policy(policy, policy_rows)
         verdicts.append(
             {
                 "policyId": policy_id,
                 "policyMode": policy.get("policyMode"),
                 "verdict": verdict,
                 "reason": reason,
+                "downgradeReasons": downgrades,
                 "rowCount": policy.get("rowCount", 0),
+                "eligibleRowCount": policy.get("eligibleRowCount", 0),
+                "excludedRowCount": policy.get("excludedRowCount", 0),
+                "badObservedRowCount": policy.get("badObservedRowCount", 0),
+                "badCandidateRowCount": policy.get("badCandidateRowCount", 0),
+                "evidenceBlockedRowCount": policy.get("evidenceBlockedRowCount", 0),
+                "favorableRowCount": policy.get("favorableRowCount", 0),
+                "targetChangeCount": policy.get("targetChangeCount", 0),
+                "scoreDeltaTotalEligible": policy.get("scoreDeltaTotalEligible"),
+                "scoreDeltaAverageEligible": policy.get("scoreDeltaAverageEligible"),
                 "softPenaltyTotal": policy.get("softPenaltyTotal", 0),
                 "hardGuardrailFailureCount": policy.get("hardGuardrailFailureCount", 0),
                 "hardGuardrailFailures": policy.get("hardGuardrailFailures", {}),
+                "observedRowFailures": policy.get("observedRowFailures", {}),
+                "candidateGuardrailFailures": policy.get("candidateGuardrailFailures", {}),
                 "classificationCounts": policy.get("classificationCounts", {}),
+                "rowEligibilityCounts": policy.get("rowEligibilityCounts", {}),
                 "evidenceBlockerCounts": dict(sorted(evidence_blocker_counts(policy_rows).items())),
+                "diagnosticWarningCount": diagnostic_warning_count(policy_rows),
+                "evidenceModeCounts": dict(sorted(evidence_mode_counts(policy_rows).items())),
                 "requiresLiveValidationBeforeBehaviorChange": verdict
                 in {"candidate-filtered", "needs-live-validation"},
             }
@@ -121,7 +160,8 @@ def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> di
             verdicts,
             key=lambda item: (
                 item["verdict"] == "blocked",
-                item["hardGuardrailFailureCount"],
+                item["badCandidateRowCount"],
+                item["excludedRowCount"],
                 item["softPenaltyTotal"],
                 item["policyId"],
             ),
@@ -153,8 +193,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
         "Offline replay is a candidate filter only. It is not causal proof of live combat improvement.",
         "Any behavior-changing candidate still needs controlled-live or fleet-wide-controlled validation.",
         "",
-        "| Rank | Policy | Mode | Verdict | Soft penalty | Hard failures | Classifications | Evidence blockers |",
-        "| --- | --- | --- | --- | ---: | ---: | --- | --- |",
+        "| Rank | Policy | Mode | Verdict | Rows | Eligible | Excluded | Favorable | Changes | Score delta | Downgrades |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for index, verdict in enumerate(verdicts["verdicts"], start=1):
         lines.append(
@@ -165,10 +205,13 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
                     markdown_cell(verdict["policyId"]),
                     markdown_cell(verdict.get("policyMode", "unknown")),
                     markdown_cell(verdict["verdict"]),
-                    markdown_cell(verdict["softPenaltyTotal"]),
-                    markdown_cell(verdict["hardGuardrailFailureCount"]),
-                    markdown_cell(format_counts(verdict.get("classificationCounts", {}))),
-                    markdown_cell(format_counts(verdict.get("evidenceBlockerCounts", {}))),
+                    markdown_cell(verdict["rowCount"]),
+                    markdown_cell(verdict["eligibleRowCount"]),
+                    markdown_cell(verdict["excludedRowCount"]),
+                    markdown_cell(verdict["favorableRowCount"]),
+                    markdown_cell(verdict["targetChangeCount"]),
+                    markdown_cell(verdict["scoreDeltaTotalEligible"]),
+                    markdown_cell("; ".join(verdict.get("downgradeReasons", []))),
                 ]
             )
             + " |"
@@ -179,7 +222,8 @@ def ranked_candidates_markdown(verdicts: dict[str, Any]) -> str:
             "## Notes",
             "",
             "- `candidate-filtered` and `needs-live-validation` are not live behavior approval.",
-            "- `blocked` means hard guardrail failures are present in the replayed evidence.",
+            "- Bad observed rows, bad candidate rows, and evidence-blocked rows are counted separately.",
+            "- `blocked` means candidate guardrail failures or total row exclusion prevent use.",
             "- `inconclusive` means evidence quality prevents a favorable candidate verdict.",
             "- Outcome rows are not used as rewards or kill proof in this report.",
         ]
@@ -194,8 +238,8 @@ def guardrail_markdown(verdicts: dict[str, Any]) -> str:
         "",
         "Hard guardrails are reported separately from soft surrogate objective scores.",
         "",
-        "| Policy | Hard guardrail failures | Evidence blockers | Verdict impact |",
-        "| --- | --- | --- | --- |",
+        "| Policy | Bad observed rows | Bad candidate rows | Evidence-blocked rows | Hard failures | Evidence blockers | Diagnostic warnings | Verdict impact |",
+        "| --- | ---: | ---: | ---: | --- | --- | ---: | --- |",
     ]
     for verdict in verdicts["verdicts"]:
         impact = verdict["reason"]
@@ -204,8 +248,12 @@ def guardrail_markdown(verdicts: dict[str, Any]) -> str:
             + " | ".join(
                 [
                     markdown_cell(verdict["policyId"]),
+                    markdown_cell(verdict.get("badObservedRowCount", 0)),
+                    markdown_cell(verdict.get("badCandidateRowCount", 0)),
+                    markdown_cell(verdict.get("evidenceBlockedRowCount", 0)),
                     markdown_cell(format_counts(verdict.get("hardGuardrailFailures", {}))),
                     markdown_cell(format_counts(verdict.get("evidenceBlockerCounts", {}))),
+                    markdown_cell(verdict.get("diagnosticWarningCount", 0)),
                     markdown_cell(impact),
                 ]
             )

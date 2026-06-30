@@ -37,6 +37,7 @@
 2. [Decision-context dataset extraction](02-dataset.md)
 3. [Candidate replay and scoring](03-replay.md)
 4. [Report closure and validation](04-reporting.md)
+5. [Quality pass and evidence semantics](05-quality-pass.md)
 
 ## Phase Dependencies
 
@@ -44,6 +45,7 @@
 - Phase 2 depends on completion and validation of phase 1.
 - Phase 3 depends on completion and validation of phase 2.
 - Phase 4 depends on completion and validation of phase 3.
+- Phase 5 depends on completion and validation of phase 4.
 
 ## Source Of Truth Decisions
 
@@ -61,7 +63,8 @@
 
 - `python tools/check_layout.py`
 - `python -m compileall tools`
-- `python tools/parse_player_log.py --require-launchlogs`
+- `python tools/test_offline_fitting.py`
+- `python tools/parse_player_log.py tools/fixtures/outcome_hooks.txt --require-launchlogs`
 - `python tools/build_offline_fitting_dataset.py --registry tools/fixtures/offline_fitting/registry.jsonl --output artifacts/offline-fitting/fixture-dataset --require-row-evidence --force`
 - `python tools/replay_offline_fitting_candidates.py --dataset artifacts/offline-fitting/fixture-dataset/decision-contexts.jsonl --output artifacts/offline-fitting/fixture-replay --require-replay-evidence --force`
 - `python tools/report_offline_fitting_candidates.py --replay artifacts/offline-fitting/fixture-replay/replay-results.jsonl --summary artifacts/offline-fitting/fixture-replay/candidate-summary.json --output artifacts/offline-fitting/fixture-report --require-report-evidence --force`
@@ -74,8 +77,9 @@
   outcome-aware optimization.
 - Offline replay is a candidate filter and must not be described as causal proof
   of live combat improvement.
-- Rows with lower-bound pressure, missing alternatives, parser warnings, or
-  ambiguous spillover must prevent overconfident candidate verdicts.
+- Rows with lower-bound pressure, unknown pressure, missing alternatives, weak
+  score/rank evidence, parser warnings, or ambiguous spillover must prevent
+  overconfident candidate verdicts.
 - The current local baseline snapshot in
   `dev-docs/plan/tuning_loop/02-baseline-corpus.md` is useful evidence context,
   but it is one local combat run and remains evidence-limited.
