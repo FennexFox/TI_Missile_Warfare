@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -313,6 +314,58 @@ class ReportVerdictTests(unittest.TestCase):
         self.assertEqual(1, policies[replay.CURRENT_POLICY_ID]["diagnosticSignalRowCount"])
         self.assertEqual("inconclusive", verdict_by_policy[replay.CURRENT_POLICY_ID]["verdict"])
         self.assertEqual("inconclusive", verdict_by_policy[replay.REPORT_ONLY_POLICY_ID]["verdict"])
+
+
+class ToolHardeningTests(unittest.TestCase):
+    def test_parse_source_log_tolerates_invalid_utf8_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "Player.log"
+            source.write_bytes(
+                b'\xff[MissileWarfare] [MFC] [AllocationLog] recordType="fleetWideBoundedLiveCandidate" '
+                b'commandResultId="cmd-invalid-utf8" targetId="red" target="Red"\n'
+            )
+            warnings: list[str] = []
+
+            rows = dataset.parse_source_log(
+                entry={"experimentId": "EXP-INVALID-UTF8"},
+                metadata={},
+                source_path=source,
+                source_log_text="Player.log",
+                warnings=warnings,
+            )
+
+            self.assertEqual(1, len(rows))
+            self.assertEqual([], warnings)
+
+    def test_ensure_safe_output_refuses_non_directories_and_external_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_file = root / "output-file"
+            output_file.write_text("not a directory", encoding="utf-8")
+            external_dir = root / "artifacts" / "outside"
+            external_dir.mkdir(parents=True)
+
+            for module in (dataset, replay, report):
+                with self.assertRaises(SystemExit):
+                    module.ensure_safe_output(output_file, force=True)
+                with self.assertRaises(SystemExit):
+                    module.ensure_safe_output(external_dir, force=True)
+
+            self.assertTrue(output_file.exists())
+            self.assertTrue(external_dir.exists())
+
+    def test_report_loaders_emit_clear_json_parse_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad_json = root / "bad.json"
+            bad_json.write_text("{not-json", encoding="utf-8")
+            bad_jsonl = root / "bad.jsonl"
+            bad_jsonl.write_text('{"ok": true}\n{not-json}\n', encoding="utf-8")
+
+            with self.assertRaisesRegex(SystemExit, "invalid JSON"):
+                report.load_json(bad_json)
+            with self.assertRaisesRegex(SystemExit, r"bad\.jsonl:2: invalid JSONL row"):
+                report.load_jsonl(bad_jsonl)
 
 
 if __name__ == "__main__":

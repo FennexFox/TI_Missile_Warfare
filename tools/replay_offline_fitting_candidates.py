@@ -17,6 +17,11 @@ CURRENT_POLICY_ID = "pressure-aware-bounded-live-v1"
 REPORT_ONLY_POLICY_ID = "report-only-pressure-relief-v1"
 
 
+def repo_root() -> Path:
+    """Return the repository root for output safety checks."""
+    return Path(__file__).resolve().parent.parent
+
+
 def load_contexts(path: Path) -> list[dict[str, Any]]:
     """Load allocation decision-context rows."""
     if not path.exists():
@@ -498,10 +503,17 @@ def ensure_safe_output(output_path: Path, *, force: bool) -> None:
     """Prepare an artifacts output directory."""
     resolved = output_path.resolve()
     if resolved.exists():
+        if not resolved.is_dir():
+            raise SystemExit(f"Output path exists and is not a directory: {output_path}")
         if not force:
             raise SystemExit(f"Output already exists: {output_path} (use --force)")
-        if "artifacts" not in resolved.parts:
-            raise SystemExit(f"Refusing to clear non-artifacts output path: {output_path}")
+        artifacts_root = (repo_root() / "artifacts").resolve()
+        try:
+            resolved.relative_to(artifacts_root)
+        except ValueError as exc:
+            raise SystemExit(
+                f"Refusing to clear output directory outside {artifacts_root}: {output_path}"
+            ) from exc
         shutil.rmtree(resolved)
     resolved.mkdir(parents=True, exist_ok=True)
 

@@ -18,7 +18,7 @@ import shutil
 from typing import Any
 
 from import_player_log_experiments import LOG_RE, parse_pairs
-from summarize_experiment_corpus import load_json_file, load_registry, resolve_repo_path
+from summarize_experiment_corpus import load_json_file, load_registry, repo_root, resolve_repo_path
 
 
 DEFAULT_REGISTRY = Path("artifacts/experiments/registry.jsonl")
@@ -562,7 +562,7 @@ def parse_source_log(
     """Parse one source log into decision-context rows."""
     groups: dict[str, list[tuple[int, str, dict[str, str]]]] = defaultdict(list)
     launch_counts: Counter[str] = Counter()
-    with source_path.open("r", encoding="utf-8-sig") as handle:
+    with source_path.open("r", encoding="utf-8-sig", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
             match = LOG_RE.search(line)
             if not match:
@@ -692,10 +692,17 @@ def ensure_safe_output(output_path: Path, *, force: bool) -> None:
     """Prepare an output directory without deleting arbitrary repo paths."""
     resolved = output_path.resolve()
     if resolved.exists():
+        if not resolved.is_dir():
+            raise SystemExit(f"Output path exists and is not a directory: {output_path}")
         if not force:
             raise SystemExit(f"Output already exists: {output_path} (use --force)")
-        if "artifacts" not in resolved.parts:
-            raise SystemExit(f"Refusing to clear non-artifacts output path: {output_path}")
+        artifacts_root = (repo_root() / "artifacts").resolve()
+        try:
+            resolved.relative_to(artifacts_root)
+        except ValueError as exc:
+            raise SystemExit(
+                f"Refusing to clear output directory outside {artifacts_root}: {output_path}"
+            ) from exc
         shutil.rmtree(resolved)
     resolved.mkdir(parents=True, exist_ok=True)
 

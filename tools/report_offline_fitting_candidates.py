@@ -16,11 +16,19 @@ DEFAULT_OUTPUT = Path("artifacts/offline-fitting/report")
 SCHEMA_VERSION = 1
 
 
+def repo_root() -> Path:
+    """Return the repository root for output safety checks."""
+    return Path(__file__).resolve().parent.parent
+
+
 def load_json(path: Path) -> dict[str, Any]:
     """Load a JSON object."""
     if not path.exists():
         raise SystemExit(f"Required artifact not found: {path}")
-    value = json.loads(path.read_text(encoding="utf-8-sig"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{path}: invalid JSON: {exc}") from exc
     if not isinstance(value, dict):
         raise SystemExit(f"Artifact is not a JSON object: {path}")
     return value
@@ -36,7 +44,10 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             line = raw_line.strip()
             if not line:
                 continue
-            value = json.loads(line)
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"{path}:{line_number}: invalid JSONL row: {exc}") from exc
             if not isinstance(value, dict):
                 raise SystemExit(f"{path}:{line_number}: row is not a JSON object")
             rows.append(value)
@@ -285,10 +296,17 @@ def ensure_safe_output(output_path: Path, *, force: bool) -> None:
     """Prepare an artifacts output directory."""
     resolved = output_path.resolve()
     if resolved.exists():
+        if not resolved.is_dir():
+            raise SystemExit(f"Output path exists and is not a directory: {output_path}")
         if not force:
             raise SystemExit(f"Output already exists: {output_path} (use --force)")
-        if "artifacts" not in resolved.parts:
-            raise SystemExit(f"Refusing to clear non-artifacts output path: {output_path}")
+        artifacts_root = (repo_root() / "artifacts").resolve()
+        try:
+            resolved.relative_to(artifacts_root)
+        except ValueError as exc:
+            raise SystemExit(
+                f"Refusing to clear output directory outside {artifacts_root}: {output_path}"
+            ) from exc
         shutil.rmtree(resolved)
     resolved.mkdir(parents=True, exist_ok=True)
 
