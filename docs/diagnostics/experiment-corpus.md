@@ -250,3 +250,132 @@ points to them. When fields are present, it aggregates missing evidence,
 skipped and failed commands, overkill risk, under-saturation risk, target
 mismatch, regression markers, and vanilla spillover diagnostics. Missing private
 raw logs are allowed when `sourceLogPath` is omitted.
+
+## Offline-fitting decision contexts
+
+Use `tools/build_offline_fitting_dataset.py` to turn a fixed experiment-corpus
+registry into allocation decision-context rows for offline replay. This is the
+row-level input to the archived-log fitting loop; it is not a scoring or live
+behavior command.
+
+Fixture validation uses:
+
+```powershell
+python tools\build_offline_fitting_dataset.py --registry tools\fixtures\offline_fitting\registry.jsonl --output artifacts\offline-fitting\fixture-dataset --require-row-evidence --force
+```
+
+The command writes:
+
+- `decision-contexts.jsonl`: one allocation decision-context row per replayable
+  command candidate/result.
+- `decision-contexts.json`: the same rows wrapped in a JSON object.
+- `dataset-summary.json`: row counts, source record types, pressure evidence
+  counts, command-result counts, and non-fatal warnings.
+
+Rows preserve normalized replay fields and a `rawFields` copy of the diagnostic
+pairs. Target alternatives remain a list derived from the pipe-delimited
+`targetAlternative*` diagnostics. Score/rank fields keep their original
+comparison-space names. Exact and lower-bound pressure remain separate through
+the `pressure`, `uncertainty`, `evidenceState`, and `replayReadiness` groups.
+
+`evidenceState` makes row quality explicit for offline replay. Current labels
+are `exact`, `lower-bound`, `unknown`, `inferred`, and `not-applicable`.
+Subfields classify target alternatives, pressure, score/rank comparison,
+command correlation, outcome context, and an overall conservative row state.
+Row-level pressure is `exact` only when both
+`selectedTargetPriorMissileInFlightEstimateBound` and
+`boundedLiveDecisionInFlightEvidenceQuality` are exact. An exact prior bound
+with unknown in-flight evidence quality is `inferred`, not exact.
+
+Each normalized target alternative also carries `pressureEvidenceState`,
+`pressureEvidenceReason`, and nested `evidenceState.pressure`. The pressure
+target inherits the row pressure state. Non-pressure alternatives explicitly use
+`not-applicable` when a bounded pressure decision exists, or `unknown` when no
+pressure decision is present, so `pressure=null` is not the only evidence cue.
+Favorable pressure classifications require exact pressure plus exact
+target-alternative and score/rank evidence.
+
+Registry entries without `sourceLogPath` are treated as summary-only evidence:
+the command records a warning and does not invent row-level contexts from
+aggregate counters. Keep generated datasets under ignored `artifacts/` paths.
+
+## Offline-fitting replay
+
+Use `tools/replay_offline_fitting_candidates.py` to replay candidate policies
+over a generated decision-context dataset and emit machine-readable scoring
+artifacts.
+
+Fixture validation uses:
+
+```powershell
+python tools\replay_offline_fitting_candidates.py --dataset artifacts\offline-fitting\fixture-dataset\decision-contexts.jsonl --output artifacts\offline-fitting\fixture-replay --require-replay-evidence --force
+```
+
+The command writes:
+
+- `replay-results.jsonl`: one row per decision context and replayed policy.
+- `replay-results.json`: the same replay rows wrapped in a JSON object.
+- `candidate-summary.json`: policy-level soft objective totals,
+  retained-above-threshold classification counts, row eligibility counts, bad
+  observed-row counts, bad candidate-row counts, evidence-blocked row counts,
+  diagnostic signal counts, candidate-improvement signal counts, target-change
+  counts, eligible score deltas, changed-target score deltas, and score-delta
+  kind counts.
+
+The current policy id `pressure-aware-bounded-live-v1` is replayed as measured
+current behavior, not as a validated improvement. The first report-only policy,
+`report-only-pressure-relief-v1`, may suggest an alternate target only when
+pressure evidence is exact and at or above threshold, and target alternatives
+plus score/rank evidence are exact. It filters known friendly alternatives out
+of the real report-only policy. Lower-bound, unknown, or inferred pressure,
+missing or weak alternatives, weak score/rank evidence, and command-safety
+failures block favorable conclusions. Replay output separates soft surrogate
+penalties from observed row failures, candidate guardrail failures, evidence
+blockers, diagnostic warnings, current-policy diagnostic signals, and
+report-only candidate-improvement signals in each row's `rowEvaluation`.
+
+Score deltas are target-alternative comparison diagnostics, not raw allocator
+score proof. A row that retains the same target has `scoreDelta=0` even when
+the selected target's launcher-candidate score differs from its recomputed
+target-alternative score. A changed-target row reports `scoreDelta` only when
+the selected and chosen targets have scores in the same `scoreSpace`; otherwise
+the row marks the delta as `not-comparable` and omits the numeric value.
+
+Committed fixture rows may still include known friendly alternatives as
+guardrail stress cases. Those fixtures test that unsafe candidate choices would
+be counted separately; the real report-only policy should skip them and should
+not treat them as candidate-quality results.
+
+## Offline-fitting report closure
+
+Use `tools/report_offline_fitting_candidates.py` to turn replay artifacts into
+the report artifacts that close the offline fitting loop.
+
+Fixture validation uses:
+
+```powershell
+python tools\report_offline_fitting_candidates.py --replay artifacts\offline-fitting\fixture-replay\replay-results.jsonl --summary artifacts\offline-fitting\fixture-replay\candidate-summary.json --output artifacts\offline-fitting\fixture-report --require-report-evidence --force
+```
+
+The command writes:
+
+- `ranked-candidates.md`: ranked policy table with verdicts, row eligibility
+  counts, diagnostic signal counts, candidate-improvement signal counts,
+  target-change counts, eligible and changed-target score deltas, score-delta
+  kind counts, and downgrade reasons.
+- `candidate-verdicts.json`: machine-readable verdicts using
+  `candidate-filtered`, `needs-live-validation`, `inconclusive`, or `blocked`.
+- `guardrail-report.md`: bad observed rows, bad candidate rows,
+  evidence-blocked rows, hard guardrail failures, evidence blockers, diagnostic
+  warnings, and verdict impact separated from soft objective scores.
+
+Verdict rules are intentionally conservative. Candidate guardrail failures
+produce `blocked`, as does excluding every row for a policy. Bad observed rows
+and evidence-blocked rows are reported as downgrades instead of being hidden
+inside soft scores. Parser warnings, lower-bound, unknown, or inferred
+pressure, missing alternatives, weak score/rank evidence, and spillover
+ambiguity prevent favorable row signals. Current-policy diagnostic signals and
+report-only candidate-improvement signals are reported separately. Fixture-only
+evidence remains `inconclusive` for live validation. Any future
+`candidate-filtered` or `needs-live-validation` result remains a
+live-validation candidate only, not a behavior-changing implementation approval.

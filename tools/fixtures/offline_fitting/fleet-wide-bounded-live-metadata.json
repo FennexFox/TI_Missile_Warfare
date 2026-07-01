@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "selectedMode": "fleet-wide",
+  "knownMissingEvidence": [
+    "fixture evidence only",
+    "outcome correlation pending",
+    "selection scope unavailable for fleet-wide bounded live fixture"
+  ],
+  "evidenceSummary": {
+    "missing_evidence_counts": {},
+    "vanilla_spillover_counts": {}
+  }
+}

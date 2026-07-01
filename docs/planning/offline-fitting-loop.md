@@ -67,9 +67,14 @@ Minimum row groups:
 - selected target: id/name, pressure, threshold, score/rank evidence, and
   selected-target pressure decision;
 - candidate targets: per-target pressure, threshold, under-threshold status,
-  comparable feature evidence, score/rank evidence, and eligibility reason;
+  explicit pressure evidence state, comparable feature evidence, score/rank
+  evidence, and eligibility reason;
 - command result: applied/skipped/failed, direct command-spend correlation, caps,
   and safety guardrails;
+- evidence state: explicit `exact`, `lower-bound`, `unknown`, `inferred`, or
+  `not-applicable` state for pressure, target alternatives, score/rank
+  comparison, command correlation, outcome context, per-target-alternative
+  pressure, and overall row quality;
 - uncertainty: exact vs lower-bound in-flight pressure, missing evidence, parser
   warnings, and spillover classification.
 
@@ -82,9 +87,15 @@ surrogate pressure objective over auditable allocation contexts:
 - penalize large pressure imbalance when comparable alternatives exist;
 - preserve high-threat or high-score target coverage when pressure evidence does
   not justify retargeting;
+- filter known friendly alternatives out of report-only candidate suggestions;
 - penalize churny or evidence-weak retargets;
 - apply hard failure penalties for friendly targets, scope violations, command
   cap violations, parser failures, or spillover misclassification.
+- preserve row eligibility separately from policy verdicts so excluded evidence
+  remains auditable instead of disappearing into one policy score.
+- treat score deltas as comparable target-alternative diagnostics only: retained
+  no-change rows contribute zero delta, and changed-target rows report a numeric
+  delta only when selected and chosen scores share one score space.
 
 Outcome rows may be used as hook-health context until a separate
 outcome-to-allocation correlation design exists.
@@ -97,7 +108,8 @@ The offline loop is ready for real candidate fitting when one command can:
 2. emit a decision-context dataset;
 3. replay at least the current policy and one report-only candidate policy;
 4. score objective metrics and hard guardrails;
-5. produce `ranked-candidates.md` and machine-readable results;
+5. produce `ranked-candidates.md`, guardrail reports, row-evaluation summaries,
+   and machine-readable results;
 6. classify each candidate as `candidate-filtered`, `needs-live-validation`,
    `inconclusive`, or `blocked`.
 
@@ -116,6 +128,9 @@ The next offline-fitting implementation should therefore:
   `avoidable`, `unavoidable`, or `inconclusive`;
 - replay the current policy and at least one report-only candidate policy;
 - score surrogate pressure objectives and hard guardrails;
+- separate bad observed rows, bad candidate rows, evidence-blocked rows,
+  diagnostic warnings, current-policy diagnostic signals, report-only
+  candidate-improvement signals, and policy-level downgrade reasons;
 - keep live command behavior unchanged until a ranked candidate receives small
   controlled-live or fleet-wide-controlled validation.
 

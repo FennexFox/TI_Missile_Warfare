@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "verdict": "fixture-only",
+  "reviewer": "fixture",
+  "reviewedAtUtc": "2026-06-30T00:00:00Z",
+  "summary": "Synthetic offline-fitting decision-context fixture; not real combat evidence.",
+  "evidenceGaps": [
+    "fixture evidence only",
+    "outcome correlation pending"
+  ],
+  "nextAction": "Use for schema validation only."
+}
