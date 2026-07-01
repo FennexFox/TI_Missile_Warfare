@@ -180,6 +180,8 @@ def build_verdicts(summary: dict[str, Any], records: list[dict[str, Any]]) -> di
 
 def markdown_cell(value: Any) -> str:
     """Format a markdown table cell."""
+    if value is None:
+        return "n/a"
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 

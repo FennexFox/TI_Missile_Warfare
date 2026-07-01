@@ -440,8 +440,12 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "rowCount": len(policy_records),
                 "eligibleRowCount": eligibility.get("eligible", 0),
                 "excludedRowCount": eligibility.get("excluded", 0),
-                "badObservedRowCount": sum(observed_failures.values()),
-                "badCandidateRowCount": sum(candidate_failures.values()),
+                "badObservedRowCount": sum(
+                    1 for evaluation in row_evaluations if evaluation.get("observedRowFailures")
+                ),
+                "badCandidateRowCount": sum(
+                    1 for evaluation in row_evaluations if evaluation.get("candidateGuardrailFailures")
+                ),
                 "evidenceBlockedRowCount": sum(1 for evaluation in row_evaluations if evaluation.get("evidenceBlockers")),
                 "diagnosticSignalRowCount": diagnostic_signals,
                 "candidateImprovementRowCount": candidate_improvements,

@@ -336,6 +336,13 @@ def alternative_evidence_state(pairs: dict[str, Any], alternatives: list[dict[st
         return "lower-bound"
     if not alternatives or len(alternatives) != denominator:
         return "unknown"
+    if any(
+        alternative.get("targetId") is None
+        or alternative.get("targetTeam") is None
+        or alternative.get("score") is None
+        for alternative in alternatives
+    ):
+        return "unknown"
     feature_evidence = str(pairs.get("targetAlternativeFeatureEvidence", "unknown"))
     missing_count = optional_int(pairs.get("targetAlternativeFeatureMissingCount")) or 0
     if feature_evidence == "allocatorComparableFeatures" and missing_count == 0:
@@ -473,7 +480,11 @@ def build_decision_context(
             "saturationSize": raw_fields.get("saturationSize"),
             "killSize": raw_fields.get("killSize"),
             "launchWindowScore": raw_fields.get("launchWindowScore"),
-            "score": raw_fields.get("selectedTargetScore") or raw_fields.get("scorePerShot"),
+            "score": (
+                raw_fields.get("selectedTargetScore")
+                if raw_fields.get("selectedTargetScore") is not None
+                else raw_fields.get("scorePerShot")
+            ),
             "scoreBasis": raw_fields.get("selectedTargetScoreBasis"),
             "scoreSpace": raw_fields.get("selectedTargetScoreSpace"),
             "rank": raw_fields.get("selectedTargetRank"),

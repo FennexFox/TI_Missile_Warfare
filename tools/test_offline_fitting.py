@@ -108,6 +108,8 @@ class EvidenceStateTests(unittest.TestCase):
             {
                 "targetAlternativeDenominator": "2",
                 "targetAlternativeIds": "red|blue",
+                "targetAlternativeTeams": "enemy|enemy",
+                "targetAlternativeScores": "3.0|2.0",
                 "targetAlternativeFeatureEvidence": "allocatorComparableFeatures",
                 "targetAlternativeFeatureMissingCount": "1",
                 "targetAlternativeCountTruncated": "0",
@@ -118,6 +120,43 @@ class EvidenceStateTests(unittest.TestCase):
         self.assertEqual("inferred", dataset.alternative_evidence_state(pairs, alternatives))
         pairs["targetAlternativeCountTruncated"] = 1
         self.assertEqual("lower-bound", dataset.alternative_evidence_state(pairs, alternatives))
+
+    def test_malformed_alternative_rows_are_not_exact_evidence(self) -> None:
+        pairs = dataset.normalized_raw_fields(
+            {
+                "targetAlternativeDenominator": "2",
+                "targetAlternativeIds": "red|blue",
+                "targetAlternativeTeams": "enemy|enemy",
+                "targetAlternativeScores": "3.0",
+                "targetAlternativeFeatureEvidence": "allocatorComparableFeatures",
+                "targetAlternativeFeatureMissingCount": "0",
+                "targetAlternativeCountTruncated": "0",
+            }
+        )
+        alternatives, _ = dataset.target_alternatives(pairs)
+
+        self.assertIsNone(alternatives[1]["score"])
+        self.assertEqual("unknown", dataset.alternative_evidence_state(pairs, alternatives))
+
+    def test_selected_target_score_preserves_explicit_zero(self) -> None:
+        row = dataset.build_decision_context(
+            entry={"experimentId": "EXP-ZERO-SCORE"},
+            metadata={},
+            pairs={
+                "commandResultId": "cmd-zero",
+                "targetId": "red",
+                "target": "Red",
+                "targetTeam": "enemy",
+                "selectedTargetScore": "0.0",
+                "scorePerShot": "9.0",
+            },
+            source_log="fixture.txt",
+            source_line=1,
+            source_record_types=["fleetWideBoundedLiveCandidate"],
+            direct_launch_rows=0,
+        )
+
+        self.assertEqual(0.0, row["selectedTarget"]["score"])
 
     def test_pressure_exact_requires_exact_bound_and_quality(self) -> None:
         pairs = {
@@ -220,6 +259,19 @@ class ReplayClassificationTests(unittest.TestCase):
         self.assertTrue(evaluation["scoreDeltaReason"].startswith("score-space-mismatch"))
         self.assertEqual(0.0, report_only["objectiveMetrics"]["highScoreCoveragePenalty"])
 
+    def test_bad_row_counts_count_rows_not_failure_instances(self) -> None:
+        row = exact_retained_row()
+        row["selectedTarget"]["targetTeam"] = "player"
+        row["command"]["result"] = "wouldFail"
+
+        current = replay.replay_policy(row, replay.CURRENT_POLICY_ID)
+        summary = replay.summarize([current])
+        policy = summary["policies"][0]
+
+        self.assertEqual(["observed-friendly-target", "observed-command-result-wouldFail"], current["hardGuardrailFailures"])
+        self.assertEqual(1, policy["badObservedRowCount"])
+        self.assertEqual(2, policy["hardGuardrailFailureCount"])
+
 
 class ReportVerdictTests(unittest.TestCase):
     def test_report_verdicts_preserve_row_counts_and_downgrades(self) -> None:
@@ -240,6 +292,7 @@ class ReportVerdictTests(unittest.TestCase):
         self.assertIn("fixture evidence only", report_only["downgradeReasons"])
         self.assertIn("Eligible", report.ranked_candidates_markdown(verdicts))
         self.assertIn("Bad observed rows", report.guardrail_markdown(verdicts))
+        self.assertEqual("n/a", report.markdown_cell(None))
 
     def test_fixture_pipeline_summaries_keep_expected_quality_counts(self) -> None:
         rows, warnings, run_modes, source_counts = dataset.build_dataset(FIXTURE_REGISTRY)
